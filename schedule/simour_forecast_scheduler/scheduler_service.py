@@ -209,7 +209,7 @@ def _write_csv(path: Path, fieldnames: list[str], rows: list[dict]) -> None:
             writer.writerow(row)
 
 
-def _merge_latest_schedule(snapshot_csv: Path, latest_csv: Path) -> tuple[int, int]:
+def _merge_latest_schedule(snapshot_csv: Path, latest_csv: Path) -> tuple[int, int, int]:
     snapshot_fields, snapshot_rows = _read_csv_rows(snapshot_csv)
     if not snapshot_rows:
         raise ValueError(f"No schedule rows were produced in {snapshot_csv}")
@@ -248,7 +248,74 @@ def _merge_latest_schedule(snapshot_csv: Path, latest_csv: Path) -> tuple[int, i
 
     merged_rows = sorted(merged_by_time.values(), key=_sort_key)
     _write_csv(latest_csv, fieldnames, merged_rows)
-    return len(snapshot_rows), preserved_rows
+    return len(snapshot_rows), preserved_rows, len(merged_rows)
+
+
+def _freeze_boundary_time(target_time: str) -> str:
+    """Return the next revision boundary after target_time."""
+    try:
+        current_time = dt.datetime.strptime(target_time, "%H:%M").time()
+    except ValueError:
+        return target_time
+
+    revision_times = []
+    for candidate in config.CAPTURE_TIMES:
+        try:
+            revision_times.append(dt.datetime.strptime(candidate, "%H:%M").time())
+        except ValueError:
+            continue
+
+    for revision_time in revision_times:
+        if revision_time > current_time:
+            return revision_time.strftime("%H:%M")
+    return target_time
+
+
+def _write_current_final_schedule(latest_csv: Path, current_final_csv: Path, target_date: str, target_time: str) -> int:
+    latest_fields, latest_rows = _read_csv_rows(latest_csv)
+    previous_fields, previous_rows = _read_csv_rows(current_final_csv) if current_final_csv.exists() else ([], [])
+
+    fieldnames = latest_fields or previous_fields
+    if not fieldnames:
+        raise ValueError("Schedule CSV did not contain any headers.")
+
+    freeze_from = dt.datetime.strptime(
+        f"{target_date} {_freeze_boundary_time(target_time)}",
+        "%Y-%m-%d %H:%M",
+    )
+
+    def _row_dt(row: dict) -> dt.datetime | None:
+        key = _row_time_key(row)
+        if not key:
+            return None
+        try:
+            return dt.datetime.strptime(key, "%Y-%m-%d %H:%M")
+        except ValueError:
+            return None
+
+    merged_by_time: dict[str, dict] = {}
+    for row in previous_rows:
+        row_dt = _row_dt(row)
+        key = _row_time_key(row)
+        if key and row_dt is not None and row_dt < freeze_from:
+            merged_by_time[key] = dict(row)
+
+    for row in latest_rows:
+        row_dt = _row_dt(row)
+        key = _row_time_key(row)
+        if key and row_dt is not None and row_dt >= freeze_from:
+            merged_by_time[key] = dict(row)
+
+    def _sort_key(row: dict) -> dt.datetime:
+        key = _row_time_key(row)
+        try:
+            return dt.datetime.strptime(key, "%Y-%m-%d %H:%M")
+        except ValueError:
+            return dt.datetime.max
+
+    frozen_rows = sorted(merged_by_time.values(), key=_sort_key)
+    _write_csv(current_final_csv, fieldnames, frozen_rows)
+    return len(frozen_rows)
 
 
 def _snapshot_metadata(
@@ -257,10 +324,12 @@ def _snapshot_metadata(
     forecast_end: str,
     snapshot_csv_key: str,
     latest_csv_key: str,
+    current_final_csv_key: str,
     snapshot_metadata_key: str,
     latest_metadata_key: str,
     generated_rows: int,
     preserved_rows: int,
+    current_final_rows: int,
 ) -> dict:
     return {
         "status": "ok",
@@ -274,9 +343,11 @@ def _snapshot_metadata(
         "snapshot_csv_key": snapshot_csv_key,
         "snapshot_metadata_key": snapshot_metadata_key,
         "latest_csv_key": latest_csv_key,
+        "current_final_csv_key": current_final_csv_key,
         "latest_metadata_key": latest_metadata_key,
         "generated_rows": generated_rows,
         "preserved_rows": preserved_rows,
+        "current_final_rows": current_final_rows,
     }
 
 
@@ -294,7 +365,9 @@ def run_schedule_job(
     if settings.ENABLE_S3_STATE_SYNC:
         state_sync.refresh_state_from_s3(bucket=bucket)
 
-    forecast_start_dt = target_dt + dt.timedelta(seconds=1)
+    # Start exactly on the revision time so the first run of the day can
+    # keep the 06:45 block instead of skipping straight to 07:00.
+    forecast_start_dt = target_dt
     forecast_end_dt = dt.datetime.strptime(f"{target_date} 19:00", "%Y-%m-%d %H:%M")
     generated_root = _prefix_to_local_dir(schedule_prefix, target_date)
     generated_root.mkdir(parents=True, exist_ok=True)
@@ -319,10 +392,13 @@ def run_schedule_job(
     snapshot_csv = generated_root / f"{target_date}_{target_time.replace(':', '-')}_schedule.csv"
     snapshot_metadata = generated_root / f"{target_date}_{target_time.replace(':', '-')}_metadata.json"
     latest_csv = generated_root / f"{target_date}_latest_schedule.csv"
+    current_final_csv = generated_root / "current_final_schedule.csv"
     latest_metadata = generated_root / f"{target_date}_latest_metadata.json"
 
     shutil.copyfile(snapshot_source, snapshot_csv)
-    generated_rows, preserved_rows = _merge_latest_schedule(snapshot_source, latest_csv)
+    snapshot_rows, preserved_rows, merged_rows = _merge_latest_schedule(snapshot_source, latest_csv)
+    shutil.copyfile(latest_csv, snapshot_csv)
+    current_final_rows = _write_current_final_schedule(latest_csv, current_final_csv, target_date, target_time)
 
     forecast_start_label = forecast_start_dt.strftime("%Y-%m-%d %H:%M")
     forecast_end_label = forecast_end_dt.strftime("%Y-%m-%d %H:%M")
@@ -332,16 +408,19 @@ def run_schedule_job(
         forecast_end=forecast_end_label,
         snapshot_csv_key=f"{schedule_prefix.rstrip('/')}/{target_date}/{snapshot_csv.name}",
         latest_csv_key=f"{schedule_prefix.rstrip('/')}/{target_date}/{latest_csv.name}",
+        current_final_csv_key=f"{schedule_prefix.rstrip('/')}/{target_date}/{current_final_csv.name}",
         snapshot_metadata_key=f"{schedule_prefix.rstrip('/')}/{target_date}/{snapshot_metadata.name}",
         latest_metadata_key=f"{schedule_prefix.rstrip('/')}/{target_date}/{latest_metadata.name}",
-        generated_rows=generated_rows,
+        generated_rows=merged_rows,
         preserved_rows=preserved_rows,
+        current_final_rows=current_final_rows,
     )
     snapshot_metadata.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
     latest_metadata.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
 
     storage.upload_file(bucket, metadata["snapshot_csv_key"], snapshot_csv, content_type="text/csv")
     storage.upload_file(bucket, metadata["latest_csv_key"], latest_csv, content_type="text/csv")
+    storage.upload_file(bucket, f"{schedule_prefix.rstrip('/')}/{target_date}/{current_final_csv.name}", current_final_csv, content_type="text/csv")
     storage.upload_json(bucket, metadata["snapshot_metadata_key"], metadata)
     storage.upload_json(bucket, metadata["latest_metadata_key"], metadata)
 
