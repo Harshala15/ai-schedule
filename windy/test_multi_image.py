@@ -31,6 +31,7 @@ from config import (
     PLANT_NAME, PLANT_LAT, PLANT_LON, ZOOM_LEVEL, VIEWPORT_WIDTH, VIEWPORT_HEIGHT,
     LAYERS, RECORD_ANIMATION_VIDEO, ANIMATION_LAYER,
     VIDEO_DIR, STORAGE_STATE_PATH, SCREENSHOT_DIR, RUN_INTERVAL_SECONDS,
+    SIRMOUR_REVISION_TIMES, LAMBDA_CAPTURE_OFFSET_MINUTES,
     S3_BUCKET_NAME, S3_REGION, S3_PREFIX, AUTO_CREATE_S3_BUCKET,
     OUTPUT_ROOT, IS_LAMBDA, PLANT_ID, SITE_ID, PLANT_CAPACITY_MW,
 )
@@ -41,6 +42,48 @@ IST = ZoneInfo(IST_TIMEZONE)
 
 def now_ist() -> datetime.datetime:
     return datetime.datetime.now(IST)
+
+
+def _lambda_capture_window(site_name: str, current_time: datetime.datetime | None = None) -> tuple[bool, str]:
+    """
+    Lambda capture gate for SIRMOUR.
+
+    SIRMOUR videos should only run 5 minutes before the configured revision
+    times. Other sites are left un-gated by this helper.
+    """
+    if site_name.strip().upper() != "SIRMOUR":
+        return True, "no revision window gating configured"
+
+    current_time = current_time or now_ist()
+    capture_offset = datetime.timedelta(minutes=LAMBDA_CAPTURE_OFFSET_MINUTES)
+
+    for revision_time in SIRMOUR_REVISION_TIMES:
+        rev_hour, rev_minute = (int(part) for part in revision_time.split(":"))
+        capture_time = current_time.replace(
+            hour=rev_hour,
+            minute=rev_minute,
+            second=0,
+            microsecond=0,
+        ) - capture_offset
+
+        if current_time.hour == capture_time.hour and current_time.minute == capture_time.minute:
+            return True, f"matched capture window for revision {revision_time}"
+
+    capture_times = []
+    for revision_time in SIRMOUR_REVISION_TIMES:
+        rev_hour, rev_minute = (int(part) for part in revision_time.split(":"))
+        capture_time = (current_time.replace(
+            hour=rev_hour,
+            minute=rev_minute,
+            second=0,
+            microsecond=0,
+        ) - capture_offset).strftime("%H:%M")
+        capture_times.append(capture_time)
+
+    return False, (
+        "outside SIRMOUR capture window; allowed capture times are "
+        + ", ".join(capture_times)
+    )
 
 
 def set_active_site(site: dict) -> None:
@@ -789,9 +832,9 @@ def run_once():
 
 
 def lambda_run_once() -> dict:
-    """Lambda capture path: one site, requested Windy assets, then exit."""
-    print("Step 1: Capturing Lambda screenshots (satellite + wind + solarpower + clouds + rain)...\n")
-    screenshots = capture_all_layers()
+    """Lambda capture path: one site, video and metadata only, then exit."""
+    print("Step 1: Skipping Lambda screenshots by design.\n")
+    screenshots = []
 
     print("\nStep 2: Recording Lambda animation video...")
     video_path = record_cloud_animation()
@@ -804,7 +847,7 @@ def lambda_run_once() -> dict:
         "lat": PLANT_LAT,
         "lon": PLANT_LON,
         "captured_at": run_timestamp,
-        "screenshots": list(screenshots.keys()),
+        "screenshots": screenshots,
         "video": str(video_path) if video_path else None,
     }
     metadata_dir = OUTPUT_ROOT / "windy_metadata"
@@ -870,9 +913,6 @@ def lambda_handler(event, context):
     PLANT_ID = event_plant_id
     S3_BUCKET_NAME = event_bucket
 
-    ensure_login()
-    _ensure_s3_bucket()
-
     run_count = getattr(context, "aws_request_id", "lambda")
     started_at = now_ist().strftime("%Y-%m-%d %H:%M:%S")
     print("\n" + "#" * 60)
@@ -882,6 +922,20 @@ def lambda_handler(event, context):
     site = _find_site(event_site_id)
     set_active_site(site)
     print(f"\nSite: {PLANT_NAME} ({PLANT_LAT}, {PLANT_LON})")
+
+    should_capture, capture_reason = _lambda_capture_window(PLANT_NAME)
+    if not should_capture:
+        print(f"\n[INFO] Skipping Lambda capture for {PLANT_NAME}: {capture_reason}")
+        return {
+            "ok": True,
+            "skipped": True,
+            "started_at": started_at,
+            "site": PLANT_NAME,
+            "reason": capture_reason,
+        }
+
+    ensure_login()
+    _ensure_s3_bucket()
 
     try:
         metadata = lambda_run_once()
