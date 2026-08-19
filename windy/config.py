@@ -95,6 +95,8 @@ ANIMATION_LAYER = "satellite"
 
 # ---- Run timing ----
 RUN_INTERVAL_SECONDS = 20 * 60
+SIRMOUR_REVISION_TIMES = ("05:15", "06:45", "08:15", "09:45", "11:15", "14:15", "15:45")
+LAMBDA_CAPTURE_OFFSET_MINUTES = 5
 
 # ---- S3 upload ----
 S3_BUCKET_NAME = _normalize_s3_bucket_name(

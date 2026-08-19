@@ -87,7 +87,8 @@ The helper script [ec2_start.sh](ec2_start.sh) checks for `windy_login.json`, cr
 ## Lambda container
 
 Lambda should run one site capture and exit. Use EventBridge to trigger each
-site function every 20 minutes instead of running the script's infinite loop.
+site function on a frequent schedule instead of running the script's infinite
+loop.
 
 Build the Lambda image:
 
@@ -112,7 +113,7 @@ Configure the Lambda function with:
 - IAM execution role with S3 permissions for the configured bucket
 - timeout high enough for one capture cycle, up to Lambda's 15 minute maximum
 - memory around 4096 MB or higher for Playwright/Chromium
-- ephemeral storage large enough for screenshots and videos, for example 2048 MB+
+- ephemeral storage large enough for the video capture and metadata, for example 2048 MB+
 - environment variables such as `SITE_ID=SIRMOUR`, `SITE_ID=KASIPET`, `SITE_ID=BHUPALPALLY`, `SITE_ID=OSEPL`, `PLANT_ID=vedanjay`, and `S3_BUCKET=ai-forecasting-test-755611554012`
 
 For the dedicated BHUPALPALLY Lambda, `SITE_ID` is forced in code, so the
@@ -123,7 +124,6 @@ The Lambda handler captures the configured `SITE_ID`, writes working files to
 
 ```text
 raw/<PLANT_ID>/<SITE_ID>/<DATE>/windy/videos/
-raw/<PLANT_ID>/<SITE_ID>/<DATE>/windy/screenshots/
 raw/<PLANT_ID>/<SITE_ID>/<DATE>/windy/metadata/
 ```
 
@@ -132,9 +132,15 @@ EC2 Docker volume used by `docker-compose.yml`. Keep `.env` out of the image
 and use the Lambda IAM role for S3 access. Current valid `SITE_ID` values come
 from `config.py`: `SIRMOUR`, `KASIPET`, `BHUPALPALLY`, and `OSEPL`.
 
-Lambda captures the same five screenshot layers as the EC2/local flow:
-`satellite`, `wind`, `solarpower`, `clouds`, and `rain`, plus the satellite
-animation video.
+Lambda no longer captures the five screenshot layers. It only records the
+satellite animation video and writes metadata for the run. Screenshot capture
+remains in the local/EC2 flow.
+
+For SIRMOUR, the Lambda only runs when the current IST time is 5 minutes
+before one of these revision times:
+`05:15`, `06:45`, `08:15`, `09:45`, `11:15`, `14:15`, `15:45`.
+If the Lambda is invoked outside those capture minutes, it exits cleanly
+without recording video.
 
 ## Important note
 
