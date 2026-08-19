@@ -1,0 +1,2 @@
+"""SIMOUR SFTP fetcher package."""
+

@@ -1,0 +1,5 @@
+{
+  "Arn": "arn:aws:lambda:ap-south-1:429694361053:function:simour-forecast-scheduler",
+  "RoleArn": "arn:aws:iam::429694361053:role/simour-eventbridge-scheduler-role",
+  "Input": "{\"target_date\":\"2026-08-06\",\"target_time\":\"06:45\"}"
+}

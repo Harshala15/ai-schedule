@@ -1,0 +1,37 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ListKasipetPrefixes",
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::ai-forecasting-storage-429694361053",
+      "Condition": {
+        "StringLike": {
+          "s3:prefix": [
+            "raw/vedanjay/KASIPET",
+            "raw/vedanjay/KASIPET/*",
+            "generated/KASIPET",
+            "generated/KASIPET/*",
+            "state/vedanjay/KASIPET",
+            "state/vedanjay/KASIPET/*"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "ReadWriteKasipetObjects",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject"
+      ],
+      "Resource": [
+        "arn:aws:s3:::ai-forecasting-storage-429694361053/raw/vedanjay/KASIPET/*",
+        "arn:aws:s3:::ai-forecasting-storage-429694361053/generated/KASIPET/*",
+        "arn:aws:s3:::ai-forecasting-storage-429694361053/state/vedanjay/KASIPET/*"
+      ]
+    }
+  ]
+}

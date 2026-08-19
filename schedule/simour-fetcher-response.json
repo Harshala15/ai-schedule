@@ -1,0 +1,1 @@
+{"status": "ok", "remote_file": "/incoming/powerdata_realtime/SIRMOUR/2026_08_08_SOLAR_INV.csv", "remote_mtime": 1786166823, "local_path": "/tmp/2026_08_08_SOLAR_INV.csv", "bucket": "ai-forecasting-storage-429694361053", "s3_key": "raw/vedanjay/SIRMOUR/2026-08-08/meter_data/2026_08_08_SOLAR_INV.csv"}

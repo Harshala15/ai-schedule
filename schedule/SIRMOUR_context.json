@@ -1,0 +1,178 @@
+[
+  {
+    "date": "2026-08-01",
+    "n_matched_blocks": 47,
+    "mae": 0.6937,
+    "rmse": 0.8707,
+    "mape_pct": 130.98,
+    "bias": 0.5421,
+    "bias_direction": "over-forecast",
+    "time_of_day_bias": {
+      "morning (before 10:00)": 0.672,
+      "midday (10:00-14:00)": 0.712,
+      "afternoon (14:00+)": 0.335
+    },
+    "worst_block": {
+      "time": "2026-08-01 12:15",
+      "predicted_mw": 3.35,
+      "actual_mw": 1.488,
+      "error_mw": 1.862
+    },
+    "summary": "2026-08-01: MAE=0.6937 MW, RMSE=0.8707 MW, MAPE=130.98%, Bias=+0.542 MW (over-forecast). By time of day -- afternoon (14:00+): +0.335 MW; midday (10:00-14:00): +0.712 MW; morning (before 10:00): +0.672 MW. Worst block at 2026-08-01 12:15: predicted 3.35 MW vs actual 1.488 MW (error +1.862 MW).",
+    "actual_pattern": {
+      "n_readings": 47,
+      "avg_clear_sky_pct": 47.5,
+      "time_of_day_clear_sky_pct": {
+        "morning (before 10:00)": 34.0,
+        "midday (10:00-14:00)": 54.3,
+        "afternoon (14:00+)": 49.5
+      },
+      "avg_abs_step_mw": 0.458,
+      "choppy": false,
+      "peak_mw": 3.875,
+      "peak_time": "11:15",
+      "summary": "2026-08-01 actual generation pattern: averaged 47% of clear-sky ceiling across the day (by time of day -- afternoon (14:00+): 49.5%; midday (10:00-14:00): 54.3%; morning (before 10:00): 34.0%). Block-to-block variability: avg |change|=0.458 MW -- smooth/steady. Peak output 3.875 MW at 11:15."
+    }
+  },
+  {
+    "date": "2026-08-02",
+    "n_matched_blocks": 51,
+    "mae": 0.317,
+    "rmse": 0.4146,
+    "mape_pct": 143.21,
+    "bias": 0.2275,
+    "bias_direction": "over-forecast",
+    "time_of_day_bias": {
+      "morning (before 10:00)": 0.456,
+      "midday (10:00-14:00)": 0.251,
+      "afternoon (14:00+)": 0.092
+    },
+    "worst_block": {
+      "time": "2026-08-02 13:45",
+      "predicted_mw": 1.404,
+      "actual_mw": 0.476,
+      "error_mw": 0.928
+    },
+    "summary": "2026-08-02: MAE=0.317 MW, RMSE=0.4146 MW, MAPE=143.21%, Bias=+0.228 MW (over-forecast). By time of day -- afternoon (14:00+): +0.092 MW; midday (10:00-14:00): +0.251 MW; morning (before 10:00): +0.456 MW. Worst block at 2026-08-02 13:45: predicted 1.404 MW vs actual 0.476 MW (error +0.928 MW).",
+    "actual_pattern": {
+      "n_readings": 51,
+      "avg_clear_sky_pct": 30.6,
+      "time_of_day_clear_sky_pct": {
+        "morning (before 10:00)": 16.4,
+        "midday (10:00-14:00)": 28.1,
+        "afternoon (14:00+)": 41.8
+      },
+      "avg_abs_step_mw": 0.222,
+      "choppy": false,
+      "peak_mw": 1.998,
+      "peak_time": "14:45",
+      "summary": "2026-08-02 actual generation pattern: averaged 31% of clear-sky ceiling across the day (by time of day -- afternoon (14:00+): 41.8%; midday (10:00-14:00): 28.1%; morning (before 10:00): 16.4%). Block-to-block variability: avg |change|=0.222 MW -- smooth/steady. Peak output 1.998 MW at 14:45."
+    }
+  }
+  ,
+  {
+    "date": "2026-08-05",
+    "n_matched_blocks": 49,
+    "mae": 0.425,
+    "rmse": 0.5878,
+    "mape_pct": 33.25,
+    "bias": 0.1557,
+    "bias_direction": "over-forecast",
+    "time_of_day_bias": {
+      "morning (before 10:00)": 0.197,
+      "midday (10:00-14:00)": 0.153,
+      "afternoon (14:00+)": 0.134
+    },
+    "worst_block": {
+      "time": "2026-08-05 12:00",
+      "predicted_mw": 3.406,
+      "actual_mw": 1.791,
+      "error_mw": 1.615
+    },
+    "summary": "2026-08-05: MAE=0.425 MW, RMSE=0.5878 MW, MAPE=33.25%, Bias=+0.156 MW (over-forecast). By time of day -- afternoon (14:00+): +0.134 MW; midday (10:00-14:00): +0.153 MW; morning (before 10:00): +0.197 MW. Worst block at 2026-08-05 12:00: predicted 3.406 MW vs actual 1.791 MW (error +1.615 MW).",
+    "actual_pattern": {
+      "n_readings": 49,
+      "avg_clear_sky_pct": 75.5,
+      "time_of_day_clear_sky_pct": {
+        "morning (before 10:00)": 45.2,
+        "midday (10:00-14:00)": 73.7,
+        "afternoon (14:00+)": 97.3
+      },
+      "avg_abs_step_mw": 0.354,
+      "choppy": false,
+      "peak_mw": 3.914,
+      "peak_time": "14:15",
+      "summary": "2026-08-05 actual generation pattern: averaged 75% of clear-sky ceiling across the day (by time of day -- afternoon (14:00+): 97.3%; midday (10:00-14:00): 73.7%; morning (before 10:00): 45.2%). Block-to-block variability: avg |change|=0.354 MW -- smooth/steady. Peak output 3.914 MW at 14:15."
+    }
+  },
+  {
+    "date": "2026-08-06",
+    "n_matched_blocks": 46,
+    "mae": 0.3306,
+    "rmse": 0.4323,
+    "mape_pct": 34.37,
+    "bias": 0.0679,
+    "bias_direction": "over-forecast",
+    "time_of_day_bias": {
+      "morning (before 10:00)": 0.01,
+      "midday (10:00-14:00)": 0.266,
+      "afternoon (14:00+)": -0.069
+    },
+    "worst_block": {
+      "time": "2026-08-06 12:30",
+      "predicted_mw": 2.1,
+      "actual_mw": 0.976,
+      "error_mw": 1.124
+    },
+    "summary": "2026-08-06: MAE=0.3306 MW, RMSE=0.4323 MW, MAPE=34.37%, Bias=+0.068 MW (over-forecast). By time of day -- afternoon (14:00+): -0.069 MW; midday (10:00-14:00): +0.266 MW; morning (before 10:00): +0.01 MW. Worst block at 2026-08-06 12:30: predicted 2.1 MW vs actual 0.976 MW (error +1.124 MW).",
+    "actual_pattern": {
+      "n_readings": 46,
+      "avg_clear_sky_pct": 57.6,
+      "time_of_day_clear_sky_pct": {
+        "morning (before 10:00)": 44.9,
+        "midday (10:00-14:00)": 43.1,
+        "afternoon (14:00+)": 78.9
+      },
+      "avg_abs_step_mw": 0.306,
+      "choppy": false,
+      "peak_mw": 2.84,
+      "peak_time": "10:45",
+      "summary": "2026-08-06 actual generation pattern: averaged 58% of clear-sky ceiling across the day (by time of day -- afternoon (14:00+): 78.9%; midday (10:00-14:00): 43.1%; morning (before 10:00): 44.9%). Block-to-block variability: avg |change|=0.306 MW -- smooth/steady. Peak output 2.840 MW at 10:45."
+    }
+  },
+  {
+    "date": "2026-08-07",
+    "n_matched_blocks": 48,
+    "mae": 0.4361,
+    "rmse": 0.5772,
+    "mape_pct": 41.85,
+    "bias": -0.0884,
+    "bias_direction": "under-forecast",
+    "time_of_day_bias": {
+      "morning (before 10:00)": -0.429,
+      "midday (10:00-14:00)": -0.042,
+      "afternoon (14:00+)": 0.079
+    },
+    "worst_block": {
+      "time": "2026-08-07 14:15",
+      "predicted_mw": 2.71,
+      "actual_mw": 0.916,
+      "error_mw": 1.794
+    },
+    "summary": "2026-08-07: MAE=0.4361 MW, RMSE=0.5772 MW, MAPE=41.85%, Bias=-0.088 MW (under-forecast). By time of day -- afternoon (14:00+): +0.079 MW; midday (10:00-14:00): -0.042 MW; morning (before 10:00): -0.429 MW. Worst block at 2026-08-07 14:15: predicted 2.71 MW vs actual 0.916 MW (error +1.794 MW).",
+    "actual_pattern": {
+      "n_readings": 48,
+      "avg_clear_sky_pct": 48.8,
+      "time_of_day_clear_sky_pct": {
+        "morning (before 10:00)": 48.3,
+        "midday (10:00-14:00)": 65.3,
+        "afternoon (14:00+)": 34.5
+      },
+      "avg_abs_step_mw": 0.277,
+      "choppy": false,
+      "peak_mw": 3.144,
+      "peak_time": "11:30",
+      "summary": "2026-08-07 actual generation pattern: averaged 49% of clear-sky ceiling across the day (by time of day -- afternoon (14:00+): 34.5%; midday (10:00-14:00): 65.3%; morning (before 10:00): 48.3%). Block-to-block variability: avg |change|=0.277 MW -- smooth/steady. Peak output 3.144 MW at 11:30."
+    }
+  }
+]

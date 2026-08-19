@@ -1,0 +1,62 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual Environment
+.venv/
+venv/
+env/
+
+# Environment Variables
+.env
+simour_fetcher/.env
+
+# Windy login/session state (Playwright storage_state -- contains auth cookies)
+
+# VS Code
+.vscode/
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# Python cache
+.pytest_cache/
+.mypy_cache/
+
+# Logs
+*.log
+
+# Generated Reports
+weather_reports/
+
+# Captured Windy screenshots/video (regenerated every pipeline run)
+windy_screenshots/
+windy_videos/
+
+
+# Pipeline-generated outputs (predictions, feature/case store, accuracy,
+# rolling context, evaluation/backtest results) -- all reproducible by
+# re-running the pipeline, and some contain real plant generation data.
+energy_predictions/
+accuracy_reports/
+prediction_context/
+daily_actuals_inbox/
+
+
+# Real plant meter exports / third-party predictions dropped in ad hoc
+# per-day folders (e.g. 31-07-2026_actual_data/)
+*_actual_data/
+
+
+# Trained models
+models/*.pkl
+
+# Build
+build/
+dist/
+*.egg-info/
+
+# Jupyter
+.ipynb_checkpoints/

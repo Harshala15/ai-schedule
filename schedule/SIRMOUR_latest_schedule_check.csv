@@ -1,0 +1,56 @@
+site_id,timestamp,block_no,physics_anchor_schedule_mw,schedule_mw,llm_reasoning,source_run_time,effective_from
+SIRMOUR,2026-08-15 05:30:00,23,0.000,0.000,Zero irradiance at solar elevation below horizon.,2026-08-15 05:15:09,2026-08-15 06:45:09
+SIRMOUR,2026-08-15 05:45:00,24,0.063,0.048,Slight attenuation applied due to persistent weak cloudy morning regime.,2026-08-15 05:15:09,2026-08-15 06:45:09
+SIRMOUR,2026-08-15 06:00:00,25,0.158,0.125,Scaled slightly lower reflecting morning cloud-attenuation baseline.,2026-08-15 05:15:09,2026-08-15 06:45:09
+SIRMOUR,2026-08-15 06:15:00,26,0.260,0.208,Morning ramp attenuated consistent with recent morning ceiling ratios.,2026-08-15 05:15:09,2026-08-15 06:45:09
+SIRMOUR,2026-08-15 06:30:00,27,0.367,0.298,Modest reduction consistent with weak cloudy regime factor.,2026-08-15 05:15:09,2026-08-15 06:45:09
+SIRMOUR,2026-08-15 06:45:00,28,0.482,0.395,Gradual morning scaling aligned with live residual factor.,2026-08-15 05:15:09,2026-08-15 06:45:09
+SIRMOUR,2026-08-15 07:00:00,29,0.368,0.368,LLM adjustment unavailable for this block -- using physics anchor unchanged.,2026-08-15 05:15:09,2026-08-15 06:45:09
+SIRMOUR,2026-08-15 07:15:00,30,0.469,0.469,LLM adjustment unavailable for this block -- using physics anchor unchanged.,2026-08-15 05:15:09,2026-08-15 06:45:09
+SIRMOUR,2026-08-15 07:30:00,31,0.580,0.580,LLM adjustment unavailable for this block -- using physics anchor unchanged.,2026-08-15 05:15:09,2026-08-15 06:45:09
+SIRMOUR,2026-08-15 07:45:00,32,0.699,0.699,LLM adjustment unavailable for this block -- using physics anchor unchanged.,2026-08-15 05:15:09,2026-08-15 06:45:09
+SIRMOUR,2026-08-15 08:00:00,33,0.827,0.827,LLM adjustment unavailable for this block -- using physics anchor unchanged.,2026-08-15 05:15:09,2026-08-15 06:45:09
+SIRMOUR,2026-08-15 08:15:00,34,0.962,0.962,LLM adjustment unavailable for this block -- using physics anchor unchanged.,2026-08-15 06:45:00,2026-08-15 08:15:00
+SIRMOUR,2026-08-15 08:30:00,35,1.065,1.065,LLM adjustment unavailable for this block -- using physics anchor unchanged.,2026-08-15 06:45:00,2026-08-15 08:15:00
+SIRMOUR,2026-08-15 08:45:00,36,1.141,1.141,LLM adjustment unavailable for this block -- using physics anchor unchanged.,2026-08-15 06:45:00,2026-08-15 08:15:00
+SIRMOUR,2026-08-15 09:00:00,37,1.211,1.211,LLM adjustment unavailable for this block -- using physics anchor unchanged.,2026-08-15 06:45:00,2026-08-15 08:15:00
+SIRMOUR,2026-08-15 09:15:00,38,1.277,1.277,LLM adjustment unavailable for this block -- using physics anchor unchanged.,2026-08-15 06:45:00,2026-08-15 08:15:00
+SIRMOUR,2026-08-15 09:30:00,39,1.339,1.339,LLM adjustment unavailable for this block -- using physics anchor unchanged.,2026-08-15 06:45:00,2026-08-15 08:15:00
+SIRMOUR,2026-08-15 09:45:00,40,1.395,1.395,LLM adjustment unavailable for this block -- using physics anchor unchanged.,2026-08-15 06:45:00,2026-08-15 08:15:00
+SIRMOUR,2026-08-15 10:00:00,41,1.446,1.446,LLM adjustment unavailable for this block -- using physics anchor unchanged.,2026-08-15 06:45:00,2026-08-15 08:15:00
+SIRMOUR,2026-08-15 10:15:00,42,1.492,1.492,LLM adjustment unavailable for this block -- using physics anchor unchanged.,2026-08-15 06:45:00,2026-08-15 08:15:00
+SIRMOUR,2026-08-15 10:30:00,43,1.532,1.532,LLM adjustment unavailable for this block -- using physics anchor unchanged.,2026-08-15 06:45:00,2026-08-15 08:15:00
+SIRMOUR,2026-08-15 10:45:00,44,1.566,1.566,LLM adjustment unavailable for this block -- using physics anchor unchanged.,2026-08-15 06:45:00,2026-08-15 08:15:00
+SIRMOUR,2026-08-15 11:00:00,45,1.594,1.594,LLM adjustment unavailable for this block -- using physics anchor unchanged.,2026-08-15 06:45:00,2026-08-15 08:15:00
+SIRMOUR,2026-08-15 11:15:00,46,1.616,1.616,LLM adjustment unavailable for this block -- using physics anchor unchanged.,2026-08-15 06:45:00,2026-08-15 08:15:00
+SIRMOUR,2026-08-15 11:30:00,47,1.631,1.631,LLM adjustment unavailable for this block -- using physics anchor unchanged.,2026-08-15 06:45:00,2026-08-15 08:15:00
+SIRMOUR,2026-08-15 11:45:00,48,1.641,1.641,LLM adjustment unavailable for this block -- using physics anchor unchanged.,2026-08-15 06:45:00,2026-08-15 08:15:00
+SIRMOUR,2026-08-15 12:00:00,49,1.644,1.644,LLM adjustment unavailable for this block -- using physics anchor unchanged.,2026-08-15 06:45:00,2026-08-15 08:15:00
+SIRMOUR,2026-08-15 12:15:00,50,1.641,1.641,LLM adjustment unavailable for this block -- using physics anchor unchanged.,2026-08-15 06:45:00,2026-08-15 08:15:00
+SIRMOUR,2026-08-15 12:30:00,51,1.631,1.631,LLM adjustment unavailable for this block -- using physics anchor unchanged.,2026-08-15 06:45:00,2026-08-15 08:15:00
+SIRMOUR,2026-08-15 12:45:00,52,1.616,1.616,LLM adjustment unavailable for this block -- using physics anchor unchanged.,2026-08-15 06:45:00,2026-08-15 08:15:00
+SIRMOUR,2026-08-15 13:00:00,53,1.594,1.594,LLM adjustment unavailable for this block -- using physics anchor unchanged.,2026-08-15 06:45:00,2026-08-15 08:15:00
+SIRMOUR,2026-08-15 13:15:00,54,1.566,1.566,LLM adjustment unavailable for this block -- using physics anchor unchanged.,2026-08-15 06:45:00,2026-08-15 08:15:00
+SIRMOUR,2026-08-15 13:30:00,55,1.532,1.532,LLM adjustment unavailable for this block -- using physics anchor unchanged.,2026-08-15 06:45:00,2026-08-15 08:15:00
+SIRMOUR,2026-08-15 13:45:00,56,1.492,1.492,LLM adjustment unavailable for this block -- using physics anchor unchanged.,2026-08-15 06:45:00,2026-08-15 08:15:00
+SIRMOUR,2026-08-15 14:00:00,57,1.446,1.446,LLM adjustment unavailable for this block -- using physics anchor unchanged.,2026-08-15 06:45:00,2026-08-15 08:15:00
+SIRMOUR,2026-08-15 14:15:00,58,1.395,1.395,LLM adjustment unavailable for this block -- using physics anchor unchanged.,2026-08-15 06:45:00,2026-08-15 08:15:00
+SIRMOUR,2026-08-15 14:30:00,59,1.339,1.339,LLM adjustment unavailable for this block -- using physics anchor unchanged.,2026-08-15 06:45:00,2026-08-15 08:15:00
+SIRMOUR,2026-08-15 14:45:00,60,1.277,1.277,LLM adjustment unavailable for this block -- using physics anchor unchanged.,2026-08-15 06:45:00,2026-08-15 08:15:00
+SIRMOUR,2026-08-15 15:00:00,61,1.211,1.211,LLM adjustment unavailable for this block -- using physics anchor unchanged.,2026-08-15 06:45:00,2026-08-15 08:15:00
+SIRMOUR,2026-08-15 15:15:00,62,1.141,1.141,LLM adjustment unavailable for this block -- using physics anchor unchanged.,2026-08-15 06:45:00,2026-08-15 08:15:00
+SIRMOUR,2026-08-15 15:30:00,63,1.065,1.065,LLM adjustment unavailable for this block -- using physics anchor unchanged.,2026-08-15 06:45:00,2026-08-15 08:15:00
+SIRMOUR,2026-08-15 15:45:00,64,0.987,0.987,LLM adjustment unavailable for this block -- using physics anchor unchanged.,2026-08-15 06:45:00,2026-08-15 08:15:00
+SIRMOUR,2026-08-15 16:00:00,65,0.905,0.905,LLM adjustment unavailable for this block -- using physics anchor unchanged.,2026-08-15 06:45:00,2026-08-15 08:15:00
+SIRMOUR,2026-08-15 16:15:00,66,0.820,0.820,LLM adjustment unavailable for this block -- using physics anchor unchanged.,2026-08-15 06:45:00,2026-08-15 08:15:00
+SIRMOUR,2026-08-15 16:30:00,67,0.731,0.731,LLM adjustment unavailable for this block -- using physics anchor unchanged.,2026-08-15 06:45:00,2026-08-15 08:15:00
+SIRMOUR,2026-08-15 16:45:00,68,0.641,0.641,LLM adjustment unavailable for this block -- using physics anchor unchanged.,2026-08-15 06:45:00,2026-08-15 08:15:00
+SIRMOUR,2026-08-15 17:00:00,69,0.549,0.549,LLM adjustment unavailable for this block -- using physics anchor unchanged.,2026-08-15 06:45:00,2026-08-15 08:15:00
+SIRMOUR,2026-08-15 17:15:00,70,0.454,0.454,LLM adjustment unavailable for this block -- using physics anchor unchanged.,2026-08-15 06:45:00,2026-08-15 08:15:00
+SIRMOUR,2026-08-15 17:30:00,71,0.358,0.358,LLM adjustment unavailable for this block -- using physics anchor unchanged.,2026-08-15 06:45:00,2026-08-15 08:15:00
+SIRMOUR,2026-08-15 17:45:00,72,0.262,0.262,LLM adjustment unavailable for this block -- using physics anchor unchanged.,2026-08-15 06:45:00,2026-08-15 08:15:00
+SIRMOUR,2026-08-15 18:00:00,73,0.166,0.166,LLM adjustment unavailable for this block -- using physics anchor unchanged.,2026-08-15 06:45:00,2026-08-15 08:15:00
+SIRMOUR,2026-08-15 18:15:00,74,0.069,0.069,LLM adjustment unavailable for this block -- using physics anchor unchanged.,2026-08-15 06:45:00,2026-08-15 08:15:00
+SIRMOUR,2026-08-15 18:30:00,75,0.000,0.000,LLM adjustment unavailable for this block -- using physics anchor unchanged.,2026-08-15 06:45:00,2026-08-15 08:15:00
+SIRMOUR,2026-08-15 18:45:00,76,0.000,0.000,LLM adjustment unavailable for this block -- using physics anchor unchanged.,2026-08-15 06:45:00,2026-08-15 08:15:00
+SIRMOUR,2026-08-15 19:00:00,77,0.000,0.000,LLM adjustment unavailable for this block -- using physics anchor unchanged.,2026-08-15 06:45:00,2026-08-15 08:15:00
