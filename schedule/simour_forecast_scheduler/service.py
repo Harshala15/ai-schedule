@@ -289,28 +289,19 @@ def _merge_latest_schedule(snapshot_csv: Path, latest_csv: Path) -> tuple[int, i
     return len(snapshot_rows), preserved_rows, len(merged_rows)
 
 
-def _freeze_boundary_time(target_time: str) -> str:
-    """Return the next revision boundary after target_time.
+def _freeze_from_datetime(target_date: str, target_time: str) -> dt.datetime:
+    """Return the frozen cutoff for current_final_schedule.csv.
 
-    The frozen current_final schedule should keep earlier blocks intact
-    and only accept new values from the next revision window onward.
+    Kasipet and Bhupalpally use a 45-minute delay, while SIRMOUR keeps
+    the longer 90-minute delay. The cutoff is rounded up to the next
+    15-minute schedule boundary.
     """
-    try:
-        current_time = dt.datetime.strptime(target_time, "%H:%M").time()
-    except ValueError:
-        return target_time
-
-    revision_times = []
-    for candidate in config.CAPTURE_TIMES:
-        try:
-            revision_times.append(dt.datetime.strptime(candidate, "%H:%M").time())
-        except ValueError:
-            continue
-
-    for revision_time in revision_times:
-        if revision_time > current_time:
-            return revision_time.strftime("%H:%M")
-    return target_time
+    freeze_from = dt.datetime.strptime(f"{target_date} {target_time}", "%Y-%m-%d %H:%M")
+    freeze_from += dt.timedelta(minutes=settings.EFFECTIVE_DELAY_MINUTES)
+    remainder = freeze_from.minute % config.BLOCK_MINUTES
+    if remainder or freeze_from.second or freeze_from.microsecond:
+        freeze_from += dt.timedelta(minutes=config.BLOCK_MINUTES - remainder)
+    return freeze_from.replace(second=0, microsecond=0)
 
 
 def _write_current_final_schedule(latest_csv: Path, current_final_csv: Path, target_date: str, target_time: str) -> int:
@@ -322,10 +313,7 @@ def _write_current_final_schedule(latest_csv: Path, current_final_csv: Path, tar
     if not fieldnames:
         raise ValueError("Schedule CSV did not contain any headers.")
 
-    freeze_from = dt.datetime.strptime(
-        f"{target_date} {_freeze_boundary_time(target_time)}",
-        "%Y-%m-%d %H:%M",
-    )
+    freeze_from = _freeze_from_datetime(target_date, target_time)
 
     def _row_dt(row: dict) -> dt.datetime | None:
         key = _row_time_key(row)

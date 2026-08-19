@@ -10,7 +10,16 @@ DEFAULT_TIMEZONE = "Asia/Kolkata"
 
 # Forecast schedules are finalized through 19:00 local time.
 SCHEDULE_END_TIME = time(19, 0)
-EFFECTIVE_DELAY_MINUTES = 90
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
 
 # S3 layout used by the scheduler package.
 DEFAULT_S3_RAW_OWNER = "vedanjay"
@@ -32,3 +41,5 @@ PLANT_LON = config.PLANT_LON
 BLOCK_MINUTES = config.BLOCK_MINUTES
 LAYERS = config.LAYERS
 ENABLE_S3_STATE_SYNC = _env_bool("ENABLE_S3_STATE_SYNC", False)
+_DEFAULT_EFFECTIVE_DELAY_MINUTES = 45 if PLANT_NAME.upper() in {"KASIPET", "BHUPALPALLY"} else 90
+EFFECTIVE_DELAY_MINUTES = _env_int("EFFECTIVE_DELAY_MINUTES", _DEFAULT_EFFECTIVE_DELAY_MINUTES)
