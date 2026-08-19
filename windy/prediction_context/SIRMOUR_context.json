@@ -1,0 +1,21 @@
+[
+  {
+    "date": "2026-07-25",
+    "n_matched_blocks": 14,
+    "mae": 0.9411,
+    "rmse": 0.9755,
+    "mape_pct": 251.78,
+    "bias": 0.9411,
+    "bias_direction": "over-forecast",
+    "time_of_day_bias": {
+      "afternoon (14:00+)": 0.941
+    },
+    "worst_block": {
+      "time": "2026-07-25 14:15",
+      "predicted_mw": 2.148,
+      "actual_mw": 0.8622653333333333,
+      "error_mw": 1.286
+    },
+    "summary": "2026-07-25: MAE=0.9411 MW, RMSE=0.9755 MW, MAPE=251.78%, Bias=+0.941 MW (over-forecast). By time of day -- afternoon (14:00+): +0.941 MW. Worst block at 2026-07-25 14:15: predicted 2.148 MW vs actual 0.8622653333333333 MW (error +1.286 MW), conditions: cloud-layer bright-pixel %=4.37, satellite bright-pixel %=77.16, video cloud coverage %=98.19, cloud motion direction (deg, -1=stationary)=0, solar elevation (deg)=58.41."
+  }
+]
