@@ -1,0 +1,21 @@
+services:
+  windy-capture:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: windy-capture:latest
+    container_name: windy-capture
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME:-ai-forecasting-storage}
+      S3_REGION: ${S3_REGION:-ap-south-1}
+      S3_PREFIX: ${S3_PREFIX:-sirmour}
+      AUTO_CREATE_S3_BUCKET: ${AUTO_CREATE_S3_BUCKET:-true}
+      TZ: Asia/Kolkata
+    shm_size: "1gb"
+    volumes:
+      - ./windy_login.json:/app/windy_login.json
+      - ./windy_screenshots:/app/windy_screenshots
+      - ./windy_videos:/app/windy_videos

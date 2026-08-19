@@ -1,0 +1,62 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual Environment
+.venv/
+venv/
+env/
+
+# Environment Variables
+.env
+
+# VS Code
+.vscode/
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# Python cache
+.pytest_cache/
+.mypy_cache/
+
+# Logs
+*.log
+
+# Generated Reports
+weather_reports/
+
+# Generated Images
+windy_screenshots/
+
+# Build
+build/
+dist/
+*.egg-info/
+
+# Jupyter
+.ipynb_checkpoints/
+
+
+
+# Windy authentication/session
+windy_login.json
+
+# Generated reports/data
+accuracy_reports/
+energy_predictions/
+features_log/
+daily_actuals_inbox/
+prediction_context/
+
+# Generated/test JSON
+payload*.json
+response*.json
+out.json
+kasipet-async-response.json
+windy-*-test.json
+
+# Generated videos
+windy_videos/

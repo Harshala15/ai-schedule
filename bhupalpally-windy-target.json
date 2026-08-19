@@ -1,0 +1,5 @@
+{
+  "Arn": "arn:aws:lambda:ap-south-1:429694361053:function:windy-capture-bhupalpally",
+  "RoleArn": "arn:aws:iam::429694361053:role/ai-site-windy-capture-scheduler-role",
+  "Input": "{\"site_id\":\"BHUPALPALLY\",\"plant_id\":\"vedanjay\",\"bucket\":\"ai-forecasting-storage-429694361053\"}"
+}
