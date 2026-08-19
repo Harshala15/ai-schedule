@@ -60,3 +60,8 @@ windy-*-test.json
 
 # Generated videos
 windy_videos/
+schedule/*-env.json
+
+schedule/env.json
+
+schedule/bhpl-env-update.json

@@ -1,0 +1,12 @@
+{
+  "Variables": {
+    "SFTP_HOST": "ftp.enercast.de",
+    "SFTP_PORT": "21",
+    "SFTP_USERNAME": "adani_mundra_solar",
+    "SFTP_PASSWORD": "Helek7KnyntEpAipIar9",
+    "SFTP_REMOTE_DIR": "/incoming/powerdata_realtime/",
+    "SFTP_FILENAME_PREFIX": "bhupalpally_",
+    "S3_BUCKET": "ai-forecasting-storage-429694361053",
+    "S3_PREFIX_BASE": "raw/vedanjay/BHUPALPALLY"
+  }
+}

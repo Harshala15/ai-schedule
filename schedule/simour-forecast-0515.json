@@ -1,0 +1,12 @@
+{
+  "Name": "simour-forecast-0515",
+  "GroupName": "default",
+  "ScheduleExpression": "cron(15 5 * * ? *)",
+  "ScheduleExpressionTimezone": "Asia/Kolkata",
+  "FlexibleTimeWindow": { "Mode": "OFF" },
+  "Target": {
+    "Arn": "arn:aws:lambda:ap-south-1:429694361053:function:simour-forecast-scheduler",
+    "RoleArn": "arn:aws:iam::429694361053:role/simour-eventbridge-scheduler-role",
+    "Input": "{\"target_time\":\"05:15\"}"
+  }
+}

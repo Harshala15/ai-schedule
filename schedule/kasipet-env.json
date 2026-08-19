@@ -1,0 +1,18 @@
+{
+    "Variables":  {
+                      "S3_SCHEDULE_PREFIX":  "generated/KASIPET",
+                      "S3_METER_PREFIX":  "raw/vedanjay/KASIPET",
+                      "S3_BUCKET":  "ai-forecasting-storage-429694361053",
+                      "PERFORMANCE_RATIO":  "0.78",
+                      "S3_STATE_PREFIX":  "state/vedanjay/KASIPET",
+                      "SIMOUR_STORAGE_ROOT":  "/tmp/kasipet",
+                      "PLANT_CAPACITY_MW":  "10",
+                      "ENABLE_S3_STATE_SYNC":  "1",
+                      "PLANT_LON":  "79.877263",
+                      "GEMINI_MODEL_CANDIDATES_KASIPET":  "gemini-2.5-flash,gemini-3.6-flash,gemini-2.0-flash",
+                      "PLANT_NAME":  "KASIPET",
+                      "PLANT_LAT":  "18.447931",
+                      "S3_CAPTURE_PREFIX":  "raw/vedanjay/KASIPET",
+                      "GEMINI_API_KEY_KASIPET":  "\u003cNEW_KASIPET_GEMINI_KEY\u003e"
+                  }
+}

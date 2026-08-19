@@ -1,0 +1,1 @@
+"""Kasipet SFTP fetcher package."""

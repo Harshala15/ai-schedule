@@ -1,0 +1,17 @@
+.git
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.log
+windy_screenshots
+windy_videos
+energy_predictions
+features_log
+accuracy_reports
+prediction_context
+daily_actuals_inbox
+manual_input
+evaluation_schedules
+models
+
