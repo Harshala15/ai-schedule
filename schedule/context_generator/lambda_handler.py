@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 import boto3
 
 import daily_feedback
+import state_sync
 
 
 IST = ZoneInfo("Asia/Kolkata")
@@ -85,6 +86,10 @@ def _discover_inputs_for_today(plant: str, date_str: str) -> tuple[Path, Path]:
 def lambda_handler(event, context):
     plant = _env("PLANT_NAME", "SIRMOUR").upper()
     date_str = (event or {}).get("target_date") or _today_str()
+    bucket = _env("S3_BUCKET")
+
+    if state_sync.is_enabled():
+        state_sync.refresh_state_from_s3(bucket=bucket)
 
     schedule_csv, actual_meter_csv = _discover_inputs_for_today(plant, date_str)
     entry = daily_feedback.process_schedule_feedback(
@@ -92,6 +97,10 @@ def lambda_handler(event, context):
         actual_meter_csv,
         source_label=f"{plant.lower()} nightly context generation",
     )
+
+    if state_sync.is_enabled():
+        state_sync.push_state_to_s3(bucket=bucket)
+
     return {
         "plant": plant,
         "date": date_str,

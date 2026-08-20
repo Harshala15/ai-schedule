@@ -80,36 +80,15 @@ def _pick_latest_capture_bundle(
     target_dt: dt.datetime,
 ) -> CaptureSelection:
     date_str = target_dt.strftime("%Y-%m-%d")
-    base_prefix = f"{capture_prefix.rstrip('/')}/{date_str}"
-    screenshot_prefix = f"{base_prefix}/windy/screenshots"
-    video_prefix = f"{base_prefix}/windy/videos"
-    screenshot_objects = _list_capture_objects(bucket, screenshot_prefix)
-    if not screenshot_objects:
-        raise FileNotFoundError(f"No screenshot objects found under {screenshot_prefix}/")
+    day_prefix = f"{capture_prefix.rstrip('/')}/{date_str}"
+    day_video_prefix = f"{day_prefix}/windy/videos"
 
-    bundles: dict[dt.datetime, list[storage.S3ObjectRef]] = {}
-    for obj in screenshot_objects:
-        rel = _relative_key(obj.key, screenshot_prefix)
-        parts = Path(rel).parts
-        if len(parts) < 2:
-            continue
-        capture_time = _extract_timestamp(parts[0])
-        if capture_time is None or capture_time > target_dt:
-            continue
-        bundles.setdefault(capture_time, []).append(obj)
-
-    if not bundles:
-        raise FileNotFoundError(
-            f"No screenshot bundle at or before {target_dt.strftime('%Y-%m-%d %H:%M')} under {screenshot_prefix}/"
-        )
-
-    capture_time = max(bundles)
-    selected_screenshots = bundles[capture_time]
-    selected_screenshots.sort(key=lambda item: item.key)
-
-    video_objects = _list_capture_objects(bucket, video_prefix)
+    video_objects = _list_capture_objects(bucket, day_video_prefix)
     if not video_objects:
-        raise FileNotFoundError(f"No video objects found under {video_prefix}/")
+        video_objects = [
+            obj for obj in _list_capture_objects(bucket, capture_prefix)
+            if "/windy/videos/" in obj.key
+        ]
 
     selected_video = None
     matching_videos = []
@@ -120,19 +99,20 @@ def _pick_latest_capture_bundle(
         matching_videos.append((ts, obj))
     if matching_videos:
         matching_videos.sort(key=lambda pair: pair[0])
-        same_ts = [obj for ts, obj in matching_videos if ts == capture_time]
-        selected_video = same_ts[-1] if same_ts else matching_videos[-1][1]
-    if selected_video is None:
-        raise FileNotFoundError(
-            f"No satellite video found at or before {target_dt.strftime('%Y-%m-%d %H:%M')} under {video_prefix}/"
-        )
+        selected_video = matching_videos[-1][1]
 
-    meter_base_prefix = f"{meter_prefix.rstrip('/')}/{date_str}/meter_data"
-    meter_objects = _list_capture_objects(bucket, meter_base_prefix)
+    meter_day_prefix = f"{meter_prefix.rstrip('/')}/{date_str}/meter_data"
+    meter_objects = _list_capture_objects(bucket, meter_day_prefix)
     if not meter_objects:
-        raise FileNotFoundError(f"No meter objects found under {meter_base_prefix}/")
-    meter_objects.sort(key=lambda obj: (obj.last_modified or dt.datetime.min.replace(tzinfo=dt.timezone.utc), obj.key))
-    selected_meter = meter_objects[-1]
+        print(
+            f"  [WARN] No meter file found under {meter_day_prefix}/; "
+            "continuing without intraday actuals."
+        )
+        meter_objects = _list_capture_objects(bucket, meter_prefix)
+    selected_meter = None
+    if meter_objects:
+        meter_objects.sort(key=lambda obj: (obj.last_modified or dt.datetime.min.replace(tzinfo=dt.timezone.utc), obj.key))
+        selected_meter = meter_objects[-1]
 
     work_root = _storage_subpath("_scheduler_work", date_str, target_dt.strftime("%H-%M"))
     screenshot_dir = work_root / "screenshots"
@@ -149,28 +129,22 @@ def _pick_latest_capture_bundle(
             elif child.is_dir():
                 shutil.rmtree(child)
 
-    for obj in selected_screenshots:
-        rel = _relative_key(obj.key, screenshot_prefix)
-        parts = Path(rel).parts
-        if len(parts) < 2:
-            continue
-        local_name = parts[-1]
-        storage.download_file(bucket, obj.key, screenshot_dir / local_name)
-
-    storage.download_file(bucket, selected_video.key, video_dir / Path(selected_video.key).name)
-    storage.download_file(bucket, selected_meter.key, meter_dir / Path(selected_meter.key).name)
+    if selected_video is not None:
+        storage.download_file(bucket, selected_video.key, video_dir / Path(selected_video.key).name)
+    if selected_meter is not None:
+        storage.download_file(bucket, selected_meter.key, meter_dir / Path(selected_meter.key).name)
 
     return CaptureSelection(
         target_date=date_str,
         target_time=target_dt.strftime("%H:%M"),
         target_dt=target_dt,
-        capture_time=capture_time,
+        capture_time=_extract_timestamp(Path(selected_video.key).name) if selected_video is not None else target_dt,
         screenshot_dir=screenshot_dir,
-        video_path=video_dir / Path(selected_video.key).name,
-        meter_path=meter_dir / Path(selected_meter.key).name,
-        screenshot_key_prefix=screenshot_prefix,
-        video_key=selected_video.key,
-        meter_key=selected_meter.key,
+        video_path=video_dir / Path(selected_video.key).name if selected_video is not None else None,
+        meter_path=meter_dir / Path(selected_meter.key).name if selected_meter is not None else None,
+        screenshot_key_prefix="",
+        video_key=selected_video.key if selected_video is not None else "",
+        meter_key=selected_meter.key if selected_meter is not None else "",
     )
 
 
@@ -180,8 +154,6 @@ def _build_image_map(screenshot_dir: Path) -> dict[str, str]:
         path = screenshot_dir / f"{layer}.png"
         if path.exists():
             image_map[str(path)] = description
-    if not image_map:
-        raise FileNotFoundError(f"No layer screenshots found in {screenshot_dir}")
     return image_map
 
 
@@ -305,6 +277,20 @@ def _write_current_final_schedule(latest_csv: Path, current_final_csv: Path, tar
     return len(frozen_rows)
 
 
+def _download_previous_current_final_schedule(
+    bucket: str,
+    schedule_prefix: str,
+    target_date: str,
+    current_final_csv: Path,
+) -> None:
+    """Restore the prior cumulative final schedule from S3 if present."""
+    current_final_key = f"{schedule_prefix.rstrip('/')}/{target_date}/current_final_schedule.csv"
+    try:
+        storage.download_file(bucket, current_final_key, current_final_csv)
+    except Exception:
+        return
+
+
 def _snapshot_metadata(
     selection: CaptureSelection,
     forecast_start: str,
@@ -383,6 +369,7 @@ def run_schedule_job(
     latest_metadata = generated_root / f"{target_date}_latest_metadata.json"
 
     shutil.copyfile(snapshot_source, snapshot_csv)
+    _download_previous_current_final_schedule(bucket, schedule_prefix, target_date, current_final_csv)
     snapshot_rows, preserved_rows, merged_rows = _merge_latest_schedule(snapshot_source, latest_csv)
     shutil.copyfile(latest_csv, snapshot_csv)
     current_final_rows = _write_current_final_schedule(latest_csv, current_final_csv, target_date, target_time)
