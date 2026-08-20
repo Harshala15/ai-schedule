@@ -102,6 +102,7 @@ def lambda_handler(event, context):
         schedule_csv,
         actual_meter_csv,
         source_label=f"{plant.lower()} nightly context generation",
+        entry_date=date_str,
     )
 
     if state_sync.is_enabled():

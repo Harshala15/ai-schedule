@@ -1307,8 +1307,13 @@ def process_actual_meter_files(csv_paths: list[Path], source_label: str = "raw m
     return analyzed_dates
 
 
-def process_schedule_feedback(schedule_csv_path: str | Path, actual_meter_csv_path: str | Path,
-                              *, source_label: str = "daily schedule feedback") -> dict | None:
+def process_schedule_feedback(
+    schedule_csv_path: str | Path,
+    actual_meter_csv_path: str | Path,
+    *,
+    source_label: str = "daily schedule feedback",
+    entry_date: str | None = None,
+) -> dict | None:
     """Build rolling day-level context directly from a forecast schedule CSV
     and the day's meter export.
 
@@ -1328,8 +1333,10 @@ def process_schedule_feedback(schedule_csv_path: str | Path, actual_meter_csv_pa
     if not actual_meter_csv_path.exists():
         raise FileNotFoundError(f"Actual meter CSV not found: {actual_meter_csv_path}")
 
-    date_match = re.search(r"(\d{4}-\d{2}-\d{2})", schedule_csv_path.name)
-    date_str = date_match.group(1) if date_match else None
+    date_str = entry_date
+    if not date_str:
+        date_match = re.search(r"(\d{4}-\d{2}-\d{2})", schedule_csv_path.name)
+        date_str = date_match.group(1) if date_match else None
     if not date_str:
         actual_date_match = re.search(r"(\d{4}-\d{2}-\d{2})", actual_meter_csv_path.name)
         date_str = actual_date_match.group(1) if actual_date_match else datetime.date.today().isoformat()
