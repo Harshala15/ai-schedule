@@ -9,6 +9,7 @@ Use these scripts to build rolling day-level context JSON from:
 Supported plants:
 - `SIRMOUR`
 - `KASIPET`
+- `BHUPALPALLY`
 
 The scripts:
 - read `LLM Schedule (MW)` from the schedule CSV
@@ -22,6 +23,7 @@ Examples:
 ```powershell
 python context_generator\simour\schedule_feedback.py "C:\path\current_final_schedule.csv" "C:\path\2026_08_18_SOLAR_INV.csv"
 python context_generator\kasipet\schedule_feedback.py "C:\path\current_final_schedule.csv" "C:\path\kasipet_20260818.csv"
+python context_generator\bhupalpally\schedule_feedback.py "C:\path\current_final_schedule.csv" "C:\path\bhupalpally_20260818.csv"
 ```
 
 For end-of-day actual-meter-only feedback:
@@ -29,5 +31,6 @@ For end-of-day actual-meter-only feedback:
 ```powershell
 python context_generator\simour\daily_actuals.py
 python context_generator\kasipet\daily_actuals.py
+python context_generator\bhupalpally\daily_actuals.py
 ```
 

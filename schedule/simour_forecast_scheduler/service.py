@@ -315,6 +315,10 @@ def _write_current_final_schedule(latest_csv: Path, current_final_csv: Path, tar
     return len(frozen_rows)
 
 
+def _current_final_schedule_name(target_date: str) -> str:
+    return f"{target_date}_current_final_schedule.csv"
+
+
 def _download_previous_latest_schedule(
     bucket: str,
     schedule_prefix: str,
@@ -367,7 +371,7 @@ def _download_previous_current_final_schedule(
     current_final_csv: Path,
 ) -> None:
     """Restore the prior cumulative final schedule from S3 if present."""
-    current_final_key = f"{schedule_prefix.rstrip('/')}/{target_date}/current_final_schedule.csv"
+    current_final_key = f"{schedule_prefix.rstrip('/')}/{target_date}/{_current_final_schedule_name(target_date)}"
     try:
         storage.download_file(bucket, current_final_key, current_final_csv)
     except Exception:
@@ -470,7 +474,7 @@ def run_schedule_job(
     snapshot_csv = generated_root / f"{target_date}_{target_time.replace(':', '-')}_schedule.csv"
     snapshot_metadata = generated_root / f"{target_date}_{target_time.replace(':', '-')}_metadata.json"
     latest_csv = generated_root / f"{target_date}_latest_schedule.csv"
-    current_final_csv = generated_root / "current_final_schedule.csv"
+    current_final_csv = generated_root / _current_final_schedule_name(target_date)
     trace_source = work_output_dir / f"{config.PLANT_NAME}_forecast_trace_{target_date}.csv"
     trace_csv = generated_root / "forecast_trace.csv"
     current_trace_csv = generated_root / "current_forecast_trace.csv"
@@ -534,6 +538,10 @@ def run_schedule_job(
     storage.upload_file(bucket, metadata["current_trace_csv_key"], current_trace_csv, content_type="text/csv")
     storage.upload_json(bucket, metadata["snapshot_metadata_key"], metadata)
     storage.upload_json(bucket, metadata["latest_metadata_key"], metadata)
+
+    legacy_current_final_csv = generated_root / "current_final_schedule.csv"
+    if legacy_current_final_csv != current_final_csv:
+        shutil.copyfile(current_final_csv, legacy_current_final_csv)
 
     if settings.ENABLE_S3_STATE_SYNC:
         state_sync.push_state_to_s3(bucket=bucket)

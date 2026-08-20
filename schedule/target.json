@@ -1,0 +1,5 @@
+{
+  "Arn": "arn:aws:lambda:ap-south-1:429694361053:function:bhupalpally-context-generator",
+  "RoleArn": "arn:aws:iam::429694361053:role/bhupalpally-eventbridge-scheduler-role",
+  "Input": "{}"
+}

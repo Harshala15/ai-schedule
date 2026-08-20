@@ -64,7 +64,13 @@ def _discover_inputs_for_today(plant: str, date_str: str) -> tuple[Path, Path]:
     schedule_key = _pick_latest_key(
         bucket,
         f"{schedule_prefix}/{date_str}",
-        ("current_final_schedule.csv", f"{date_str}_latest_schedule.csv", "_latest_schedule.csv", "_schedule.csv"),
+        (
+            f"{date_str}_current_final_schedule.csv",
+            "current_final_schedule.csv",
+            f"{date_str}_latest_schedule.csv",
+            "_latest_schedule.csv",
+            "_schedule.csv",
+        ),
     )
     if not schedule_key:
         raise RuntimeError(f"No schedule CSV found in s3://{bucket}/{schedule_prefix}/{date_str}/")

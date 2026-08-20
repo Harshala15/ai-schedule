@@ -191,10 +191,9 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
 
     # ---- Phase 2: retrieve similar past cases from the case store ----
     if bhupalpally_live_only:
-        print("\n[INFO] Bhupalpally live-only mode: skipping similar-case retrieval and rolling context.")
+        print("\n[INFO] Bhupalpally live-only mode: skipping similar-case retrieval.")
         retrieved_cases = []
         retrieved_cases_text = ""
-        context_text = ""
         image_map_for_llm = None
     else:
         print("\nRetrieving similar past cases from the case store...")
@@ -207,7 +206,7 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
 
     # ---- Phase 3: LLM adjusts the anchor using the retrieved evidence ----
     print("\nAsking LLM to adjust physics anchor using retrieved evidence...")
-    context_text = "" if bhupalpally_live_only else daily_feedback.format_context_for_prompt()
+    context_text = daily_feedback.format_context_for_prompt()
     llm_predictions = llm_predictor.predict_with_llm(
         live_anchor_predictions, current_feature_row, retrieved_cases_text, context_text, intraday_actuals_text,
         intraday_state_text,
