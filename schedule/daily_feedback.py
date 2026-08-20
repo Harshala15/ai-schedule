@@ -42,6 +42,7 @@ POWER_COLUMN_MW = "Active Power (MW)"   # expects MW already -- convert first if
 ACTUAL_COLUMN_NAME = "Actual Generation (MW)"
 # Keep the accuracy log under the writable storage root so Lambda can append to it safely.
 ACCURACY_LOG_PATH = config.ACCURACY_REPORTS_DIR / f"{config.PLANT_NAME}_daily_accuracy.csv"
+CONTEXT_SCHEMA_VERSION = 2
 
 # ---- Raw company meter-export columns (used by the raw-meter learning flow) ----
 # Same shape as historic_cases/*_SOLAR_INV.csv: TimeStamp + Active Power in
@@ -64,11 +65,25 @@ def _as_float(value):
         return None
 
 
+def _normalize_header_name(name: str) -> str:
+    """Normalize a CSV header so BOMs, wrapping quotes, and odd spacing
+    from spreadsheet exports do not break column matching."""
+    cleaned = (name or "").replace("\ufeff", "").strip()
+    if cleaned.startswith('"') and cleaned.endswith('"') and len(cleaned) >= 2:
+        cleaned = cleaned[1:-1].strip()
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    return cleaned
+
+
 def _pick_first_existing_column(fieldnames: list[str] | None, candidates: tuple[str, ...]) -> str | None:
     fieldnames = fieldnames or []
+    normalized_fields = { _normalize_header_name(field): field for field in fieldnames if field }
     for candidate in candidates:
+        normalized_candidate = _normalize_header_name(candidate)
         if candidate in fieldnames:
             return candidate
+        if normalized_candidate in normalized_fields:
+            return normalized_fields[normalized_candidate]
     return None
 
 
@@ -94,11 +109,17 @@ def _load_actual_readings(actual_csv_path: str) -> dict:
         reader = csv.DictReader(f)
         timestamp_column = _pick_first_existing_column(
             reader.fieldnames,
-            (TIMESTAMP_COLUMN, "Timestamp", "DateTime", "Datetime"),
+            (TIMESTAMP_COLUMN, "Timestamp", "DateTime", "Datetime", "Start (Asia/Calcutta)", "Start (Asia/Kolkata)", "Start"),
         )
         power_column = _pick_first_existing_column(
             reader.fieldnames,
-            (POWER_COLUMN_MW, "Active Power (kW)", "Active Power-Avg MFM-OUT (KW)", "Active Power (MW)"),
+            (
+                POWER_COLUMN_MW,
+                "Active Power (kW)",
+                "Active Power-Avg MFM-OUT (KW)",
+                "Active Power (MW)",
+                "GSPPL - Meter data (live) (kW)",
+            ),
         )
         if timestamp_column is None or power_column is None:
             raise SystemExit(
@@ -630,14 +651,15 @@ def _analyze_actual_pattern(date_str: str, rows: list) -> dict:
     }
 
 
-def _load_context() -> list:
+def _load_context() -> dict:
     ensure_prediction_context_exists()
     if not config.PREDICTION_CONTEXT_PATH.exists():
-        return []
+        return _empty_prediction_context()
     try:
-        return json.loads(config.PREDICTION_CONTEXT_PATH.read_text(encoding="utf-8"))
+        payload = json.loads(config.PREDICTION_CONTEXT_PATH.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
-        return []
+        return _empty_prediction_context()
+    return _normalize_prediction_context(payload)
 
 
 def ensure_prediction_context_exists() -> None:
@@ -645,20 +667,30 @@ def ensure_prediction_context_exists() -> None:
     if config.PREDICTION_CONTEXT_PATH.exists():
         return
     config.PREDICTION_CONTEXT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    config.PREDICTION_CONTEXT_PATH.write_text("[]", encoding="utf-8")
-    print(f"  [CTX] Created fresh prediction context at {config.PREDICTION_CONTEXT_PATH.resolve()} (initialized to [])")
+    config.PREDICTION_CONTEXT_PATH.write_text(
+        json.dumps(_empty_prediction_context(), indent=2),
+        encoding="utf-8",
+    )
+    print(
+        f"  [CTX] Created fresh prediction context at {config.PREDICTION_CONTEXT_PATH.resolve()} "
+        f"(initialized to structured empty context)"
+    )
 
 
 def _add_day_to_context(entry: dict) -> None:
-    """Adds/replaces today's entry and keeps only the most recent
-    config.CONTEXT_WINDOW_DAYS days, dropping the oldest."""
-    entries = [e for e in _load_context() if e["date"] != entry["date"]]
-    entries.append(entry)
+    """Adds/replaces today's entry inside the structured rolling context."""
+    context = _load_context()
+    normalized_entry = _normalize_context_entry(entry)
+    entries = [e for e in context["entries"] if e.get("date") != normalized_entry["date"]]
+    entries.append(normalized_entry)
     entries = sorted(entries, key=lambda e: e["date"])[-config.CONTEXT_WINDOW_DAYS:]
+    context["entries"] = entries
+    context["recent_summary"] = _build_recent_summary(entries)
+    context["llm_context_summary"] = _build_llm_context_summary(context)
 
     config.PREDICTION_CONTEXT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    config.PREDICTION_CONTEXT_PATH.write_text(json.dumps(entries, indent=2), encoding="utf-8")
-    print(f"  [CTX] Updated prediction context for {entry['date']} -> {config.PREDICTION_CONTEXT_PATH.resolve()}")
+    config.PREDICTION_CONTEXT_PATH.write_text(json.dumps(context, indent=2), encoding="utf-8")
+    print(f"  [CTX] Updated prediction context for {normalized_entry['date']} -> {config.PREDICTION_CONTEXT_PATH.resolve()}")
 
 
 def format_context_for_prompt() -> str:
@@ -666,11 +698,20 @@ def format_context_for_prompt() -> str:
     llm_predictor.py's prompt. Called every run regardless of whether the
     local feedback flow had new files this run -- it always reflects the last
     CONTEXT_WINDOW_DAYS days of accumulated learnings."""
-    entries = _load_context()
+    context = _load_context()
+    entries = context["entries"]
     if not entries:
         return "No recent day-level accuracy history is available yet."
 
-    lines = [f"Recent day-level forecast accuracy and patterns (last {len(entries)} day(s), oldest first):"]
+    lines = [
+        f"Plant context for {context['plant_profile']['plant_name']} "
+        f"({context['plant_profile']['capacity_mw']} MW, {context['plant_profile']['block_minutes']}-min blocks):",
+    ]
+    for line in context.get("llm_context_summary", []):
+        lines.append(f"- {line}")
+    lines.append(
+        f"Recent day-level forecast accuracy and patterns (last {len(entries)} day(s), oldest first):"
+    )
     for e in entries:
         lines.append(f"- {e['summary']}")
         if e.get("actual_pattern"):
@@ -681,6 +722,210 @@ def format_context_for_prompt() -> str:
         "across multiple days."
     )
     return "\n".join(lines)
+
+
+def _empty_prediction_context() -> dict:
+    return {
+        "schema_version": CONTEXT_SCHEMA_VERSION,
+        "plant_profile": _build_plant_profile(),
+        "recent_summary": {},
+        "llm_context_summary": [],
+        "entries": [],
+    }
+
+
+def _build_plant_profile() -> dict:
+    return {
+        "plant_name": config.PLANT_NAME,
+        "capacity_mw": config.PLANT_CAPACITY_MW,
+        "latitude": config.PLANT_LAT,
+        "longitude": config.PLANT_LON,
+        "timezone": "Asia/Kolkata",
+        "block_minutes": config.BLOCK_MINUTES,
+        "forecast_horizon_blocks": config.NUM_FORECAST_BLOCKS,
+        "context_window_days": config.CONTEXT_WINDOW_DAYS,
+    }
+
+
+def _normalize_context_entry(entry: dict) -> dict:
+    normalized = dict(entry)
+    metrics = normalized.get("metrics") if isinstance(normalized.get("metrics"), dict) else {}
+    metrics = {
+        "mae_mw": metrics.get("mae_mw", normalized.get("mae")),
+        "rmse_mw": metrics.get("rmse_mw", normalized.get("rmse")),
+        "mape_pct": metrics.get("mape_pct", normalized.get("mape_pct")),
+        "bias_mw": metrics.get("bias_mw", normalized.get("bias")),
+    }
+    normalized["metrics"] = metrics
+    normalized.setdefault("time_of_day_bias", {})
+    if not normalized.get("lessons"):
+        normalized["lessons"] = _derive_entry_lessons(normalized)
+    return normalized
+
+
+def _normalize_prediction_context(payload) -> dict:
+    if isinstance(payload, list):
+        entries = [_normalize_context_entry(entry) for entry in payload if isinstance(entry, dict)]
+        entries = sorted(entries, key=lambda e: e.get("date", ""))[-config.CONTEXT_WINDOW_DAYS:]
+        context = _empty_prediction_context()
+        context["entries"] = entries
+        context["recent_summary"] = _build_recent_summary(entries)
+        context["llm_context_summary"] = _build_llm_context_summary(context)
+        return context
+
+    if not isinstance(payload, dict):
+        return _empty_prediction_context()
+
+    context = _empty_prediction_context()
+    context.update(payload)
+
+    entries = context.get("entries", [])
+    if not isinstance(entries, list):
+        entries = []
+    entries = [_normalize_context_entry(entry) for entry in entries if isinstance(entry, dict)]
+    entries = sorted(entries, key=lambda e: e.get("date", ""))[-config.CONTEXT_WINDOW_DAYS:]
+    context["entries"] = entries
+    context["plant_profile"] = {**_build_plant_profile(), **(context.get("plant_profile") or {})}
+    context["recent_summary"] = _build_recent_summary(entries)
+    context["llm_context_summary"] = _build_llm_context_summary(context)
+    context["schema_version"] = max(int(context.get("schema_version", CONTEXT_SCHEMA_VERSION) or CONTEXT_SCHEMA_VERSION), CONTEXT_SCHEMA_VERSION)
+    return context
+
+
+def _derive_entry_lessons(entry: dict) -> list[str]:
+    lessons: list[str] = []
+    bias = entry.get("bias")
+    if isinstance(bias, (int, float)):
+        if bias > 0.01:
+            lessons.append("Forecast ran high; nudge future blocks downward when conditions are similar.")
+        elif bias < -0.01:
+            lessons.append("Forecast ran low; nudge future blocks upward when conditions are similar.")
+    actual_pattern = entry.get("actual_pattern") if isinstance(entry.get("actual_pattern"), dict) else {}
+    if actual_pattern.get("choppy"):
+        lessons.append("Actual generation was choppy; use stronger correction when clouds are unstable.")
+    else:
+        lessons.append("Actual generation was smooth; only mild correction was needed.")
+    if not lessons:
+        lessons.append("Use this day as a similar-case reference for the plant's behavior.")
+    return lessons
+
+
+def _extract_metric(entry: dict, key: str, fallback: str | None = None):
+    metrics = entry.get("metrics") if isinstance(entry.get("metrics"), dict) else {}
+    if key in metrics and metrics[key] is not None:
+        return metrics[key]
+    if fallback and fallback in entry:
+        return entry.get(fallback)
+    return entry.get(key)
+
+
+def _build_recent_summary(entries: list[dict]) -> dict:
+    if not entries:
+        return {
+            "window_days": config.CONTEXT_WINDOW_DAYS,
+            "entry_count": 0,
+            "rolling_mae_mw": None,
+            "rolling_rmse_mw": None,
+            "rolling_mape_pct": None,
+            "rolling_bias_mw": None,
+            "bias_direction": "no data",
+            "time_of_day_bias": {},
+            "regime_summary": "no recent entries",
+            "correction_hint": "No recent context is available yet.",
+        }
+
+    maes = [v for v in (_extract_metric(e, "mae_mw", "mae") for e in entries) if isinstance(v, (int, float))]
+    rmses = [v for v in (_extract_metric(e, "rmse_mw", "rmse") for e in entries) if isinstance(v, (int, float))]
+    mapes = [v for v in (_extract_metric(e, "mape_pct") for e in entries) if isinstance(v, (int, float))]
+    biases = [v for v in (_extract_metric(e, "bias_mw", "bias") for e in entries) if isinstance(v, (int, float))]
+
+    bucket_totals: dict[str, list[float]] = {}
+    choppy_days = 0
+    smooth_days = 0
+    for entry in entries:
+        for bucket, value in (entry.get("time_of_day_bias") or {}).items():
+            if isinstance(value, (int, float)):
+                bucket_totals.setdefault(bucket, []).append(float(value))
+        pattern = entry.get("actual_pattern") if isinstance(entry.get("actual_pattern"), dict) else {}
+        if pattern.get("choppy") is True:
+            choppy_days += 1
+        elif pattern:
+            smooth_days += 1
+
+    time_of_day_bias = {
+        bucket: round(sum(values) / len(values), 3)
+        for bucket, values in sorted(bucket_totals.items())
+        if values
+    }
+    avg_bias = sum(biases) / len(biases) if biases else 0.0
+    bias_direction = "over-forecast" if avg_bias > 0.01 else ("under-forecast" if avg_bias < -0.01 else "roughly balanced")
+    if choppy_days and choppy_days >= smooth_days:
+        regime_summary = f"mostly choppy ({choppy_days}/{len(entries)} day(s))"
+    elif smooth_days:
+        regime_summary = f"mostly smooth ({smooth_days}/{len(entries)} day(s))"
+    else:
+        regime_summary = "mixed"
+
+    dominant_bucket = None
+    if time_of_day_bias:
+        dominant_bucket = max(time_of_day_bias.items(), key=lambda item: abs(item[1]))[0]
+
+    if avg_bias > 0.01:
+        correction_hint = "Bias is positive overall, so future forecasts should lean slightly lower, especially in the strongest positive-bias time bucket."
+    elif avg_bias < -0.01:
+        correction_hint = "Bias is negative overall, so future forecasts should lean slightly higher, especially in the strongest negative-bias time bucket."
+    else:
+        correction_hint = "Overall bias is close to neutral, so use only small corrections unless the time-of-day pattern is repeating."
+
+    if dominant_bucket and dominant_bucket in time_of_day_bias:
+        correction_hint += f" The strongest time-of-day signal is {dominant_bucket} ({time_of_day_bias[dominant_bucket]:+} MW)."
+
+    return {
+        "window_days": config.CONTEXT_WINDOW_DAYS,
+        "entry_count": len(entries),
+        "rolling_mae_mw": round(sum(maes) / len(maes), 4) if maes else None,
+        "rolling_rmse_mw": round(sum(rmses) / len(rmses), 4) if rmses else None,
+        "rolling_mape_pct": round(sum(mapes) / len(mapes), 2) if mapes else None,
+        "rolling_bias_mw": round(avg_bias, 4),
+        "bias_direction": bias_direction,
+        "time_of_day_bias": time_of_day_bias,
+        "regime_summary": regime_summary,
+        "correction_hint": correction_hint,
+    }
+
+
+def _build_llm_context_summary(context: dict) -> list[str]:
+    plant = context.get("plant_profile", {}) if isinstance(context.get("plant_profile"), dict) else {}
+    recent = context.get("recent_summary", {}) if isinstance(context.get("recent_summary"), dict) else {}
+    entries = context.get("entries", []) if isinstance(context.get("entries"), list) else []
+
+    lines = [
+        f"{plant.get('plant_name', config.PLANT_NAME)}: {plant.get('capacity_mw', config.PLANT_CAPACITY_MW)} MW plant with "
+        f"{plant.get('block_minutes', config.BLOCK_MINUTES)}-minute blocks in {plant.get('timezone', 'Asia/Kolkata')}.",
+    ]
+    if recent.get("rolling_bias_mw") is not None:
+        lines.append(
+            f"Rolling {recent.get('window_days', config.CONTEXT_WINDOW_DAYS)}-day bias: "
+            f"{recent['rolling_bias_mw']:+.3f} MW ({recent.get('bias_direction', 'unknown')})."
+        )
+    if recent.get("rolling_mae_mw") is not None or recent.get("rolling_rmse_mw") is not None:
+        lines.append(
+            f"Recent accuracy: MAE={recent.get('rolling_mae_mw')}, RMSE={recent.get('rolling_rmse_mw')}, "
+            f"MAPE={recent.get('rolling_mape_pct')}%."
+        )
+    if recent.get("time_of_day_bias"):
+        time_bias = "; ".join(f"{bucket}: {value:+.3f} MW" for bucket, value in recent["time_of_day_bias"].items())
+        lines.append(f"Time-of-day bias: {time_bias}.")
+    if recent.get("regime_summary"):
+        lines.append(f"Regime summary: {recent['regime_summary']}.")
+    if recent.get("correction_hint"):
+        lines.append(f"Correction hint: {recent['correction_hint']}")
+
+    for entry in entries[-config.CONTEXT_WINDOW_DAYS:]:
+        lines.append(
+            f"{entry.get('date')}: {entry.get('summary')}"
+        )
+    return lines
 
 
 CHOPPY_AVG_STEP_MW = config.PLANT_CAPACITY_MW * 0.10
@@ -974,7 +1219,8 @@ def suggested_max_deviation_fraction(default_fraction: float = None) -> float:
     if default_fraction is None:
         default_fraction = validator.MAX_DEVIATION_FRACTION
 
-    entries = _load_context()
+    context = _load_context()
+    entries = context.get("entries", [])
     if len(entries) < 2:
         return default_fraction
 
