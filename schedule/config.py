@@ -8,6 +8,7 @@ new feature/ML pipeline files, and means you only ever update plant
 details in ONE place.
 """
 
+import json
 import os
 from pathlib import Path
 
@@ -48,6 +49,10 @@ def _read_env_float(name: str, default: float) -> float:
     except ValueError:
         return default
 
+
+def _read_env_setting(name: str) -> str:
+    return os.getenv(name, _read_env_value(name)).strip()
+
 # ---- Local/runtime storage root ----
 # Default to the current working directory for local development.
 # In Lambda/container deployments, set SIMOUR_STORAGE_ROOT to /tmp/... so
@@ -66,19 +71,121 @@ def _read_env_path(name: str, default: Path) -> Path:
         return Path(raw).expanduser().resolve()
     return default
 
-# ---- Plant details ----
-PLANT_NAME = _read_env_str("PLANT_NAME", "SIRMOUR")
-PLANT_LAT = _read_env_float("PLANT_LAT", 24.56253056)
-PLANT_LON = _read_env_float("PLANT_LON", 75.09140278)
 
-# Rated (nameplate) capacity in MW.
-PLANT_CAPACITY_MW = _read_env_float("PLANT_CAPACITY_MW", 5.1)
+def _load_json_profile(path: Path) -> dict:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def _profile_str(profile: dict, key: str, default: str) -> str:
+    value = profile.get(key)
+    if value is None:
+        return default
+    text = str(value).strip()
+    return text if text else default
+
+
+def _profile_float(profile: dict, key: str, default: float) -> float:
+    value = profile.get(key)
+    if value in (None, ""):
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _read_profile_mw_setting(env_name: str, profile_key: str, default_mw: float) -> float:
+    env_value = _read_env_setting(env_name)
+    if env_value:
+        try:
+            return float(env_value)
+        except ValueError:
+            return default_mw
+    profile_kw = _profile_float(PLANT_PROFILE, profile_key, default_mw * 1000.0)
+    return profile_kw / 1000.0
+
+# ---- Plant profile / details ----
+_DEFAULT_PLANT_NAME = _read_env_str("PLANT_NAME", "SIRMOUR")
+_DEFAULT_PLANT_PROFILE_PATH = Path(
+    os.getenv(
+        "PLANT_PROFILE_PATH",
+        _read_env_value("PLANT_PROFILE_PATH") or str(Path(__file__).resolve().with_name("plant_profiles") / f"{_DEFAULT_PLANT_NAME}.json"),
+    )
+).expanduser()
+PLANT_PROFILE_PATH = _DEFAULT_PLANT_PROFILE_PATH
+PLANT_PROFILE = _load_json_profile(_DEFAULT_PLANT_PROFILE_PATH)
+
+def _read_profile_setting(env_name: str, profile_key: str, default: str) -> str:
+    env_value = _read_env_setting(env_name)
+    if env_value:
+        return env_value
+    return _profile_str(PLANT_PROFILE, profile_key, default)
+
+
+def _read_profile_float_setting(env_name: str, profile_key: str, default: float) -> float:
+    env_value = _read_env_setting(env_name)
+    if env_value:
+        try:
+            return float(env_value)
+        except ValueError:
+            return default
+    return _profile_float(PLANT_PROFILE, profile_key, default)
+
+
+PLANT_NAME = _read_profile_setting("PLANT_NAME", "plant_name", _DEFAULT_PLANT_NAME)
+PLANT_LAT = _read_profile_float_setting("PLANT_LAT", "latitude", 24.56253056)
+PLANT_LON = _read_profile_float_setting("PLANT_LON", "longitude", 75.09140278)
+
+# Rated (nameplate) capacity in MW. For Bhupalpally we prefer the AC
+# feed-in cap because that is the practical schedule ceiling.
+PLANT_CAPACITY_MW = _read_profile_mw_setting(
+    "PLANT_CAPACITY_MW",
+    "maximum_feed_in_ac_kw",
+    5.1,
+)
+
+# Separate DC-capacity metadata when available in the plant profile.
+PLANT_DC_CAPACITY_MW = _read_profile_mw_setting(
+    "PLANT_DC_CAPACITY_MW",
+    "dc_capacity_kw",
+    PLANT_CAPACITY_MW,
+)
+
+# Hard AC feed-in cap for the final schedule and validator clamp.
+PLANT_MAX_FEED_IN_MW = _read_profile_mw_setting(
+    "PLANT_MAX_FEED_IN_MW",
+    "maximum_feed_in_ac_kw",
+    PLANT_CAPACITY_MW,
+)
+
+PLANT_TILT_DEG = _read_profile_float_setting("PLANT_TILT_DEG", "tilt_deg", 20.0)
+PLANT_ORIENTATION_FROM_SOUTH_DEG = _read_profile_float_setting(
+    "PLANT_ORIENTATION_FROM_SOUTH_DEG",
+    "orientation_deg_from_south",
+    0.0,
+)
+PLANT_TRACKER_TYPE = _read_profile_setting("PLANT_TRACKER_TYPE", "tracker_type", "None")
+PLANT_AVAILABILITY_PLANNED_PCT = _read_profile_float_setting(
+    "PLANT_AVAILABILITY_PLANNED_PCT",
+    "availability_planned_pct",
+    100.0,
+)
+PLANT_PPA_RATE_INR_PER_KWH = _read_profile_float_setting(
+    "PLANT_PPA_RATE_INR_PER_KWH",
+    "ppa_rate_inr_per_kwh",
+    0.0,
+)
+PLANT_EEG_ID = _read_profile_setting("PLANT_EEG_ID", "eeg_id", "")
+PLANT_KEY = _read_profile_setting("PLANT_KEY", "plant_key", "")
 
 # Performance Ratio -- accounts for real-world losses (panel temperature,
 # inverter, wiring, soiling, shading, mismatch etc.). 0.75-0.85 is typical
 # for a well-maintained plant. Update this once you have your plant's
 # actual historical PR.
-PERFORMANCE_RATIO = _read_env_float("PERFORMANCE_RATIO", 0.78)
+PERFORMANCE_RATIO = _read_profile_float_setting("PERFORMANCE_RATIO", "performance_ratio", 0.78)
 
 # ---- Windy capture settings ----
 ZOOM_LEVEL = 11  # calibrated so the screenshot covers ~100km x 100km

@@ -26,7 +26,7 @@ import datetime
 import config
 
 
-def _update_or_append(csv_path, header, rows_by_time):
+def _update_or_append(csv_path, header, rows_by_time, preserve_existing_extra_columns: bool = True):
     """Shared schema-safe read-merge-sort-write logic for both CSV files."""
     csv_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -41,12 +41,13 @@ def _update_or_append(csv_path, header, rows_by_time):
                 if time_key:
                     existing_by_time[time_key] = row
 
-    # Preserve columns added by feedback (especially Actual Generation)
-    # when a later prediction run updates the same feature-log file.
     final_header = list(header)
-    for column in existing_header:
-        if column not in final_header:
-            final_header.append(column)
+    if preserve_existing_extra_columns:
+        # Preserve columns added by feedback (especially Actual Generation)
+        # when a later prediction run updates the same feature-log file.
+        for column in existing_header:
+            if column not in final_header:
+                final_header.append(column)
 
     for time_label, values in rows_by_time.items():
         new_row = dict(zip(header, values))
@@ -95,7 +96,7 @@ def _format_time_interval(time_label: str) -> str:
 
 def save_generation_csv(rows, output_dir=None) -> list:
     """
-    `rows`: list of (block_number, time_label, anchor_mw, final_mw, reasoning)
+    `rows`: list of dicts or tuples describing the forecast sequence.
     `output_dir`: overrides config.PREDICTIONS_DIR -- pass this to write
         somewhere other than the real per-day production files (see
         manual_prediction.py, which always redirects test runs here so
@@ -108,17 +109,55 @@ def save_generation_csv(rows, output_dir=None) -> list:
     header = [
         "Block",
         "Time Interval (15 minute interval)",
-        "Physics Anchor Schedule (MW)",
+        "Step 1 Meter Base Forecast MW",
+        "Step 2 Weather + Video Adjusted MW",
+        "Step 3 Context Adjusted MW",
         "LLM Schedule (MW)",
+        "Final Validated MW",
         "LLM Reasoning",
     ]
 
+    hard_cap_mw = getattr(config, "PLANT_MAX_FEED_IN_MW", config.PLANT_CAPACITY_MW)
+
+    def _clip_display_mw(value):
+        try:
+            return round(max(0.0, min(hard_cap_mw, float(value))), 3)
+        except (TypeError, ValueError):
+            return value
+
     rows_by_time = {}
-    for block_number, time_label, anchor_mw, final_mw, reasoning in rows:
+    for row in rows:
+        if isinstance(row, dict):
+            block_number = row.get("block_number", row.get("Block", ""))
+            time_label = row.get("time", row.get("Time", ""))
+            step1_mw = _clip_display_mw(row.get("step1_mw", row.get("Step 1 Meter Base Forecast MW", row.get("anchor_mw", ""))))
+            step2_mw = _clip_display_mw(row.get("step2_mw", row.get("Step 2 Weather + Video Adjusted MW", row.get("llm_mw", ""))))
+            step3_mw = _clip_display_mw(row.get("step3_mw", row.get("Step 3 Context Adjusted MW", row.get("llm_mw", ""))))
+            llm_mw = _clip_display_mw(row.get("llm_mw", row.get("LLM Schedule (MW)", step3_mw)))
+            final_mw = _clip_display_mw(row.get("final_mw", row.get("Final Validated MW", llm_mw)))
+            reasoning = row.get("reasoning", row.get("LLM Reasoning", ""))
+        else:
+            if len(row) == 5:
+                block_number, time_label, anchor_mw, final_mw, reasoning = row
+                step1_mw = _clip_display_mw(anchor_mw)
+                step2_mw = _clip_display_mw(final_mw)
+                step3_mw = _clip_display_mw(final_mw)
+                llm_mw = _clip_display_mw(final_mw)
+            else:
+                block_number, time_label, step1_mw, step2_mw, step3_mw, llm_mw, final_mw, reasoning = row
+                step1_mw = _clip_display_mw(step1_mw)
+                step2_mw = _clip_display_mw(step2_mw)
+                step3_mw = _clip_display_mw(step3_mw)
+                llm_mw = _clip_display_mw(llm_mw)
+                final_mw = _clip_display_mw(final_mw)
+
         rows_by_time[time_label] = [
             str(block_number),
             _format_time_interval(time_label),
-            str(anchor_mw),
+            str(step1_mw),
+            str(step2_mw),
+            str(step3_mw),
+            str(llm_mw),
             str(final_mw),
             reasoning,
         ]
@@ -126,7 +165,7 @@ def save_generation_csv(rows, output_dir=None) -> list:
     written_paths = []
     for date_str, date_rows_by_time in _group_by_date(rows_by_time).items():
         csv_path = output_dir / f"{config.PLANT_NAME}_energy_generation_{date_str}.csv"
-        _update_or_append(csv_path, header, date_rows_by_time)
+        _update_or_append(csv_path, header, date_rows_by_time, preserve_existing_extra_columns=False)
         written_paths.append(csv_path)
     return written_paths
 
@@ -177,9 +216,14 @@ def save_forecast_trace_csv(rows, output_dir=None) -> list:
         "Time",
         "Physics Anchor MW",
         "Base Physics Anchor MW",
+        "Step 1 Meter Base MW",
+        "Step 2 Weather + Video MW",
+        "Step 3 Context MW",
         "Live Residual Factor",
         "Regime",
         "Fluctuation Flag",
+        "Step 2 Confidence",
+        "Step 2 Reasoning",
         "LLM MW",
         "Validated MW",
         "Confidence",
@@ -188,6 +232,7 @@ def save_forecast_trace_csv(rows, output_dir=None) -> list:
         "Top Retrieved Case",
         "Context Summary",
         "Live State Summary",
+        "Weather Summary",
         "Feature Snapshot",
     ]
 
@@ -201,9 +246,14 @@ def save_forecast_trace_csv(rows, output_dir=None) -> list:
             time_label,
             str(row.get("Physics Anchor MW", "")),
             str(row.get("Base Physics Anchor MW", "")),
+            str(row.get("Step 1 Meter Base MW", "")),
+            str(row.get("Step 2 Weather + Video MW", "")),
+            str(row.get("Step 3 Context MW", "")),
             str(row.get("Live Residual Factor", "")),
             str(row.get("Regime", "")),
             str(row.get("Fluctuation Flag", "")),
+            str(row.get("Step 2 Confidence", "")),
+            str(row.get("Step 2 Reasoning", "")),
             str(row.get("LLM MW", "")),
             str(row.get("Validated MW", "")),
             str(row.get("Confidence", "")),
@@ -212,6 +262,7 @@ def save_forecast_trace_csv(rows, output_dir=None) -> list:
             str(row.get("Top Retrieved Case", "")),
             str(row.get("Context Summary", "")),
             str(row.get("Live State Summary", "")),
+            str(row.get("Weather Summary", "")),
             str(row.get("Feature Snapshot", "")),
         ]
 

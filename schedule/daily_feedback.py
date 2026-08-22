@@ -933,25 +933,122 @@ CHOPPY_AVG_STEP_MW = config.PLANT_CAPACITY_MW * 0.10
 
 def _load_intraday_rows(actuals_csv_path, reference_time: datetime.datetime) -> list:
     """Return today's meter rows up to reference_time as [(ts, mw), ...]."""
-    import time_features
-
     with open(actuals_csv_path, "r", newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
+        timestamp_column = _pick_first_existing_column(
+            reader.fieldnames,
+            RAW_METER_TIMESTAMP_COLUMNS,
+        )
+        power_column = _pick_first_existing_column(
+            reader.fieldnames,
+            RAW_METER_POWER_COLUMNS,
+        )
+        if timestamp_column is None or power_column is None:
+            return []
         rows = []
         for row in reader:
-            normalized = _normalize_timestamp(row.get("TimeStamp"))
+            normalized = _normalize_timestamp(row.get(timestamp_column))
             if normalized is None:
                 continue
             ts = datetime.datetime.strptime(normalized, "%Y-%m-%d %H:%M:%S")
             if ts > reference_time:
                 continue
-            kw = _as_float(row.get("Active Power (kW)"))
-            if kw is None:
+            mw = _power_value_to_mw(row.get(power_column), power_column)
+            if mw is None:
                 continue
-            rows.append((ts, max(0.0, kw) / 1000.0))
+            rows.append((ts, mw))
 
     rows.sort(key=lambda pair: pair[0])
     return rows
+
+
+def _load_intraday_meter_rows(actuals_csv_path, reference_time: datetime.datetime) -> list[dict]:
+    """Return today's meter rows up to reference_time with raw sensor fields preserved."""
+    with open(actuals_csv_path, "r", newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        timestamp_column = _pick_first_existing_column(
+            reader.fieldnames,
+            RAW_METER_TIMESTAMP_COLUMNS,
+        )
+        power_column = _pick_first_existing_column(
+            reader.fieldnames,
+            RAW_METER_POWER_COLUMNS,
+        )
+        ghi_column = _pick_first_existing_column(
+            reader.fieldnames,
+            ("GHI (W/m2)", "GHI_W (W/m2)", "GHI_W", "GHI"),
+        )
+        poa_column = _pick_first_existing_column(
+            reader.fieldnames,
+            ("POA (W/m2)", "POA", "Plane of Array (W/m2)"),
+        )
+        ambient_temp_column = _pick_first_existing_column(
+            reader.fieldnames,
+            ("AMB TEMP", "Ambient Temperature (C)", "Ambient Temp", "Ambient Temperature"),
+        )
+        module_temp_column = _pick_first_existing_column(
+            reader.fieldnames,
+            ("MOD TEMP", "Module Temperature (C)", "Module Temp", "Module Temperature"),
+        )
+        wind_speed_column = _pick_first_existing_column(
+            reader.fieldnames,
+            ("Wind Speed (m/s)", "Wind Speed", "WindSpeed"),
+        )
+        wind_direction_column = _pick_first_existing_column(
+            reader.fieldnames,
+            ("Wind Direction (DEG.)", "Wind Direction (Deg.)", "Wind Direction", "Wind Direction (DEG)"),
+        )
+        humidity_column = _pick_first_existing_column(
+            reader.fieldnames,
+            ("Humidity", "RH", "Relative Humidity"),
+        )
+        rows = []
+        for row in reader:
+            if timestamp_column is None or power_column is None:
+                return []
+            normalized = _normalize_timestamp(row.get(timestamp_column))
+            if normalized is None:
+                continue
+            ts = datetime.datetime.strptime(normalized, "%Y-%m-%d %H:%M:%S")
+            if ts > reference_time:
+                continue
+            rows.append(
+                {
+                    "timestamp": ts,
+                    "active_power_mw": _power_value_to_mw(row.get(power_column), power_column) or 0.0,
+                    "poa": _as_float(row.get(poa_column)) if poa_column else None,
+                    "ghi": _as_float(row.get(ghi_column)) if ghi_column else None,
+                    "wind_speed": _as_float(row.get(wind_speed_column)) if wind_speed_column else None,
+                    "wind_direction": _as_float(row.get(wind_direction_column)) if wind_direction_column else None,
+                    "ambient_temp": _as_float(row.get(ambient_temp_column)) if ambient_temp_column else None,
+                    "module_temp": _as_float(row.get(module_temp_column)) if module_temp_column else None,
+                    "humidity": _as_float(row.get(humidity_column)) if humidity_column else None,
+                }
+            )
+
+    rows.sort(key=lambda item: item["timestamp"])
+    return rows
+
+
+def _circular_mean_degrees(values: list[float | None]) -> float | None:
+    """Return the circular mean of compass-like degrees."""
+    import math
+
+    filtered = [value for value in values if value is not None]
+    if not filtered:
+        return None
+
+    sin_sum = sum(math.sin(math.radians(value)) for value in filtered)
+    cos_sum = sum(math.cos(math.radians(value)) for value in filtered)
+    if abs(sin_sum) < 1e-9 and abs(cos_sum) < 1e-9:
+        return None
+    return round(math.degrees(math.atan2(sin_sum, cos_sum)) % 360.0, 1)
+
+
+def _format_sensor_value(value, unit: str = "") -> str:
+    if value is None:
+        return "n/a"
+    return f"{value:.1f}{(' ' + unit) if unit else ''}"
 
 
 def summarize_intraday_state(actuals_csv_path, reference_time: datetime.datetime) -> dict | None:
@@ -968,24 +1065,35 @@ def summarize_intraday_state(actuals_csv_path, reference_time: datetime.datetime
     import math
     import time_features
 
-    rows = _load_intraday_rows(actuals_csv_path, reference_time)
+    rows = _load_intraday_meter_rows(actuals_csv_path, reference_time)
     if not rows:
         return None
 
     recent = rows[-8:]
-    latest_ts, latest_mw = recent[-1]
-    recent_mw_values = [mw for _, mw in recent]
+    latest_ts = recent[-1]["timestamp"]
+    latest_mw = recent[-1]["active_power_mw"]
+    recent_mw_values = [item["active_power_mw"] for item in recent]
     recent_avg_mw = sum(recent_mw_values) / len(recent_mw_values)
     recent_delta_mw = recent_mw_values[-1] - recent_mw_values[0]
 
     if len(recent) >= 3:
-        diffs = [abs(recent[i][1] - recent[i - 1][1]) for i in range(1, len(recent))]
+        diffs = [abs(recent[i]["active_power_mw"] - recent[i - 1]["active_power_mw"]) for i in range(1, len(recent))]
         avg_abs_step = sum(diffs) / len(diffs)
     else:
         avg_abs_step = 0.0
 
+    recent_ghi_values = [item.get("ghi") for item in recent if item.get("ghi") is not None]
+    recent_poa_values = [item.get("poa") for item in recent if item.get("poa") is not None]
+    recent_wind_dir = _circular_mean_degrees([item.get("wind_direction") for item in recent])
+    recent_wind_speed_values = [item.get("wind_speed") for item in recent if item.get("wind_speed") is not None]
+    recent_ambient_temp_values = [item.get("ambient_temp") for item in recent if item.get("ambient_temp") is not None]
+    recent_module_temp_values = [item.get("module_temp") for item in recent if item.get("module_temp") is not None]
+    recent_humidity_values = [item.get("humidity") for item in recent if item.get("humidity") is not None]
+
     ratios = []
-    for ts, mw in rows:
+    for item in rows:
+        ts = item["timestamp"]
+        mw = item["active_power_mw"]
         elevation = time_features.compute_time_features(ts)["solar_elevation_deg"]
         if elevation <= 0:
             continue
@@ -1029,6 +1137,23 @@ def summarize_intraday_state(actuals_csv_path, reference_time: datetime.datetime
         f"avg_step={avg_abs_step:.3f} MW, fluctuation_flag={fluctuation_flag}, "
         f"live_residual_factor={live_residual_factor:.3f}."
     )
+    sensor_bits = []
+    if recent_ghi_values:
+        sensor_bits.append(f"GHI avg={sum(recent_ghi_values) / len(recent_ghi_values):.1f} W/m2")
+    if recent_poa_values:
+        sensor_bits.append(f"POA avg={sum(recent_poa_values) / len(recent_poa_values):.1f} W/m2")
+    if recent_wind_dir is not None:
+        sensor_bits.append(f"wind dir mean={recent_wind_dir:.1f} deg")
+    if recent_wind_speed_values:
+        sensor_bits.append(f"wind speed avg={sum(recent_wind_speed_values) / len(recent_wind_speed_values):.1f} m/s")
+    if recent_ambient_temp_values:
+        sensor_bits.append(f"ambient temp avg={sum(recent_ambient_temp_values) / len(recent_ambient_temp_values):.1f} C")
+    if recent_module_temp_values:
+        sensor_bits.append(f"module temp avg={sum(recent_module_temp_values) / len(recent_module_temp_values):.1f} C")
+    if recent_humidity_values:
+        sensor_bits.append(f"humidity avg={sum(recent_humidity_values) / len(recent_humidity_values):.1f}%")
+    if sensor_bits:
+        summary += " Sensor context: " + ", ".join(sensor_bits) + "."
 
     return {
         "reference_time": reference_time.strftime("%Y-%m-%d %H:%M"),
@@ -1045,6 +1170,13 @@ def summarize_intraday_state(actuals_csv_path, reference_time: datetime.datetime
         "regime": regime,
         "live_residual_factor": round(live_residual_factor, 3),
         "summary": summary,
+        "recent_ghi_avg": round(sum(recent_ghi_values) / len(recent_ghi_values), 1) if recent_ghi_values else None,
+        "recent_poa_avg": round(sum(recent_poa_values) / len(recent_poa_values), 1) if recent_poa_values else None,
+        "recent_wind_direction_mean": recent_wind_dir,
+        "recent_wind_speed_avg": round(sum(recent_wind_speed_values) / len(recent_wind_speed_values), 1) if recent_wind_speed_values else None,
+        "recent_ambient_temp_avg": round(sum(recent_ambient_temp_values) / len(recent_ambient_temp_values), 1) if recent_ambient_temp_values else None,
+        "recent_module_temp_avg": round(sum(recent_module_temp_values) / len(recent_module_temp_values), 1) if recent_module_temp_values else None,
+        "recent_humidity_avg": round(sum(recent_humidity_values) / len(recent_humidity_values), 1) if recent_humidity_values else None,
     }
 
 
@@ -1059,6 +1191,12 @@ def format_intraday_state_for_prompt(state: dict | None) -> str:
         lines.append(
             f"- Recent actual-vs-clear-sky ratio: {state['recent_clear_sky_ratio'] * 100:.0f}%"
         )
+    if state.get("recent_ghi_avg") is not None:
+        lines.append(f"- Recent GHI average: {state['recent_ghi_avg']:.1f} W/m2")
+    if state.get("recent_poa_avg") is not None:
+        lines.append(f"- Recent POA average: {state['recent_poa_avg']:.1f} W/m2")
+    if state.get("recent_wind_direction_mean") is not None:
+        lines.append(f"- Recent wind direction mean: {state['recent_wind_direction_mean']:.1f} deg")
     return "\n".join(lines)
 
 
@@ -1093,24 +1231,32 @@ def format_intraday_actuals_for_prompt(actuals_csv_path, reference_time: datetim
     import math
     import time_features
 
-    rows = _load_intraday_rows(actuals_csv_path, reference_time)
+    rows = _load_intraday_meter_rows(actuals_csv_path, reference_time)
 
     if not rows:
         return "No actual generation data is available for earlier today yet."
 
-    rows.sort(key=lambda pair: pair[0])
     recent = rows[-8:]  # last ~2 hours at 15-min spacing
     lines = [
         f"Actual generation recorded earlier TODAY, up to {reference_time.strftime('%Y-%m-%d %H:%M')} "
         f"(most recent readings, do not treat anything after this time as known):"
     ]
-    lines += [f"- {ts.strftime('%H:%M')}: {mw:.3f} MW" for ts, mw in recent]
+    lines += [
+        "- {ts}: power={mw:.3f} MW, GHI={ghi}, POA={poa}, wind_dir={wind_dir}".format(
+            ts=item["timestamp"].strftime("%H:%M"),
+            mw=item["active_power_mw"],
+            ghi=_format_sensor_value(item.get("ghi"), "W/m2"),
+            poa=_format_sensor_value(item.get("poa"), "W/m2"),
+            wind_dir=_format_sensor_value(item.get("wind_direction"), "deg"),
+        )
+        for item in recent
+    ]
 
     # ---- Trend / ramp rate across the recent window ----
     if len(recent) >= 2:
-        delta = recent[-1][1] - recent[0][1]
+        delta = recent[-1]["active_power_mw"] - recent[0]["active_power_mw"]
         trend = "rising" if delta > 0.05 else ("falling" if delta < -0.05 else "roughly stable")
-        span_minutes = (recent[-1][0] - recent[0][0]).total_seconds() / 60.0
+        span_minutes = (recent[-1]["timestamp"] - recent[0]["timestamp"]).total_seconds() / 60.0
         ramp_per_15min = (delta / span_minutes * 15.0) if span_minutes > 0 else 0.0
         lines.append(f"Trend over this window: {trend} ({delta:+.3f} MW; ~{ramp_per_15min:+.3f} MW per 15-min block).")
 
@@ -1119,15 +1265,30 @@ def format_intraday_actuals_for_prompt(actuals_csv_path, reference_time: datetim
     # volatility happening right now, which is what matters for the next
     # hour's forecast) ----
     if len(recent) >= 3:
-        diffs = [abs(recent[i][1] - recent[i - 1][1]) for i in range(1, len(recent))]
+        diffs = [abs(recent[i]["active_power_mw"] - recent[i - 1]["active_power_mw"]) for i in range(1, len(recent))]
         avg_abs_step = sum(diffs) / len(diffs)
         choppiness = "CHOPPY (patchy/intermittent cloud -- likely to continue into the next hour)" \
             if avg_abs_step > CHOPPY_AVG_STEP_MW else "smooth/steady (stable conditions so far)"
         lines.append(f"Block-to-block variability today: avg |change|={avg_abs_step:.3f} MW -- {choppiness}.")
 
+    recent_ghi_values = [item.get("ghi") for item in recent if item.get("ghi") is not None]
+    recent_poa_values = [item.get("poa") for item in recent if item.get("poa") is not None]
+    recent_wind_dir = _circular_mean_degrees([item.get("wind_direction") for item in recent])
+    if recent_ghi_values or recent_poa_values or recent_wind_dir is not None:
+        sensor_bits = []
+        if recent_ghi_values:
+            sensor_bits.append(f"avg GHI={sum(recent_ghi_values) / len(recent_ghi_values):.1f} W/m2")
+        if recent_poa_values:
+            sensor_bits.append(f"avg POA={sum(recent_poa_values) / len(recent_poa_values):.1f} W/m2")
+        if recent_wind_dir is not None:
+            sensor_bits.append(f"mean wind direction={recent_wind_dir:.1f} deg")
+        lines.append("Recent raw sensor context: " + ", ".join(sensor_bits) + ".")
+
     # ---- Today's own actual-vs-clear-sky ratio (elevation-only, no cloud data) ----
     ratios = []
-    for ts, mw in rows:
+    for item in rows:
+        ts = item["timestamp"]
+        mw = item["active_power_mw"]
         elevation = time_features.compute_time_features(ts)["solar_elevation_deg"]
         if elevation <= 0:
             continue

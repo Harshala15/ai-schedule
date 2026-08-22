@@ -12,12 +12,17 @@ RUN pip install --no-cache-dir \
     boto3 \
     numpy \
     opencv-python-headless \
+    pandas \
+    openmeteo-requests \
+    requests-cache \
+    retry-requests \
     google-genai \
     -t ${LAMBDA_TASK_ROOT}
 
 COPY config.py daily_feedback.py feature_builder.py image_feature_extraction.py llm_predictor.py \
      physics_anchor.py prediction_store.py run_pipeline.py similarity_retrieval.py \
      state_sync.py time_features.py validator.py video_motion_features.py ${LAMBDA_TASK_ROOT}/
+COPY bhupalpally_forecast_scheduler/ ${LAMBDA_TASK_ROOT}/bhupalpally_forecast_scheduler/
 COPY simour_forecast_scheduler/ ${LAMBDA_TASK_ROOT}/simour_forecast_scheduler/
 
-CMD ["simour_forecast_scheduler.handler.lambda_handler"]
+CMD ["bhupalpally_forecast_scheduler.lambda_handler.lambda_handler"]

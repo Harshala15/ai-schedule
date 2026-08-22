@@ -49,7 +49,8 @@ import daily_feedback
 
 def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetime.datetime = None,
                             num_blocks: int = None, output_dir=None, intraday_actuals_text: str = "",
-                            intraday_actuals_path=None):
+                            intraday_actuals_path=None, weather_text: str = "",
+                            context_text: str = "", video_text: str = ""):
     """
     image_map: {filepath: description} from capture_all_layers()
     video_path: Path to the recorded/trimmed video, or None if recording failed
@@ -75,6 +76,16 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
         same day. When provided, the pipeline derives a live regime and
         residual correction factor from the actual generation observed so
         far, then feeds that into the LLM prompt and the baseline anchor.
+    weather_text: optional prompt-ready ECMWF/Open-Meteo weather summary
+        for the forecast horizon. Bhupalpally uses this to shape the LLM
+        adjustment from the revision time forward.
+    context_text: optional override for the rolling prediction context
+        prompt text. When omitted, the shared day-level context is loaded
+        from prediction_context/<PLANT>_context.json as before.
+    video_text: optional prompt-ready summary of the Windy video/OpenCV
+        features. Bhupalpally uses this in the weather-adjustment step,
+        rather than feeding the video motion features into the step-1
+        physics anchor.
     """
     reference_time = reference_time or datetime.datetime.now()
     bhupalpally_live_only = config.PLANT_NAME.upper() == "BHUPALPALLY"
@@ -120,6 +131,8 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
             print("  [WARN] Video feature extraction failed -- continuing without motion features.")
         else:
             print(f"  [OK] {motion_features['summary_text']}")
+            if not video_text:
+                video_text = motion_features["summary_text"]
     else:
         print("\n[INFO] No video available -- continuing without motion features.")
 
@@ -148,7 +161,10 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
 
     for block_index, block_time in enumerate(block_times):
         block_time_feats = time_features.compute_time_features(block_time)
-        feature_row = feature_builder.combine_features(motion_features, image_features, block_time_feats)
+        if bhupalpally_live_only:
+            feature_row = feature_builder.combine_features(None, {}, block_time_feats)
+        else:
+            feature_row = feature_builder.combine_features(motion_features, image_features, block_time_feats)
 
         if feature_columns is None:
             feature_columns = feature_builder.get_feature_columns(feature_row)
@@ -184,9 +200,8 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
         live_anchor_predictions.append(live_anchor_entry)
         print(f"  Block {block_number} ({time_label}): physics anchor = {anchor_mw} MW")
 
-    # image/motion features are identical across all 8 blocks in one run
-    # (only time changes) -- the first block's row is a fair
-    # representative of "the current situation" for retrieval + the LLM.
+    # The first block's row is a fair representative of "the current
+    # situation" for retrieval + the LLM.
     current_feature_row = feature_rows_by_time[anchor_predictions[0]["time"]]
 
     # ---- Phase 2: retrieve similar past cases from the case store ----
@@ -205,13 +220,50 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
         image_map_for_llm = image_map
 
     # ---- Phase 3: LLM adjusts the anchor using the retrieved evidence ----
-    print("\nAsking LLM to adjust physics anchor using retrieved evidence...")
-    context_text = daily_feedback.format_context_for_prompt()
-    llm_predictions = llm_predictor.predict_with_llm(
-        live_anchor_predictions, current_feature_row, retrieved_cases_text, context_text, intraday_actuals_text,
-        intraday_state_text,
-        image_map=image_map_for_llm if bhupalpally_live_only else image_map,
-    )
+    print("\nAsking LLM to adjust the base forecast using retrieved evidence, live meter state, video, and weather...")
+    context_text = context_text or daily_feedback.format_context_for_prompt()
+    if bhupalpally_live_only:
+        meter_reference_mw = intraday_state["latest_mw"] if intraday_state else 0.0
+        meter_step_predictions = [
+            {
+                "time": anchor["time"],
+                "block_number": anchor["block_number"],
+                "anchor_mw": meter_reference_mw,
+            }
+            for anchor in anchor_predictions
+        ]
+        physics_anchor_by_time = {anchor["time"]: anchor["anchor_mw"] for anchor in live_anchor_predictions}
+        llm_predictions = llm_predictor.predict_stepwise_with_llm(
+            meter_step_predictions,
+            current_feature_row,
+            context_text,
+            intraday_actuals_text=intraday_actuals_text,
+            intraday_state_text=intraday_state_text,
+            weather_text=weather_text,
+            video_text=video_text,
+            fallback_base_predictions=meter_step_predictions,
+            prompt_subject="Bhupalpally one-call revision forecast",
+        )
+        for p in llm_predictions:
+            physics_anchor_mw = physics_anchor_by_time.get(p["time"], p.get("anchor_mw", 0.0))
+            p["physics_anchor_mw"] = physics_anchor_mw
+            p["base_anchor_mw"] = physics_anchor_mw
+            p["step1_mw"] = p.get("step1_mw", p.get("anchor_mw", physics_anchor_mw))
+            p["step2_mw"] = p.get("step2_mw", p.get("step1_mw", p.get("anchor_mw", physics_anchor_mw)))
+            p["step3_mw"] = p.get("step3_mw", p.get("step2_mw", p.get("llm_mw", physics_anchor_mw)))
+            p["step2_confidence"] = p.get("confidence", "")
+            p["step2_reasoning"] = p.get("reasoning", "")
+    else:
+        llm_predictions = llm_predictor.predict_with_llm(
+            live_anchor_predictions, current_feature_row, retrieved_cases_text, context_text, intraday_actuals_text,
+            intraday_state_text, weather_text, video_text,
+            image_map=image_map_for_llm if bhupalpally_live_only else image_map,
+        )
+        for p in llm_predictions:
+            p["physics_anchor_mw"] = p.get("anchor_mw")
+            p["step1_mw"] = p.get("base_anchor_mw", p.get("anchor_mw"))
+            p["step2_mw"] = p.get("llm_mw", p.get("anchor_mw"))
+            p["step3_mw"] = p.get("llm_mw", p.get("anchor_mw"))
 
     # ---- Phase 4: validate (range/deviation/smoothness safety checks) ----
     print("\nValidating LLM-adjusted predictions...")
@@ -269,18 +321,36 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
     for p in validated_predictions:
         final_mw = p["validated_mw"]
         feature_row = feature_rows_by_time[p["time"]]
-        base_anchor_mw = p.get("base_anchor_mw", p["anchor_mw"])
+        physics_anchor_mw = p.get("physics_anchor_mw", p.get("base_anchor_mw", p["anchor_mw"]))
+        base_anchor_mw = p.get("base_anchor_mw", physics_anchor_mw)
+        step1_mw = p.get("step1_mw", p.get("base_anchor_mw", p["anchor_mw"]))
+        step2_mw = p.get("step2_mw", p.get("llm_mw", final_mw))
+        step3_mw = p.get("step3_mw", p.get("llm_mw", final_mw))
 
-        generation_rows.append((p["block_number"], p["time"], p["anchor_mw"], final_mw, p["reasoning"]))
+        generation_rows.append({
+            "block_number": p["block_number"],
+            "time": p["time"],
+            "step1_mw": step1_mw,
+            "step2_mw": step2_mw,
+            "step3_mw": step3_mw,
+            "llm_mw": p["llm_mw"],
+            "final_mw": final_mw,
+            "reasoning": p["reasoning"],
+        })
         features_log_rows.append((p["block_number"], p["time"], feature_row, final_mw))
         trace_rows.append({
             "Block": p["block_number"],
             "Time": p["time"],
-            "Physics Anchor MW": p["anchor_mw"],
+            "Physics Anchor MW": physics_anchor_mw,
             "Base Physics Anchor MW": base_anchor_mw,
+            "Step 1 Meter Base MW": step1_mw,
+            "Step 2 Weather + Video MW": step2_mw,
+            "Step 3 Context MW": step3_mw,
             "Live Residual Factor": p.get("live_residual_factor", 1.0),
             "Regime": p.get("regime_label", ""),
             "Fluctuation Flag": p.get("fluctuation_flag", False),
+            "Step 2 Confidence": p.get("step2_confidence", ""),
+            "Step 2 Reasoning": p.get("step2_reasoning", ""),
             "LLM MW": p["llm_mw"],
             "Validated MW": final_mw,
             "Confidence": p["confidence"],
@@ -289,6 +359,7 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
             "Top Retrieved Case": top_case_summary,
             "Context Summary": context_summary,
             "Live State Summary": p.get("regime_summary", intraday_state_text),
+            "Weather Summary": weather_text,
             "Feature Snapshot": _compact_feature_snapshot(feature_row),
         })
 

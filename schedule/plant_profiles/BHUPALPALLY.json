@@ -1,0 +1,12 @@
+{
+  "plant_name": "BHUPALPALLY",
+  "latitude": 18.447931,
+  "longitude": 79.877263,
+  "dc_capacity_kw": 11005,
+  "maximum_feed_in_ac_kw": 10000,
+  "tracker_type": "None",
+  "orientation_deg_from_south": 0,
+  "tilt_deg": 5,
+  "eeg_id": "Singareni Collieries Company Limited-Chelpur",
+  "ppa_rate_inr_per_kwh": 5.65
+}
