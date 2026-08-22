@@ -253,7 +253,8 @@ def _summarize_current_situation(feature_row: dict) -> str:
 
 def _build_prompt(anchor_predictions: list, feature_row: dict, retrieved_cases_text: str,
                    context_text: str, intraday_actuals_text: str = "",
-                   intraday_state_text: str = "") -> str:
+                   intraday_state_text: str = "", weather_text: str = "",
+                   video_text: str = "", prompt_subject: str = "physics anchor") -> str:
     blocks_text = "\n".join(
         f"{i + 1}. time={p['time']}, physics_anchor_mw={p['anchor_mw']}"
         for i, p in enumerate(anchor_predictions)
@@ -264,6 +265,19 @@ def _build_prompt(anchor_predictions: list, feature_row: dict, retrieved_cases_t
         sections.append(f"Similar historical cases:\n{retrieved_cases_text.strip()}")
     if context_text.strip():
         sections.append(f"Recent context:\n{context_text.strip()}")
+    step2_parts = []
+    if video_text.strip():
+        step2_parts.append(
+            "Windy video OpenCV features for the same revision window:\n"
+            f"{video_text.strip()}"
+        )
+    if weather_text.strip():
+        step2_parts.append(
+            "ECMWF / Open-Meteo weather forecast for the next revision horizon:\n"
+            f"{weather_text.strip()}"
+        )
+    if step2_parts:
+        sections.append("STEP 2 -- video + weather adjustment evidence:\n" + "\n\n".join(step2_parts))
     if intraday_actuals_text.strip():
         sections.append(
             "STEP 3 -- today's own actual generation so far (STRONGEST evidence, when given):\n"
@@ -276,7 +290,7 @@ def _build_prompt(anchor_predictions: list, feature_row: dict, retrieved_cases_t
         )
 
     return f"""
-Adjust the physics anchor for the next {len(anchor_predictions)} blocks.
+Adjust the {prompt_subject} for the next {len(anchor_predictions)} blocks.
 Keep changes grounded in the evidence below.
 
 Current situation:
@@ -377,17 +391,62 @@ def _parse_llm_response(raw_text: str, anchor_predictions: list) -> list:
                 "LLM adjustment unavailable for this block -- using physics anchor unchanged."
             ),
         }
-        for key in ("base_anchor_mw", "live_residual_factor", "regime_label", "fluctuation_flag",
-                    "regime_summary", "live_state_summary"):
+        for key in (
+            "base_anchor_mw",
+            "live_residual_factor",
+            "regime_label",
+            "fluctuation_flag",
+            "regime_summary",
+            "live_state_summary",
+            "step1_mw",
+            "step2_mw",
+            "step2_confidence",
+            "step2_reasoning",
+            "step3_mw",
+        ):
             if key in anchor:
                 result[key] = anchor[key]
         results.append(result)
     return results
 
 
+def _fallback_predictions(base_predictions: list, reasoning: str) -> list:
+    """Return a schema-compatible fallback result list from base predictions."""
+    results = []
+    for base in base_predictions:
+        result = {
+            "time": base["time"],
+            "block_number": base["block_number"],
+            "anchor_mw": base["anchor_mw"],
+            "llm_mw": base["anchor_mw"],
+            "confidence": "Low",
+            "reasoning": reasoning,
+        }
+        for key in (
+            "base_anchor_mw",
+            "live_residual_factor",
+            "regime_label",
+            "fluctuation_flag",
+            "regime_summary",
+            "live_state_summary",
+            "step1_mw",
+            "step2_mw",
+            "step2_confidence",
+            "step2_reasoning",
+            "step3_mw",
+        ):
+            if key in base:
+                result[key] = base[key]
+        results.append(result)
+    return results
+
+
 def predict_with_llm(anchor_predictions: list, feature_row: dict, retrieved_cases_text: str,
                       context_text: str = "", intraday_actuals_text: str = "",
-                      intraday_state_text: str = "", image_map: dict = None) -> list:
+                      intraday_state_text: str = "", weather_text: str = "",
+                      video_text: str = "", image_map: dict = None,
+                      fallback_anchor_predictions: list | None = None,
+                      prompt_subject: str = "physics anchor") -> list:
     """
     Main entry point.
 
@@ -417,8 +476,12 @@ def predict_with_llm(anchor_predictions: list, feature_row: dict, retrieved_case
     api_keys = _load_gemini_api_keys()
     model_names = _load_model_names()
     if not api_keys:
-        print("  [WARN] No Gemini API keys configured -- skipping LLM adjustment, using physics anchor for all blocks.")
-        return _parse_llm_response("[]", anchor_predictions)
+        print("  [WARN] No Gemini API keys configured -- skipping LLM adjustment, using fallback values for all blocks.")
+        base_predictions = fallback_anchor_predictions or anchor_predictions
+        return _fallback_predictions(
+            base_predictions,
+            "LLM adjustment unavailable for this block -- using fallback forecast unchanged.",
+        )
 
     max_retries = 4
     base_delay = 5
@@ -427,7 +490,7 @@ def predict_with_llm(anchor_predictions: list, feature_row: dict, retrieved_case
     for start in range(0, len(anchor_predictions), chunk_size):
         chunk = anchor_predictions[start:start + chunk_size]
         prompt = _build_prompt(chunk, feature_row, retrieved_cases_text, context_text,
-                                intraday_actuals_text, intraday_state_text)
+                                intraday_actuals_text, intraday_state_text, weather_text, video_text, prompt_subject)
 
         raw_text = ""
         last_error = None
@@ -457,7 +520,21 @@ def predict_with_llm(anchor_predictions: list, feature_row: dict, retrieved_case
             else:
                 print(f"  [WARN] Gemini call failed on all configured keys ({last_error}) -- using physics anchor for this block group.")
 
-        chunk_predictions = _parse_llm_response(raw_text, chunk)
+        if not raw_text:
+            chunk_predictions = _fallback_predictions(
+                fallback_anchor_predictions[start:start + chunk_size] if fallback_anchor_predictions else chunk,
+                "LLM adjustment unavailable for this block -- using fallback forecast unchanged.",
+            )
+        else:
+            chunk_predictions = _parse_llm_response(raw_text, chunk)
+            if fallback_anchor_predictions and all(
+                prediction["reasoning"].startswith("LLM adjustment unavailable")
+                for prediction in chunk_predictions
+            ):
+                chunk_predictions = _fallback_predictions(
+                    fallback_anchor_predictions[start:start + chunk_size],
+                    "LLM adjustment unavailable for this block -- using fallback forecast unchanged.",
+                )
         missing_count = sum(
             1 for prediction in chunk_predictions
             if prediction["reasoning"].startswith("LLM adjustment unavailable")
@@ -470,3 +547,247 @@ def predict_with_llm(anchor_predictions: list, feature_row: dict, retrieved_case
         all_predictions.extend(chunk_predictions)
 
     return all_predictions
+
+
+def _build_stepwise_prompt(base_predictions: list, feature_row: dict, context_text: str,
+                           intraday_actuals_text: str = "", intraday_state_text: str = "",
+                           weather_text: str = "", video_text: str = "",
+                           prompt_subject: str = "Bhupalpally revision forecast") -> str:
+    blocks_text = "\n".join(
+        f"{i + 1}. time={p['time']}, meter_base_mw={p['anchor_mw']}"
+        for i, p in enumerate(base_predictions)
+    )
+
+    sections = []
+    if intraday_actuals_text.strip():
+        sections.append(
+            "STEP 1 -- meter-driven base evidence:\n"
+            f"{intraday_actuals_text.strip()}"
+        )
+    if weather_text.strip() or video_text.strip():
+        step2_parts = []
+        if weather_text.strip():
+            step2_parts.append(
+                "ECMWF / Open-Meteo weather forecast for the next revision horizon:\n"
+                f"{weather_text.strip()}"
+            )
+        if video_text.strip():
+            step2_parts.append(
+                "Windy video OpenCV features for the same revision window:\n"
+                f"{video_text.strip()}"
+            )
+        sections.append("STEP 2 -- weather + video evidence:\n" + "\n\n".join(step2_parts))
+    if context_text.strip():
+        sections.append(
+            "STEP 3 -- rolling context / prior-day feedback:\n"
+            f"{context_text.strip()}"
+        )
+    if intraday_state_text.strip():
+        sections.append(
+            "LIVE SAME-DAY STATE:\n"
+            f"{intraday_state_text.strip()}"
+        )
+
+    return f"""
+Generate the Bhupalpally forecast in ONE JSON response.
+
+Important rules:
+- Use the meter-driven base forecast as Step 1.
+- Adjust Step 1 using weather + Windy/OpenCV features for Step 2.
+- Adjust Step 2 using rolling context / feedback for Step 3.
+- Return the final forecast in llm_mw.
+- Keep the output grounded in the provided evidence; do not invent unrelated values.
+- If a step does not need much change, keep it close to the previous step.
+- Return ONLY raw JSON, no markdown or prose.
+- Array size must be exactly {len(base_predictions)}.
+
+Current situation:
+{_summarize_current_situation(feature_row)}
+
+Evidence:
+{chr(10).join(sections)}
+
+Forecast blocks:
+{blocks_text}
+
+Return each object with these fields:
+- "time"
+- "step1_mw"
+- "step2_mw"
+- "step3_mw"
+- "llm_mw"
+- "confidence"
+- "reasoning"
+
+Example:
+[{{"time":"2026-08-21 15:45","step1_mw":4.2,"step2_mw":4.0,"step3_mw":3.9,"llm_mw":3.9,"confidence":"Medium","reasoning":"Meter history is strong; clouds and context suggest a slight downward adjustment."}}]
+"""
+
+
+def _parse_stepwise_llm_response(raw_text: str, base_predictions: list) -> list:
+    text = (raw_text or "").strip()
+    if text.startswith("```"):
+        text = text.strip("`")
+        if text.lower().startswith("json"):
+            text = text[4:].strip()
+
+    try:
+        data = json.loads(text)
+    except Exception as e:
+        print(f"  [WARN] Could not parse Bhupalpally stepwise JSON response ({e}); using meter base for all blocks.")
+        data = []
+
+    def _normalize_time_label(value):
+        if value is None:
+            return None
+        text_value = str(value).strip()
+        if len(text_value) >= 16:
+            return text_value[:16]
+        return text_value or None
+
+    def _extract_numeric(item: dict, keys: tuple[str, ...]):
+        if not isinstance(item, dict):
+            return None
+        for key in keys:
+            if key not in item:
+                continue
+            try:
+                return float(item[key])
+            except (TypeError, ValueError):
+                continue
+        return None
+
+    by_time = {}
+    if isinstance(data, dict):
+        for key in ("predictions", "results", "items", "data"):
+            value = data.get(key)
+            if isinstance(value, list):
+                data = value
+                break
+
+    if isinstance(data, list):
+        for item in data:
+            if not isinstance(item, dict):
+                continue
+            normalized_time = _normalize_time_label(item.get("time"))
+            if normalized_time:
+                by_time[normalized_time] = item
+
+    results = []
+    for base in base_predictions:
+        item = by_time.get(_normalize_time_label(base["time"]))
+        step1_mw = _extract_numeric(item, ("step1_mw", "meter_base_mw", "base_mw", "adjusted_mw"))
+        step2_mw = _extract_numeric(item, ("step2_mw", "weather_mw", "video_mw"))
+        step3_mw = _extract_numeric(item, ("step3_mw", "context_mw"))
+        llm_mw = _extract_numeric(item, ("llm_mw", "final_mw", "forecast_mw", "predicted_mw", "adjusted_value", "value", "mw"))
+
+        if step1_mw is None:
+            step1_mw = base["anchor_mw"]
+        if step2_mw is None:
+            step2_mw = step1_mw
+        if step3_mw is None:
+            step3_mw = step2_mw
+        if llm_mw is None:
+            llm_mw = step3_mw
+
+        result = {
+            "time": base["time"],
+            "block_number": base["block_number"],
+            "anchor_mw": base["anchor_mw"],
+            "step1_mw": step1_mw,
+            "step2_mw": step2_mw,
+            "step3_mw": step3_mw,
+            "llm_mw": llm_mw,
+            "confidence": (item or {}).get("confidence", "Low"),
+            "reasoning": (item or {}).get(
+                "reasoning",
+                "LLM adjustment unavailable for this block -- using meter base forecast unchanged.",
+            ),
+        }
+        results.append(result)
+    return results
+
+
+def predict_stepwise_with_llm(base_predictions: list, feature_row: dict, context_text: str,
+                              intraday_actuals_text: str = "", intraday_state_text: str = "",
+                              weather_text: str = "", video_text: str = "",
+                              fallback_base_predictions: list | None = None,
+                              prompt_subject: str = "Bhupalpally revision forecast") -> list:
+    """Single-call Bhupalpally path that returns step1/step2/step3/LLM outputs together."""
+    api_keys = _load_gemini_api_keys()
+    model_names = _load_model_names()
+    if not api_keys:
+        print("  [WARN] No Gemini API keys configured -- skipping Bhupalpally LLM adjustment, using meter base values.")
+        base = fallback_base_predictions or base_predictions
+        return _fallback_predictions(
+            base,
+            "LLM adjustment unavailable for this block -- using meter base forecast unchanged.",
+        )
+
+    prompt = _build_stepwise_prompt(
+        base_predictions,
+        feature_row,
+        context_text,
+        intraday_actuals_text,
+        intraday_state_text,
+        weather_text,
+        video_text,
+        prompt_subject=prompt_subject,
+    )
+
+    max_retries = 4
+    base_delay = 5
+    raw_text = ""
+    last_error = None
+    for key_index, (key_label, api_key) in enumerate(api_keys, start=1):
+        raw_text, last_error = _call_gemini_with_key(
+            api_key=api_key,
+            key_label=key_label,
+            prompt=prompt,
+            vision_parts=[],
+            max_retries=max_retries,
+            base_delay=base_delay,
+            model_names=model_names,
+        )
+        if raw_text:
+            break
+        if last_error is None:
+            continue
+        if key_index < len(api_keys):
+            print(f"  [WARN] Switching from {key_label} to next configured Gemini key.")
+            continue
+        if _is_quota_or_key_limit_error(last_error):
+            print(f"  [WARN] Gemini quota/API-key limit exhausted on all configured keys: {last_error}")
+            print("  [WARN] Using meter base forecast until a key/quota becomes available.")
+        elif _is_key_auth_error(last_error):
+            print(f"  [WARN] All configured Gemini keys appear invalid/expired: {last_error}")
+            print("  [WARN] Using meter base forecast until a valid key is supplied.")
+        else:
+            print(f"  [WARN] Gemini call failed on all configured keys ({last_error}) -- using meter base forecast.")
+
+    if not raw_text:
+        return _fallback_predictions(
+            fallback_base_predictions or base_predictions,
+            "LLM adjustment unavailable for this block -- using meter base forecast unchanged.",
+        )
+
+    stepwise_predictions = _parse_stepwise_llm_response(raw_text, base_predictions)
+    if fallback_base_predictions and all(
+        prediction["reasoning"].startswith("LLM adjustment unavailable")
+        for prediction in stepwise_predictions
+    ):
+        return _fallback_predictions(
+            fallback_base_predictions,
+            "LLM adjustment unavailable for this block -- using meter base forecast unchanged.",
+        )
+
+    missing_count = sum(
+        1 for prediction in stepwise_predictions
+        if prediction["reasoning"].startswith("LLM adjustment unavailable")
+    )
+    if missing_count:
+        print(
+            f"  [WARN] Gemini returned no usable stepwise adjustment for {missing_count}/{len(base_predictions)} "
+            f"block(s) from {base_predictions[0]['time']} to {base_predictions[-1]['time']}."
+        )
+    return stepwise_predictions

@@ -94,7 +94,8 @@ def validate_predictions(llm_predictions: list, capacity_mw: float = config.PLAN
         return []
 
     # ---- Checks 1 + 2: per-block range clip and deviation limit ----
-    checked = [_clip_and_check_deviation(p, capacity_mw, max_deviation_fraction) for p in llm_predictions]
+    hard_capacity_mw = getattr(config, "PLANT_MAX_FEED_IN_MW", capacity_mw)
+    checked = [_clip_and_check_deviation(p, hard_capacity_mw, max_deviation_fraction) for p in llm_predictions]
 
     # ---- Check 3: smoothness across consecutive blocks ----
     for i in range(1, len(checked)):
@@ -104,7 +105,7 @@ def validate_predictions(llm_predictions: list, capacity_mw: float = config.PLAN
 
         if abs(change) > MAX_STEP_CHANGE_MW:
             smoothed = prev_mw + MAX_STEP_CHANGE_MW * (1 if change > 0 else -1)
-            smoothed = max(0.0, min(capacity_mw, smoothed))
+            smoothed = max(0.0, min(hard_capacity_mw, smoothed))
             note = (
                 f"step change of {round(change, 3)} MW from previous block exceeded "
                 f"max allowed ({MAX_STEP_CHANGE_MW:.3f} MW) -- smoothed to {round(smoothed, 3)}"
