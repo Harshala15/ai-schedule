@@ -1,0 +1,9 @@
+Block,Time Interval (15 minute interval),Step 1 Meter Base Forecast MW,Step 2 Weather + Video Adjusted MW,Step 3 Plant Performance MW,Step 4 Context Adjusted MW,LLM Schedule (MW),Final Validated MW,LLM Reasoning
+46,2026-08-24 11:15 - 11:30,1.239,1.239,1.239,1.239,1.239,1.239,LLM adjustment unavailable for this block -- using meter base forecast unchanged.
+47,2026-08-24 11:30 - 11:45,1.239,1.239,1.239,1.239,1.239,1.239,LLM adjustment unavailable for this block -- using meter base forecast unchanged.
+48,2026-08-24 11:45 - 12:00,1.239,1.239,1.239,1.239,1.239,1.239,LLM adjustment unavailable for this block -- using meter base forecast unchanged.
+49,2026-08-24 12:00 - 12:15,1.239,1.239,1.239,1.239,1.239,1.239,LLM adjustment unavailable for this block -- using meter base forecast unchanged.
+50,2026-08-24 12:15 - 12:30,1.239,1.239,1.239,1.239,1.239,1.239,LLM adjustment unavailable for this block -- using meter base forecast unchanged.
+51,2026-08-24 12:30 - 12:45,1.239,1.239,1.239,1.239,1.239,1.239,LLM adjustment unavailable for this block -- using meter base forecast unchanged.
+52,2026-08-24 12:45 - 13:00,1.239,1.239,1.239,1.239,1.239,1.239,LLM adjustment unavailable for this block -- using meter base forecast unchanged.
+53,2026-08-24 13:00 - 13:15,1.239,1.239,1.239,1.239,1.239,1.239,LLM adjustment unavailable for this block -- using meter base forecast unchanged.

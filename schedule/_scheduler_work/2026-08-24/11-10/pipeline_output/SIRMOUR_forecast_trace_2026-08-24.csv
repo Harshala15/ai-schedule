@@ -1,0 +1,41 @@
+Block,Time,Physics Anchor MW,Base Physics Anchor MW,Step 1 Meter Base MW,Step 2 Weather + Video MW,Step 3 Plant Performance MW,Step 4 Context MW,Live Residual Factor,Regime,Fluctuation Flag,Step 2 Confidence,Step 2 Reasoning,LLM MW,Validated MW,Confidence,Reasoning,Retrieved Cases Count,Top Retrieved Case,Context Summary,Live State Summary,Weather Summary,Feature Snapshot
+46,2026-08-24 11:15,2.883,2.883,1.239,1.239,1.239,1.239,1.0,,False,Low,LLM adjustment unavailable for this block -- using meter base forecast unchanged.,1.239,1.239,Low,LLM adjustment unavailable for this block -- using meter base forecast unchanged.,0,no retrieved historical cases,No recent day-level accuracy history is available yet.,"Live same-day regime and fluctuation summary:
+- Live same-day state up to 2026-08-24 11:00: latest=1.239 MW, recent_avg=1.206 MW, trend=rising, regime=weak cloudy, avg_step=0.197 MW, fluctuation_flag=False, live_residual_factor=0.760. Sensor context: GHI avg=81.1 W/m2, POA avg=82.9 W/m2, ambient temp avg=26.3 C, module temp avg=26.9 C.
+- Recent actual-vs-clear-sky ratio: 40%
+- Recent GHI average: 81.1 W/m2
+- Recent POA average: 82.9 W/m2",,solar_elevation_deg=72.49; motion_coverage_end_pct=0.0; motion_score=0.0; motion_direction_deg=-1
+47,2026-08-24 11:30,3.023,3.023,1.239,1.239,1.239,1.239,1.0,,False,Low,LLM adjustment unavailable for this block -- using meter base forecast unchanged.,1.239,1.239,Low,LLM adjustment unavailable for this block -- using meter base forecast unchanged.,0,no retrieved historical cases,No recent day-level accuracy history is available yet.,"Live same-day regime and fluctuation summary:
+- Live same-day state up to 2026-08-24 11:00: latest=1.239 MW, recent_avg=1.206 MW, trend=rising, regime=weak cloudy, avg_step=0.197 MW, fluctuation_flag=False, live_residual_factor=0.760. Sensor context: GHI avg=81.1 W/m2, POA avg=82.9 W/m2, ambient temp avg=26.3 C, module temp avg=26.9 C.
+- Recent actual-vs-clear-sky ratio: 40%
+- Recent GHI average: 81.1 W/m2
+- Recent POA average: 82.9 W/m2",,solar_elevation_deg=74.41; motion_coverage_end_pct=0.0; motion_score=0.0; motion_direction_deg=-1
+48,2026-08-24 11:45,3.151,3.151,1.239,1.239,1.239,1.239,1.0,,False,Low,LLM adjustment unavailable for this block -- using meter base forecast unchanged.,1.239,1.239,Low,LLM adjustment unavailable for this block -- using meter base forecast unchanged.,0,no retrieved historical cases,No recent day-level accuracy history is available yet.,"Live same-day regime and fluctuation summary:
+- Live same-day state up to 2026-08-24 11:00: latest=1.239 MW, recent_avg=1.206 MW, trend=rising, regime=weak cloudy, avg_step=0.197 MW, fluctuation_flag=False, live_residual_factor=0.760. Sensor context: GHI avg=81.1 W/m2, POA avg=82.9 W/m2, ambient temp avg=26.3 C, module temp avg=26.9 C.
+- Recent actual-vs-clear-sky ratio: 40%
+- Recent GHI average: 81.1 W/m2
+- Recent POA average: 82.9 W/m2",,solar_elevation_deg=75.68; motion_coverage_end_pct=0.0; motion_score=0.0; motion_direction_deg=-1
+49,2026-08-24 12:00,3.269,3.269,1.239,1.239,1.239,1.239,1.0,,False,Low,LLM adjustment unavailable for this block -- using meter base forecast unchanged.,1.239,1.239,Low,LLM adjustment unavailable for this block -- using meter base forecast unchanged.,0,no retrieved historical cases,No recent day-level accuracy history is available yet.,"Live same-day regime and fluctuation summary:
+- Live same-day state up to 2026-08-24 11:00: latest=1.239 MW, recent_avg=1.206 MW, trend=rising, regime=weak cloudy, avg_step=0.197 MW, fluctuation_flag=False, live_residual_factor=0.760. Sensor context: GHI avg=81.1 W/m2, POA avg=82.9 W/m2, ambient temp avg=26.3 C, module temp avg=26.9 C.
+- Recent actual-vs-clear-sky ratio: 40%
+- Recent GHI average: 81.1 W/m2
+- Recent POA average: 82.9 W/m2",,solar_elevation_deg=76.13; motion_coverage_end_pct=0.0; motion_score=0.0; motion_direction_deg=-1
+50,2026-08-24 12:15,3.373,3.373,1.239,1.239,1.239,1.239,1.0,,False,Low,LLM adjustment unavailable for this block -- using meter base forecast unchanged.,1.239,1.239,Low,LLM adjustment unavailable for this block -- using meter base forecast unchanged.,0,no retrieved historical cases,No recent day-level accuracy history is available yet.,"Live same-day regime and fluctuation summary:
+- Live same-day state up to 2026-08-24 11:00: latest=1.239 MW, recent_avg=1.206 MW, trend=rising, regime=weak cloudy, avg_step=0.197 MW, fluctuation_flag=False, live_residual_factor=0.760. Sensor context: GHI avg=81.1 W/m2, POA avg=82.9 W/m2, ambient temp avg=26.3 C, module temp avg=26.9 C.
+- Recent actual-vs-clear-sky ratio: 40%
+- Recent GHI average: 81.1 W/m2
+- Recent POA average: 82.9 W/m2",,solar_elevation_deg=75.68; motion_coverage_end_pct=0.0; motion_score=0.0; motion_direction_deg=-1
+51,2026-08-24 12:30,3.464,3.464,1.239,1.239,1.239,1.239,1.0,,False,Low,LLM adjustment unavailable for this block -- using meter base forecast unchanged.,1.239,1.239,Low,LLM adjustment unavailable for this block -- using meter base forecast unchanged.,0,no retrieved historical cases,No recent day-level accuracy history is available yet.,"Live same-day regime and fluctuation summary:
+- Live same-day state up to 2026-08-24 11:00: latest=1.239 MW, recent_avg=1.206 MW, trend=rising, regime=weak cloudy, avg_step=0.197 MW, fluctuation_flag=False, live_residual_factor=0.760. Sensor context: GHI avg=81.1 W/m2, POA avg=82.9 W/m2, ambient temp avg=26.3 C, module temp avg=26.9 C.
+- Recent actual-vs-clear-sky ratio: 40%
+- Recent GHI average: 81.1 W/m2
+- Recent POA average: 82.9 W/m2",,solar_elevation_deg=74.41; motion_coverage_end_pct=0.0; motion_score=0.0; motion_direction_deg=-1
+52,2026-08-24 12:45,3.475,3.475,1.239,1.239,1.239,1.239,1.0,,False,Low,LLM adjustment unavailable for this block -- using meter base forecast unchanged.,1.239,1.239,Low,LLM adjustment unavailable for this block -- using meter base forecast unchanged.,0,no retrieved historical cases,No recent day-level accuracy history is available yet.,"Live same-day regime and fluctuation summary:
+- Live same-day state up to 2026-08-24 11:00: latest=1.239 MW, recent_avg=1.206 MW, trend=rising, regime=weak cloudy, avg_step=0.197 MW, fluctuation_flag=False, live_residual_factor=0.760. Sensor context: GHI avg=81.1 W/m2, POA avg=82.9 W/m2, ambient temp avg=26.3 C, module temp avg=26.9 C.
+- Recent actual-vs-clear-sky ratio: 40%
+- Recent GHI average: 81.1 W/m2
+- Recent POA average: 82.9 W/m2",,solar_elevation_deg=72.49; motion_coverage_end_pct=0.0; motion_score=0.0; motion_direction_deg=-1
+53,2026-08-24 13:00,3.427,3.427,1.239,1.239,1.239,1.239,1.0,,False,Low,LLM adjustment unavailable for this block -- using meter base forecast unchanged.,1.239,1.239,Low,LLM adjustment unavailable for this block -- using meter base forecast unchanged.,0,no retrieved historical cases,No recent day-level accuracy history is available yet.,"Live same-day regime and fluctuation summary:
+- Live same-day state up to 2026-08-24 11:00: latest=1.239 MW, recent_avg=1.206 MW, trend=rising, regime=weak cloudy, avg_step=0.197 MW, fluctuation_flag=False, live_residual_factor=0.760. Sensor context: GHI avg=81.1 W/m2, POA avg=82.9 W/m2, ambient temp avg=26.3 C, module temp avg=26.9 C.
+- Recent actual-vs-clear-sky ratio: 40%
+- Recent GHI average: 81.1 W/m2
+- Recent POA average: 82.9 W/m2",,solar_elevation_deg=70.12; motion_coverage_end_pct=0.0; motion_score=0.0; motion_direction_deg=-1

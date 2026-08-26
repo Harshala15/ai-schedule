@@ -1,0 +1,12 @@
+{
+  "plant_name": "SIRMOUR",
+  "latitude": 24.56253056,
+  "longitude": 75.09140278,
+  "dc_capacity_kw": 5480,
+  "maximum_feed_in_ac_kw": 5100,
+  "tracker_type": "None",
+  "orientation_deg_from_south": 0,
+  "tilt_deg": 20,
+  "eeg_id": "SIRMOUR",
+  "ppa_rate_inr_per_kwh": 2.94
+}

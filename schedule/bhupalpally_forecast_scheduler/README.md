@@ -10,11 +10,12 @@ At each revision time, the Lambda:
 2. Loads the meter CSV for that day and trims it to readings up to the revision cutoff.
 3. Runs the shared forecasting pipeline with a 3-hour horizon from the revision time.
 4. Uses the Bhupalpally plant profile JSON to supply capacity, tilt, orientation, and other asset metadata.
-5. Produces a Step 1 LLM forecast from meter data up to the revision time.
+5. Produces a Step 1 LLM forecast from meter data up to the revision time, plus a compact `pvlib` physics summary for the same forecast horizon.
 6. Adjusts Step 1 with Windy video + ECMWF weather as Step 2.
-7. Adjusts Step 2 with the context JSON as Step 3.
-8. Falls back to the physics anchor only when the LLM is unavailable or exhausted.
-9. Merges the new forecast into the rolling latest/current-final schedule snapshots.
+7. Adjusts Step 2 with the last 8 days of plant performance memory as Step 3.
+8. Adjusts Step 3 with the context JSON as Step 4.
+9. Falls back to the physics anchor only when the LLM is unavailable or exhausted.
+10. Merges the new forecast into the rolling latest/current-final schedule snapshots.
 
 ## Output layout
 
@@ -24,6 +25,13 @@ generated/BHUPALPALLY/YYYY-MM-DD/YYYY-MM-DD_HH-MM_metadata.json
 generated/BHUPALPALLY/YYYY-MM-DD/YYYY-MM-DD_latest_schedule.csv
 generated/BHUPALPALLY/YYYY-MM-DD/YYYY-MM-DD_latest_metadata.json
 generated/BHUPALPALLY/YYYY-MM-DD/YYYY-MM-DD_current_final_schedule.csv
+```
+
+The 3-day meter memory and `pvlib` summary are also stored under the plant state tree when S3 state sync is enabled:
+
+```text
+state/vedanjay/BHUPALPALLY/meter_history/...
+state/vedanjay/BHUPALPALLY/pvlib_summary/...
 ```
 
 ## Plant profile

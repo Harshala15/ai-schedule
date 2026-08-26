@@ -1,1 +1,2 @@
+
 {"plant": "KASIPET", "date": "2026-08-19", "schedule_csv": "/tmp/kasipet/context_generator/kasipet/2026-08-19/current_final_schedule.csv", "actual_meter_csv": "/tmp/kasipet/context_generator/kasipet/2026-08-19/kasipet_20260819.csv", "context_created": true, "summary": "2026-08-20: MAE=0.5426 MW, RMSE=0.7252 MW, MAPE=57.44%, Bias=+0.434 MW (over-forecast). By time of day -- afternoon (14:00+): +0.434 MW. Worst block at 2026-08-19 15:15: predicted 3.4 MW vs actual 1.73379 MW (error +1.666 MW)."}

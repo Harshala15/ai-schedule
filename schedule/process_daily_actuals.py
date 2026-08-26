@@ -23,7 +23,7 @@ Usage:
     python process_daily_actuals.py
 """
 
-import daily_feedback
+from modules.feedback import daily_feedback
 
 
 def main():

@@ -13,6 +13,7 @@ RUN pip install --no-cache-dir \
     numpy \
     opencv-python-headless \
     pandas \
+    pvlib \
     openmeteo-requests \
     requests-cache \
     retry-requests \
@@ -22,6 +23,7 @@ RUN pip install --no-cache-dir \
 COPY config.py daily_feedback.py feature_builder.py image_feature_extraction.py llm_predictor.py \
      physics_anchor.py prediction_store.py run_pipeline.py similarity_retrieval.py \
      state_sync.py time_features.py validator.py video_motion_features.py ${LAMBDA_TASK_ROOT}/
+COPY modules/ ${LAMBDA_TASK_ROOT}/modules/
 COPY bhupalpally_forecast_scheduler/ ${LAMBDA_TASK_ROOT}/bhupalpally_forecast_scheduler/
 COPY simour_forecast_scheduler/ ${LAMBDA_TASK_ROOT}/simour_forecast_scheduler/
 

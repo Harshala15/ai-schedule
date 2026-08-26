@@ -1,0 +1,29 @@
+{
+  "type": "plant_performance_memory",
+  "plant_name": "SIRMOUR",
+  "target_date": "2026-08-24",
+  "days": 8,
+  "recent_files": [
+    "2026-08-16_kasipet_20260816.csv",
+    "2026-08-17_kasipet_20260817.csv",
+    "2026-08-18_kasipet_20260818.csv",
+    "2026-08-19_kasipet_20260819.csv",
+    "2026-08-20_kasipet_20260820.csv",
+    "2026-08-21_kasipet_20260821.csv",
+    "2026-08-22_kasipet_20260822.csv",
+    "2026-08-23_kasipet_20260823.csv"
+  ],
+  "summary_lines": [
+    "Recent 8-day plant performance memory (oldest first):",
+    "- Overall 8-day aggregate: aggregate: 2026-08-16 00:15 to 2026-08-24 00:00: avg=2.141 MW, peak=12.363 MW at 12:00, start=0.000 MW, end=0.000 MW, trend=flat, avg_step=0.412 MW, smooth. Time-of-day: morning avg=1.011 MW; midday avg=6.496 MW; afternoon avg=1.522 MW.",
+    "- 2026-08-16: 2026-08-16 00:15 to 2026-08-16 23:45: avg=2.045 MW, peak=8.350 MW at 13:00, start=0.000 MW, end=0.000 MW, trend=flat, avg_step=0.253 MW, smooth. Time-of-day: morning avg=0.703 MW; midday avg=6.043 MW; afternoon avg=1.755 MW.",
+    "- 2026-08-17: 2026-08-17 00:15 to 2026-08-17 23:45: avg=2.532 MW, peak=10.795 MW at 12:15, start=0.000 MW, end=0.000 MW, trend=flat, avg_step=0.434 MW, smooth. Time-of-day: morning avg=0.982 MW; midday avg=7.961 MW; afternoon avg=1.872 MW.",
+    "- 2026-08-18: 2026-08-18 00:15 to 2026-08-19 00:00: avg=2.499 MW, peak=12.363 MW at 12:00, start=0.000 MW, end=0.000 MW, trend=flat, avg_step=0.503 MW, smooth. Time-of-day: morning avg=1.360 MW; midday avg=9.229 MW; afternoon avg=0.947 MW.",
+    "- 2026-08-19: 2026-08-19 00:15 to 2026-08-20 00:00: avg=1.216 MW, peak=7.250 MW at 12:30, start=0.000 MW, end=0.000 MW, trend=flat, avg_step=0.254 MW, smooth. Time-of-day: morning avg=0.415 MW; midday avg=3.946 MW; afternoon avg=0.924 MW.",
+    "- 2026-08-20: 2026-08-20 00:15 to 2026-08-21 00:00: avg=2.703 MW, peak=11.077 MW at 11:30, start=0.000 MW, end=0.000 MW, trend=flat, avg_step=0.626 MW, choppy. Time-of-day: morning avg=1.380 MW; midday avg=7.044 MW; afternoon avg=2.290 MW.",
+    "- 2026-08-21: 2026-08-21 00:15 to 2026-08-22 00:00: avg=3.026 MW, peak=11.261 MW at 11:15, start=0.000 MW, end=0.000 MW, trend=flat, avg_step=0.539 MW, choppy. Time-of-day: morning avg=1.727 MW; midday avg=8.765 MW; afternoon avg=2.029 MW.",
+    "- 2026-08-22: 2026-08-22 00:15 to 2026-08-23 00:00: avg=2.297 MW, peak=11.564 MW at 12:00, start=0.000 MW, end=0.000 MW, trend=flat, avg_step=0.546 MW, choppy. Time-of-day: morning avg=1.192 MW; midday avg=7.114 MW; afternoon avg=1.475 MW.",
+    "- 2026-08-23: 2026-08-23 00:15 to 2026-08-24 00:00: avg=0.812 MW, peak=3.215 MW at 14:30, start=0.000 MW, end=0.000 MW, trend=flat, avg_step=0.169 MW, smooth. Time-of-day: morning avg=0.323 MW; midday avg=1.862 MW; afternoon avg=0.881 MW."
+  ],
+  "summary_text": "Recent 8-day plant performance memory (oldest first):\n- Overall 8-day aggregate: aggregate: 2026-08-16 00:15 to 2026-08-24 00:00: avg=2.141 MW, peak=12.363 MW at 12:00, start=0.000 MW, end=0.000 MW, trend=flat, avg_step=0.412 MW, smooth. Time-of-day: morning avg=1.011 MW; midday avg=6.496 MW; afternoon avg=1.522 MW.\n- 2026-08-16: 2026-08-16 00:15 to 2026-08-16 23:45: avg=2.045 MW, peak=8.350 MW at 13:00, start=0.000 MW, end=0.000 MW, trend=flat, avg_step=0.253 MW, smooth. Time-of-day: morning avg=0.703 MW; midday avg=6.043 MW; afternoon avg=1.755 MW.\n- 2026-08-17: 2026-08-17 00:15 to 2026-08-17 23:45: avg=2.532 MW, peak=10.795 MW at 12:15, start=0.000 MW, end=0.000 MW, trend=flat, avg_step=0.434 MW, smooth. Time-of-day: morning avg=0.982 MW; midday avg=7.961 MW; afternoon avg=1.872 MW.\n- 2026-08-18: 2026-08-18 00:15 to 2026-08-19 00:00: avg=2.499 MW, peak=12.363 MW at 12:00, start=0.000 MW, end=0.000 MW, trend=flat, avg_step=0.503 MW, smooth. Time-of-day: morning avg=1.360 MW; midday avg=9.229 MW; afternoon avg=0.947 MW.\n- 2026-08-19: 2026-08-19 00:15 to 2026-08-20 00:00: avg=1.216 MW, peak=7.250 MW at 12:30, start=0.000 MW, end=0.000 MW, trend=flat, avg_step=0.254 MW, smooth. Time-of-day: morning avg=0.415 MW; midday avg=3.946 MW; afternoon avg=0.924 MW.\n- 2026-08-20: 2026-08-20 00:15 to 2026-08-21 00:00: avg=2.703 MW, peak=11.077 MW at 11:30, start=0.000 MW, end=0.000 MW, trend=flat, avg_step=0.626 MW, choppy. Time-of-day: morning avg=1.380 MW; midday avg=7.044 MW; afternoon avg=2.290 MW.\n- 2026-08-21: 2026-08-21 00:15 to 2026-08-22 00:00: avg=3.026 MW, peak=11.261 MW at 11:15, start=0.000 MW, end=0.000 MW, trend=flat, avg_step=0.539 MW, choppy. Time-of-day: morning avg=1.727 MW; midday avg=8.765 MW; afternoon avg=2.029 MW.\n- 2026-08-22: 2026-08-22 00:15 to 2026-08-23 00:00: avg=2.297 MW, peak=11.564 MW at 12:00, start=0.000 MW, end=0.000 MW, trend=flat, avg_step=0.546 MW, choppy. Time-of-day: morning avg=1.192 MW; midday avg=7.114 MW; afternoon avg=1.475 MW.\n- 2026-08-23: 2026-08-23 00:15 to 2026-08-24 00:00: avg=0.812 MW, peak=3.215 MW at 14:30, start=0.000 MW, end=0.000 MW, trend=flat, avg_step=0.169 MW, smooth. Time-of-day: morning avg=0.323 MW; midday avg=1.862 MW; afternoon avg=0.881 MW."
+}

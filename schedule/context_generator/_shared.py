@@ -11,7 +11,9 @@ def repo_root() -> Path:
 
 def bootstrap_environment(plant_name: str) -> Path:
     root = repo_root()
-    os.environ.setdefault("SIMOUR_STORAGE_ROOT", str(root))
+    # Lambda containers cannot write under /var/task, so use /tmp there.
+    storage_root = "/tmp" if os.getenv("AWS_LAMBDA_FUNCTION_NAME") else str(root)
+    os.environ.setdefault("SIMOUR_STORAGE_ROOT", storage_root)
     os.environ["PLANT_NAME"] = plant_name
     root_str = str(root)
     if root_str not in sys.path:

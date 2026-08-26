@@ -1,0 +1,121 @@
+Block,Time,Physics Anchor MW,Base Physics Anchor MW,Step 1 Meter Base MW,Step 2 Weather + Video MW,Step 3 Context MW,Live Residual Factor,Regime,Fluctuation Flag,Step 2 Confidence,Step 2 Reasoning,LLM MW,Validated MW,Confidence,Reasoning,Retrieved Cases Count,Top Retrieved Case,Context Summary,Live State Summary,Weather Summary,Feature Snapshot
+65,2026-08-21 16:00,4.125,4.125,4.125,4.125,4.125,1.0,,False,Low,LLM adjustment unavailable for this block -- using fallback forecast unchanged.,4.125,4.125,Low,LLM adjustment unavailable for this block -- using fallback forecast unchanged.,0,no retrieved historical cases,No recent day-level accuracy history is available yet.,,"ECMWF / Open-Meteo weather forecast for the next revision horizon:
+- Window: 2026-08-21 16:00 to 2026-08-21 18:00
+- Global tilted irradiance: start=325.20 W/m², end=0.00 W/m², trend=falling, avg=154.9 W/m²
+- Cloud cover low: avg=16.7%
+- Precipitation max=0.00 mm
+- Temperature: start=31.00°C, end=28.95°C
+Hourly weather rows:
+- 16:00: irradiance=325.20 W/m², temp=31.00°C, surface_temp=30.60°C, precip=0.00 mm, cloud_low=44.00%
+- 17:00: irradiance=139.52 W/m², temp=30.15°C, surface_temp=29.30°C, precip=0.00 mm, cloud_low=4.00%
+- 18:00: irradiance=0.00 W/m², temp=28.95°C, surface_temp=27.80°C, precip=0.00 mm, cloud_low=2.00%",solar_elevation_deg=31.93; motion_coverage_end_pct=0.0; motion_score=0.0; motion_direction_deg=-1
+66,2026-08-21 16:15,3.706,3.706,3.706,3.706,3.706,1.0,,False,Low,LLM adjustment unavailable for this block -- using fallback forecast unchanged.,3.706,3.706,Low,LLM adjustment unavailable for this block -- using fallback forecast unchanged.,0,no retrieved historical cases,No recent day-level accuracy history is available yet.,,"ECMWF / Open-Meteo weather forecast for the next revision horizon:
+- Window: 2026-08-21 16:00 to 2026-08-21 18:00
+- Global tilted irradiance: start=325.20 W/m², end=0.00 W/m², trend=falling, avg=154.9 W/m²
+- Cloud cover low: avg=16.7%
+- Precipitation max=0.00 mm
+- Temperature: start=31.00°C, end=28.95°C
+Hourly weather rows:
+- 16:00: irradiance=325.20 W/m², temp=31.00°C, surface_temp=30.60°C, precip=0.00 mm, cloud_low=44.00%
+- 17:00: irradiance=139.52 W/m², temp=30.15°C, surface_temp=29.30°C, precip=0.00 mm, cloud_low=4.00%
+- 18:00: irradiance=0.00 W/m², temp=28.95°C, surface_temp=27.80°C, precip=0.00 mm, cloud_low=2.00%",solar_elevation_deg=28.37; motion_coverage_end_pct=0.0; motion_score=0.0; motion_direction_deg=-1
+67,2026-08-21 16:30,3.275,3.275,3.275,3.275,3.275,1.0,,False,Low,LLM adjustment unavailable for this block -- using fallback forecast unchanged.,3.275,3.275,Low,LLM adjustment unavailable for this block -- using fallback forecast unchanged.,0,no retrieved historical cases,No recent day-level accuracy history is available yet.,,"ECMWF / Open-Meteo weather forecast for the next revision horizon:
+- Window: 2026-08-21 16:00 to 2026-08-21 18:00
+- Global tilted irradiance: start=325.20 W/m², end=0.00 W/m², trend=falling, avg=154.9 W/m²
+- Cloud cover low: avg=16.7%
+- Precipitation max=0.00 mm
+- Temperature: start=31.00°C, end=28.95°C
+Hourly weather rows:
+- 16:00: irradiance=325.20 W/m², temp=31.00°C, surface_temp=30.60°C, precip=0.00 mm, cloud_low=44.00%
+- 17:00: irradiance=139.52 W/m², temp=30.15°C, surface_temp=29.30°C, precip=0.00 mm, cloud_low=4.00%
+- 18:00: irradiance=0.00 W/m², temp=28.95°C, surface_temp=27.80°C, precip=0.00 mm, cloud_low=2.00%",solar_elevation_deg=24.83; motion_coverage_end_pct=0.0; motion_score=0.0; motion_direction_deg=-1
+68,2026-08-21 16:45,2.831,2.831,2.831,2.831,2.831,1.0,,False,Low,LLM adjustment unavailable for this block -- using fallback forecast unchanged.,2.831,2.831,Low,LLM adjustment unavailable for this block -- using fallback forecast unchanged.,0,no retrieved historical cases,No recent day-level accuracy history is available yet.,,"ECMWF / Open-Meteo weather forecast for the next revision horizon:
+- Window: 2026-08-21 16:00 to 2026-08-21 18:00
+- Global tilted irradiance: start=325.20 W/m², end=0.00 W/m², trend=falling, avg=154.9 W/m²
+- Cloud cover low: avg=16.7%
+- Precipitation max=0.00 mm
+- Temperature: start=31.00°C, end=28.95°C
+Hourly weather rows:
+- 16:00: irradiance=325.20 W/m², temp=31.00°C, surface_temp=30.60°C, precip=0.00 mm, cloud_low=44.00%
+- 17:00: irradiance=139.52 W/m², temp=30.15°C, surface_temp=29.30°C, precip=0.00 mm, cloud_low=4.00%
+- 18:00: irradiance=0.00 W/m², temp=28.95°C, surface_temp=27.80°C, precip=0.00 mm, cloud_low=2.00%",solar_elevation_deg=21.28; motion_coverage_end_pct=0.0; motion_score=0.0; motion_direction_deg=-1
+69,2026-08-21 17:00,2.378,2.378,2.378,2.378,2.378,1.0,,False,Low,LLM adjustment unavailable for this block -- using fallback forecast unchanged.,2.378,2.378,Low,LLM adjustment unavailable for this block -- using fallback forecast unchanged.,0,no retrieved historical cases,No recent day-level accuracy history is available yet.,,"ECMWF / Open-Meteo weather forecast for the next revision horizon:
+- Window: 2026-08-21 16:00 to 2026-08-21 18:00
+- Global tilted irradiance: start=325.20 W/m², end=0.00 W/m², trend=falling, avg=154.9 W/m²
+- Cloud cover low: avg=16.7%
+- Precipitation max=0.00 mm
+- Temperature: start=31.00°C, end=28.95°C
+Hourly weather rows:
+- 16:00: irradiance=325.20 W/m², temp=31.00°C, surface_temp=30.60°C, precip=0.00 mm, cloud_low=44.00%
+- 17:00: irradiance=139.52 W/m², temp=30.15°C, surface_temp=29.30°C, precip=0.00 mm, cloud_low=4.00%
+- 18:00: irradiance=0.00 W/m², temp=28.95°C, surface_temp=27.80°C, precip=0.00 mm, cloud_low=2.00%",solar_elevation_deg=17.75; motion_coverage_end_pct=0.0; motion_score=0.0; motion_direction_deg=-1
+70,2026-08-21 17:15,1.916,1.916,1.916,1.916,1.916,1.0,,False,Low,LLM adjustment unavailable for this block -- using fallback forecast unchanged.,1.916,1.916,Low,LLM adjustment unavailable for this block -- using fallback forecast unchanged.,0,no retrieved historical cases,No recent day-level accuracy history is available yet.,,"ECMWF / Open-Meteo weather forecast for the next revision horizon:
+- Window: 2026-08-21 16:00 to 2026-08-21 18:00
+- Global tilted irradiance: start=325.20 W/m², end=0.00 W/m², trend=falling, avg=154.9 W/m²
+- Cloud cover low: avg=16.7%
+- Precipitation max=0.00 mm
+- Temperature: start=31.00°C, end=28.95°C
+Hourly weather rows:
+- 16:00: irradiance=325.20 W/m², temp=31.00°C, surface_temp=30.60°C, precip=0.00 mm, cloud_low=44.00%
+- 17:00: irradiance=139.52 W/m², temp=30.15°C, surface_temp=29.30°C, precip=0.00 mm, cloud_low=4.00%
+- 18:00: irradiance=0.00 W/m², temp=28.95°C, surface_temp=27.80°C, precip=0.00 mm, cloud_low=2.00%",solar_elevation_deg=14.22; motion_coverage_end_pct=0.0; motion_score=0.0; motion_direction_deg=-1
+71,2026-08-21 17:30,1.448,1.448,1.448,1.448,1.448,1.0,,False,Low,LLM adjustment unavailable for this block -- using fallback forecast unchanged.,1.448,1.448,Low,LLM adjustment unavailable for this block -- using fallback forecast unchanged.,0,no retrieved historical cases,No recent day-level accuracy history is available yet.,,"ECMWF / Open-Meteo weather forecast for the next revision horizon:
+- Window: 2026-08-21 16:00 to 2026-08-21 18:00
+- Global tilted irradiance: start=325.20 W/m², end=0.00 W/m², trend=falling, avg=154.9 W/m²
+- Cloud cover low: avg=16.7%
+- Precipitation max=0.00 mm
+- Temperature: start=31.00°C, end=28.95°C
+Hourly weather rows:
+- 16:00: irradiance=325.20 W/m², temp=31.00°C, surface_temp=30.60°C, precip=0.00 mm, cloud_low=44.00%
+- 17:00: irradiance=139.52 W/m², temp=30.15°C, surface_temp=29.30°C, precip=0.00 mm, cloud_low=4.00%
+- 18:00: irradiance=0.00 W/m², temp=28.95°C, surface_temp=27.80°C, precip=0.00 mm, cloud_low=2.00%",solar_elevation_deg=10.7; motion_coverage_end_pct=0.0; motion_score=0.0; motion_direction_deg=-1
+72,2026-08-21 17:45,0.976,0.976,0.976,0.976,0.976,1.0,,False,Low,LLM adjustment unavailable for this block -- using fallback forecast unchanged.,0.976,0.976,Low,LLM adjustment unavailable for this block -- using fallback forecast unchanged.,0,no retrieved historical cases,No recent day-level accuracy history is available yet.,,"ECMWF / Open-Meteo weather forecast for the next revision horizon:
+- Window: 2026-08-21 16:00 to 2026-08-21 18:00
+- Global tilted irradiance: start=325.20 W/m², end=0.00 W/m², trend=falling, avg=154.9 W/m²
+- Cloud cover low: avg=16.7%
+- Precipitation max=0.00 mm
+- Temperature: start=31.00°C, end=28.95°C
+Hourly weather rows:
+- 16:00: irradiance=325.20 W/m², temp=31.00°C, surface_temp=30.60°C, precip=0.00 mm, cloud_low=44.00%
+- 17:00: irradiance=139.52 W/m², temp=30.15°C, surface_temp=29.30°C, precip=0.00 mm, cloud_low=4.00%
+- 18:00: irradiance=0.00 W/m², temp=28.95°C, surface_temp=27.80°C, precip=0.00 mm, cloud_low=2.00%",solar_elevation_deg=7.19; motion_coverage_end_pct=0.0; motion_score=0.0; motion_direction_deg=-1
+73,2026-08-21 18:00,0.503,0.503,0.503,0.503,0.503,1.0,,False,Low,LLM adjustment unavailable for this block -- using fallback forecast unchanged.,0.503,0.503,Low,LLM adjustment unavailable for this block -- using fallback forecast unchanged.,0,no retrieved historical cases,No recent day-level accuracy history is available yet.,,"ECMWF / Open-Meteo weather forecast for the next revision horizon:
+- Window: 2026-08-21 16:00 to 2026-08-21 18:00
+- Global tilted irradiance: start=325.20 W/m², end=0.00 W/m², trend=falling, avg=154.9 W/m²
+- Cloud cover low: avg=16.7%
+- Precipitation max=0.00 mm
+- Temperature: start=31.00°C, end=28.95°C
+Hourly weather rows:
+- 16:00: irradiance=325.20 W/m², temp=31.00°C, surface_temp=30.60°C, precip=0.00 mm, cloud_low=44.00%
+- 17:00: irradiance=139.52 W/m², temp=30.15°C, surface_temp=29.30°C, precip=0.00 mm, cloud_low=4.00%
+- 18:00: irradiance=0.00 W/m², temp=28.95°C, surface_temp=27.80°C, precip=0.00 mm, cloud_low=2.00%",solar_elevation_deg=3.7; motion_coverage_end_pct=0.0; motion_score=0.0; motion_direction_deg=-1
+74,2026-08-21 18:15,0.029,0.029,0.029,0.029,0.029,1.0,,False,Low,LLM adjustment unavailable for this block -- using fallback forecast unchanged.,0.029,0.029,Low,LLM adjustment unavailable for this block -- using fallback forecast unchanged.,0,no retrieved historical cases,No recent day-level accuracy history is available yet.,,"ECMWF / Open-Meteo weather forecast for the next revision horizon:
+- Window: 2026-08-21 16:00 to 2026-08-21 18:00
+- Global tilted irradiance: start=325.20 W/m², end=0.00 W/m², trend=falling, avg=154.9 W/m²
+- Cloud cover low: avg=16.7%
+- Precipitation max=0.00 mm
+- Temperature: start=31.00°C, end=28.95°C
+Hourly weather rows:
+- 16:00: irradiance=325.20 W/m², temp=31.00°C, surface_temp=30.60°C, precip=0.00 mm, cloud_low=44.00%
+- 17:00: irradiance=139.52 W/m², temp=30.15°C, surface_temp=29.30°C, precip=0.00 mm, cloud_low=4.00%
+- 18:00: irradiance=0.00 W/m², temp=28.95°C, surface_temp=27.80°C, precip=0.00 mm, cloud_low=2.00%",solar_elevation_deg=0.21; motion_coverage_end_pct=0.0; motion_score=0.0; motion_direction_deg=-1
+75,2026-08-21 18:30,0.0,0.0,0.0,0.0,0.0,1.0,,False,Low,LLM adjustment unavailable for this block -- using fallback forecast unchanged.,0.0,0.0,Low,LLM adjustment unavailable for this block -- using fallback forecast unchanged.,0,no retrieved historical cases,No recent day-level accuracy history is available yet.,,"ECMWF / Open-Meteo weather forecast for the next revision horizon:
+- Window: 2026-08-21 16:00 to 2026-08-21 18:00
+- Global tilted irradiance: start=325.20 W/m², end=0.00 W/m², trend=falling, avg=154.9 W/m²
+- Cloud cover low: avg=16.7%
+- Precipitation max=0.00 mm
+- Temperature: start=31.00°C, end=28.95°C
+Hourly weather rows:
+- 16:00: irradiance=325.20 W/m², temp=31.00°C, surface_temp=30.60°C, precip=0.00 mm, cloud_low=44.00%
+- 17:00: irradiance=139.52 W/m², temp=30.15°C, surface_temp=29.30°C, precip=0.00 mm, cloud_low=4.00%
+- 18:00: irradiance=0.00 W/m², temp=28.95°C, surface_temp=27.80°C, precip=0.00 mm, cloud_low=2.00%",solar_elevation_deg=-3.25; motion_coverage_end_pct=0.0; motion_score=0.0; motion_direction_deg=-1
+76,2026-08-21 18:45,0.0,0.0,0.0,0.0,0.0,1.0,,False,Low,LLM adjustment unavailable for this block -- using fallback forecast unchanged.,0.0,0.0,Low,LLM adjustment unavailable for this block -- using fallback forecast unchanged.,0,no retrieved historical cases,No recent day-level accuracy history is available yet.,,"ECMWF / Open-Meteo weather forecast for the next revision horizon:
+- Window: 2026-08-21 16:00 to 2026-08-21 18:00
+- Global tilted irradiance: start=325.20 W/m², end=0.00 W/m², trend=falling, avg=154.9 W/m²
+- Cloud cover low: avg=16.7%
+- Precipitation max=0.00 mm
+- Temperature: start=31.00°C, end=28.95°C
+Hourly weather rows:
+- 16:00: irradiance=325.20 W/m², temp=31.00°C, surface_temp=30.60°C, precip=0.00 mm, cloud_low=44.00%
+- 17:00: irradiance=139.52 W/m², temp=30.15°C, surface_temp=29.30°C, precip=0.00 mm, cloud_low=4.00%
+- 18:00: irradiance=0.00 W/m², temp=28.95°C, surface_temp=27.80°C, precip=0.00 mm, cloud_low=2.00%",solar_elevation_deg=-6.7; motion_coverage_end_pct=0.0; motion_score=0.0; motion_direction_deg=-1

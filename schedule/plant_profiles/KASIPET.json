@@ -1,0 +1,12 @@
+{
+  "plant_name": "KASIPET",
+  "latitude": 19.03943918,
+  "longitude": 79.43691745,
+  "dc_capacity_kw": 16500,
+  "maximum_feed_in_ac_kw": 15000,
+  "tracker_type": "None",
+  "orientation_deg_from_south": 0,
+  "tilt_deg": 20,
+  "eeg_id": "Singareni Collieries Company Limited-Kasipet Mines",
+  "ppa_rate_inr_per_kwh": 5.65
+}

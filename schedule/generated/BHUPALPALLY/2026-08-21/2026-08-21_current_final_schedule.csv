@@ -1,0 +1,50 @@
+Block,Time Interval (15 minute interval),Physics Anchor Schedule (MW),Step 1 Meter Base Forecast MW,Step 2 Weather + Video Adjusted MW,Step 3 Context Adjusted MW,LLM Schedule (MW),Final Validated MW,LLM Reasoning
+28,2026-08-21 06:45 - 07:00,1.515,,,,1.363,,Consistent strong positive bias (+0.742 MW) in the morning indicates the physics anchor is too high; 10% reduction applied for clear sky conditions.
+29,2026-08-21 07:00 - 07:15,1.88,,,,1.692,,Consistent strong positive bias (+0.742 MW) in the morning indicates the physics anchor is too high; 10% reduction applied for clear sky conditions.
+30,2026-08-21 07:15 - 07:30,2.238,,,,2.014,,Consistent strong positive bias (+0.742 MW) in the morning indicates the physics anchor is too high; 10% reduction applied for clear sky conditions.
+31,2026-08-21 07:30 - 07:45,2.585,,,,2.285,,Strong morning over-forecast bias (+0.742 MW) suggests physics anchor is too high for typical performance.
+32,2026-08-21 07:45 - 08:00,2.925,,,,2.625,,Strong morning over-forecast bias (+0.742 MW) suggests physics anchor is too high for typical performance.
+33,2026-08-21 08:00 - 08:15,3.256,,,,2.856,,Strong morning over-forecast bias (+0.742 MW) suggests physics anchor is too high for typical performance.
+34,2026-08-21 08:15 - 08:30,3.573,,,,3.173,,Strong morning over-forecast bias (+0.742 MW) suggests physics anchor is too high for typical performance.
+35,2026-08-21 08:30 - 08:45,3.878,,,,3.478,,Strong morning over-forecast bias (+0.742 MW) suggests physics anchor is too high for typical performance.
+36,2026-08-21 08:45 - 09:00,4.167,,,,3.667,,Strong morning over-forecast bias (+0.742 MW) suggests physics anchor is too high for typical performance.
+37,2026-08-21 09:00 - 09:15,4.439,,,,3.739,,"Strong historical morning over-forecast bias (+0.742 MW) suggests a downward adjustment, reinforced by past over-forecasting despite low cloud coverage."
+38,2026-08-21 09:15 - 09:30,4.695,,,,3.995,,"Strong historical morning over-forecast bias (+0.742 MW) suggests a downward adjustment, reinforced by past over-forecasting despite low cloud coverage."
+39,2026-08-21 09:30 - 09:45,4.932,,,,4.232,,"Strong historical morning over-forecast bias (+0.742 MW) suggests a downward adjustment, reinforced by past over-forecasting despite low cloud coverage."
+40,2026-08-21 09:45 - 10:00,5.15,,,,4.45,,"Strong historical morning over-forecast bias (+0.742 MW) suggests a downward adjustment, reinforced by past over-forecasting despite low cloud coverage."
+41,2026-08-21 10:00 - 10:15,5.348,,,,4.948,,"Historical midday over-forecast bias (+0.409 MW) suggests a downward adjustment, reinforced by past over-forecasting despite low cloud coverage."
+42,2026-08-21 10:15 - 10:30,5.524,,,,5.124,,"Historical midday over-forecast bias (+0.409 MW) suggests a downward adjustment, reinforced by past over-forecasting despite low cloud coverage."
+43,2026-08-21 10:30 - 10:45,5.679,,,,5.27,,"Consistent midday over-forecast bias (0.409 MW) observed, even with low cloud coverage. Anchor adjusted down by 0.409 MW."
+44,2026-08-21 10:45 - 11:00,5.811,,,,5.402,,"Consistent midday over-forecast bias (0.409 MW) observed, even with low cloud coverage. Anchor adjusted down by 0.409 MW."
+45,2026-08-21 11:00 - 11:15,5.92,,,,5.511,,"Consistent midday over-forecast bias (0.409 MW) observed, even with low cloud coverage. Anchor adjusted down by 0.409 MW."
+46,2026-08-21 11:15 - 11:30,6.005,,,,5.596,,"Consistent midday over-forecast bias (0.409 MW) observed, even with low cloud coverage. Anchor adjusted down by 0.409 MW."
+47,2026-08-21 11:30 - 11:45,6.066,,,,5.657,,"Consistent midday over-forecast bias (0.409 MW) observed, even with low cloud coverage. Anchor adjusted down by 0.409 MW."
+48,2026-08-21 11:45 - 12:00,6.102,,,,5.693,,"Consistent midday over-forecast bias (0.409 MW) observed, even with low cloud coverage. Anchor adjusted down by 0.409 MW."
+49,2026-08-21 12:00 - 12:15,6.116,,,,5.81,,"Current low cloud coverage (1.09%) suggests clear conditions. Overall forecast bias is positive (over-forecasting), especially for midday blocks (+0.409 MW). Similar low cloud conditions on 2026-08-16 (12:45) resulted in a significant over-forecast (+2.836 MW). Reducing anchor by 5% to reflect this historical over-forecasting tendency. Also, 2026-08-20 12:00 was a significant over-forecast."
+50,2026-08-21 12:15 - 12:30,6.103,,,,5.798,,"Current low cloud coverage (1.09%) suggests clear conditions. Overall forecast bias is positive (over-forecasting), especially for midday blocks (+0.409 MW). Similar low cloud conditions on 2026-08-16 (12:45) resulted in a significant over-forecast (+2.836 MW). Reducing anchor by 5% to reflect this historical over-forecasting tendency."
+51,2026-08-21 12:30 - 12:45,6.067,,,,5.764,,"Current low cloud coverage (1.09%) suggests clear conditions. Overall forecast bias is positive (over-forecasting), especially for midday blocks (+0.409 MW). Similar low cloud conditions on 2026-08-16 (12:45) resulted in a significant over-forecast (+2.836 MW). Reducing anchor by 5% to reflect this historical over-forecasting tendency."
+52,2026-08-21 12:45 - 13:00,6.006,,,,5.706,,"Current low cloud coverage (1.09%) suggests clear conditions. This block aligns with 2026-08-16 12:45, which had similar conditions (1.36% clouds, 78.09 deg solar elevation) and was significantly over-forecast (+2.836 MW). Overall forecast bias is positive for midday blocks (+0.409 MW). Reducing anchor by 5% to reflect this tendency."
+53,2026-08-21 13:00 - 13:15,5.921,,,,5.625,,"Current low cloud coverage (1.09%) suggests clear conditions. Overall forecast bias is positive (over-forecasting), especially for midday blocks (+0.409 MW). Similar low cloud conditions on 2026-08-16 (12:45) resulted in a significant over-forecast (+2.836 MW). Reducing anchor by 5% to reflect this historical over-forecasting tendency."
+54,2026-08-21 13:15 - 13:30,5.812,,,,5.521,,"Current low cloud coverage (1.09%) suggests clear conditions. Overall forecast bias is positive (over-forecasting), especially for midday blocks (+0.409 MW). Similar low cloud conditions on 2026-08-16 (12:45) resulted in a significant over-forecast (+2.836 MW). Reducing anchor by 5% to reflect this historical over-forecasting tendency."
+55,2026-08-21 13:30 - 13:45,5.679,,,,3.975,,"Consistent with pattern from 2026-08-16 12:45 with very low, stationary clouds and large midday over-forecast bias."
+56,2026-08-21 13:45 - 14:00,5.525,,,,3.591,,"Continuing observed over-forecast trend for low, stationary cloud conditions, transitioning towards afternoon."
+57,2026-08-21 14:00 - 14:15,5.348,,,,3.209,,"Continuing observed over-forecast trend for low, stationary cloud conditions, consistent with afternoon bias."
+58,2026-08-21 14:15 - 14:30,5.151,,,,3.091,,"Continuing observed over-forecast trend for low, stationary cloud conditions, consistent with afternoon bias."
+59,2026-08-21 14:30 - 14:45,4.933,,,,2.96,,"Based on 2026-08-19 14:30 (actual 2.526 MW under low, stationary cloud conditions) and persistent afternoon over-forecast bias."
+60,2026-08-21 14:45 - 15:00,4.696,,,,2.818,,"Consistent with pattern from 2026-08-19 14:30 with very low, stationary clouds and large afternoon over-forecast bias."
+61,2026-08-21 15:00 - 15:15,4.44,,,,4.195,,"Consistent positive forecast bias in the afternoon (rolling +0.269 MW), even with low cloud coverage (1.12%), suggests a downward adjustment to the physics anchor to reduce over-forecasting."
+62,2026-08-21 15:15 - 15:30,4.166,,,,3.937,,"Consistent positive forecast bias in the afternoon (rolling +0.269 MW), even with low cloud coverage (1.12%), suggests a downward adjustment to the physics anchor to reduce over-forecasting."
+63,2026-08-21 15:30 - 15:45,3.878,,,,3.665,,"Consistent positive forecast bias in the afternoon (rolling +0.269 MW), even with low cloud coverage (1.12%), suggests a downward adjustment to the physics anchor to reduce over-forecasting."
+64,2026-08-21 15:45 - 16:00,3.573,,,,3.377,,"Consistent positive forecast bias in the afternoon (rolling +0.269 MW), even with low cloud coverage (1.12%), suggests a downward adjustment to the physics anchor to reduce over-forecasting."
+65,2026-08-21 16:00 - 16:15,3.256,,,,3.078,,"Consistent positive forecast bias in the afternoon (rolling +0.269 MW), even with low cloud coverage (1.12%), suggests a downward adjustment to the physics anchor to reduce over-forecasting."
+66,2026-08-21 16:15 - 16:30,2.925,,,,2.764,,"Consistent positive forecast bias in the afternoon (rolling +0.269 MW), even with low cloud coverage (1.12%), suggests a downward adjustment to the physics anchor to reduce over-forecasting."
+67,2026-08-21 16:30 - 16:45,0.0,0.0,0.0,0.0,0.0,0.0,0% cloud coverage over plant indicates no cloud-related adjustment from the physics anchor.
+68,2026-08-21 16:45 - 17:00,2.831,2.831,2.831,2.831,2.831,2.831,LLM adjustment unavailable for this block -- using fallback forecast unchanged.
+69,2026-08-21 17:00 - 17:15,2.378,2.378,2.378,2.378,2.378,2.378,LLM adjustment unavailable for this block -- using fallback forecast unchanged.
+70,2026-08-21 17:15 - 17:30,1.916,1.916,1.916,1.916,1.916,1.916,LLM adjustment unavailable for this block -- using fallback forecast unchanged.
+71,2026-08-21 17:30 - 17:45,1.448,1.448,1.448,1.448,1.448,1.448,LLM adjustment unavailable for this block -- using fallback forecast unchanged.
+72,2026-08-21 17:45 - 18:00,0.976,0.976,0.976,0.976,0.976,0.976,LLM adjustment unavailable for this block -- using fallback forecast unchanged.
+73,2026-08-21 18:00 - 18:15,0.503,0.503,0.503,0.503,0.503,0.503,LLM adjustment unavailable for this block -- using fallback forecast unchanged.
+74,2026-08-21 18:15 - 18:30,0.029,0.029,0.029,0.029,0.029,0.029,LLM adjustment unavailable for this block -- using fallback forecast unchanged.
+75,2026-08-21 18:30 - 18:45,0.0,0.0,0.0,0.0,0.0,0.0,LLM adjustment unavailable for this block -- using fallback forecast unchanged.
+76,2026-08-21 18:45 - 19:00,0.0,0.0,0.0,0.0,0.0,0.0,LLM adjustment unavailable for this block -- using fallback forecast unchanged.

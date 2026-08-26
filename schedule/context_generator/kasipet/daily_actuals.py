@@ -5,7 +5,7 @@ from context_generator._shared import bootstrap_environment
 
 bootstrap_environment("KASIPET")
 
-import daily_feedback  # noqa: E402
+from modules.feedback import daily_feedback  # noqa: E402
 
 
 def main() -> None:

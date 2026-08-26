@@ -1,0 +1,30 @@
+Block,Time Interval (15 minute interval),Step 1 Meter Base Forecast MW,Step 2 Weather + Video Adjusted MW,Step 3 Plant Performance MW,Step 4 Context MW,LLM Schedule (MW),Final Validated MW,LLM Reasoning,Step 4 Context Adjusted MW
+25,2026-08-24 06:00 - 06:15,0.0,0.0,0.0,,0.0,0.0,Solar elevation is at 3.37 degrees at dawn; irradiance is negligible and power generation is zero.,0.0
+26,2026-08-24 06:15 - 06:30,0.0,0.02,0.02,,0.02,0.02,Sun begins to rise over the horizon; negligible cloud cover (0.7%) allows initial minimal power onset.,0.02
+27,2026-08-24 06:30 - 06:45,0.0,0.1,0.08,,0.08,0.08,Early morning solar elevation increase drives modest ramp-up under clear sky conditions.,0.08
+28,2026-08-24 06:45 - 07:00,0.08,0.1,0.12,,0.12,0.052,Base meter reading updated for rising solar elevation; clear sky condition with negligible cloud coverage.,0.12
+29,2026-08-24 07:00 - 07:15,0.18,0.22,0.25,,0.25,0.052,"Consistent early morning solar ramp with stationary, minimal clouds overhead (0.7%).",0.25
+30,2026-08-24 07:15 - 07:30,0.35,0.42,0.48,,0.48,0.052,Morning solar irradiance increasing smoothly; step 3 incorporates historical morning bias alignment.,0.48
+31,2026-08-24 07:30 - 07:45,0.6,0.7,0.78,,0.78,0.052,Steepening morning generation curve; minimal cloud attenuation detected on video.,0.78
+32,2026-08-24 07:45 - 08:00,0.9,1.05,1.15,,1.15,0.052,Solar angle progression drives generation upward; sustained clear sky overhead.,1.15
+33,2026-08-24 08:00 - 08:15,1.25,1.45,1.58,,1.58,0.052,Irradiance building steadily; step 3 context aligns with standard clear morning profiles.,1.58
+34,2026-08-24 08:15 - 08:30,0.094,0.11,0.12,,0.12,0.12,Step 1 uses recent persistence base (0.094 MW). Step 2 incorporates a slight solar elevation gain under steady low cloud cover (0.5%). Step 3 adjusts for slight upward morning trend.,0.12
+35,2026-08-24 08:30 - 08:45,0.094,0.13,0.15,,0.15,0.132,Step 1 persists latest meter baseline. Step 2 reflects expected clear sky radiation progression despite high cloud attenuation today. Step 3 aligns with morning ramp expectations.,0.15
+36,2026-08-24 08:45 - 09:00,0.094,0.16,0.19,,0.19,0.132,Step 1 baseline remains 0.094 MW. Step 2 factors in stationary clouds with minor irradiance increase. Step 3 adds slight positive bias for morning progression.,0.19
+37,2026-08-24 09:00 - 09:15,0.094,0.2,0.24,,0.24,0.132,Step 1 meter base. Step 2 adjusts upwards for rising solar zenith angle. Step 3 includes historical morning bias adjustments.,0.24
+38,2026-08-24 09:15 - 09:30,0.094,0.25,0.3,,0.3,0.132,Step 1 persistence baseline. Step 2 accounts for low cloud motion (0.0) allowing stable ramp. Step 3 slightly elevates forecast given typical morning bias.,0.3
+39,2026-08-24 09:30 - 09:45,0.094,0.31,0.37,,0.37,0.132,Step 1 base level. Step 2 incorporates solar elevation ramp with low cloud coverage (0.5%). Step 3 nudges higher based on historical morning under-forecasting tendency.,0.37
+40,2026-08-24 09:45 - 10:00,1.02,1.05,1.08,,1.08,1.08,Extrapolating recent steady +0.12 MW/block generation trend from 0.896 MW base. Low cloud coverage (0.5%) overhead allows mild upward progression as solar elevation rises.,1.08
+41,2026-08-24 10:00 - 10:15,1.14,1.18,1.22,,1.22,1.22,Sustained smooth ramping under stationary overhead conditions. Solar elevation increasing towards morning peak.,1.22
+42,2026-08-24 10:15 - 10:30,1.26,1.32,1.36,,1.36,1.254,Clear-sky ceiling increasing; slight upward nudge applied to step 2/3 given stable video cloud coverage.,1.36
+43,2026-08-24 10:30 - 10:45,1.38,1.45,1.5,,1.5,1.254,Continuing steady linear growth matching live same-day rising regime and positive irradiance trajectory.,1.5
+44,2026-08-24 10:45 - 11:00,1.5,1.58,1.64,,1.64,1.254,Midday approach increases solar irradiance; historical performance bias provides mild positive reinforcement.,1.64
+45,2026-08-24 11:00 - 11:15,1.62,1.72,1.78,,1.78,1.254,Steady generation climb maintained under low cloud optical flow activity.,1.78
+46,2026-08-24 11:15 - 11:30,1.239,1.239,1.239,,1.239,1.239,LLM adjustment unavailable for this block -- using meter base forecast unchanged.,1.239
+47,2026-08-24 11:30 - 11:45,1.239,1.239,1.239,,1.239,1.239,LLM adjustment unavailable for this block -- using meter base forecast unchanged.,1.239
+48,2026-08-24 11:45 - 12:00,1.239,1.239,1.239,,1.239,1.239,LLM adjustment unavailable for this block -- using meter base forecast unchanged.,1.239
+49,2026-08-24 12:00 - 12:15,1.239,1.239,1.239,,1.239,1.239,LLM adjustment unavailable for this block -- using meter base forecast unchanged.,1.239
+50,2026-08-24 12:15 - 12:30,1.239,1.239,1.239,,1.239,1.239,LLM adjustment unavailable for this block -- using meter base forecast unchanged.,1.239
+51,2026-08-24 12:30 - 12:45,1.239,1.239,1.239,,1.239,1.239,LLM adjustment unavailable for this block -- using meter base forecast unchanged.,1.239
+52,2026-08-24 12:45 - 13:00,1.239,1.239,1.239,,1.239,1.239,LLM adjustment unavailable for this block -- using meter base forecast unchanged.,1.239
+53,2026-08-24 13:00 - 13:15,1.239,1.239,1.239,,1.239,1.239,LLM adjustment unavailable for this block -- using meter base forecast unchanged.,1.239
