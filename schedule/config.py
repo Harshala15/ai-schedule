@@ -109,6 +109,30 @@ def _read_profile_mw_setting(env_name: str, profile_key: str, default_mw: float)
 
 # ---- Plant profile / details ----
 _DEFAULT_PLANT_NAME = _read_env_str("PLANT_NAME", "SIRMOUR")
+_PLANT_FALLBACKS = {
+    "SIRMOUR": {
+        "latitude": 24.56253056,
+        "longitude": 75.09140278,
+        "capacity_mw": 5.1,
+        "dc_capacity_mw": 5.48,
+        "max_feed_in_mw": 5.1,
+    },
+    "KASIPET": {
+        "latitude": 19.03943918,
+        "longitude": 79.43691745,
+        "capacity_mw": 15.0,
+        "dc_capacity_mw": 16.5,
+        "max_feed_in_mw": 15.0,
+    },
+    "BHUPALPALLY": {
+        "latitude": 18.447931,
+        "longitude": 79.877263,
+        "capacity_mw": 10.0,
+        "dc_capacity_mw": 11.005,
+        "max_feed_in_mw": 10.0,
+    },
+}
+_fallback = _PLANT_FALLBACKS.get(_DEFAULT_PLANT_NAME.upper(), _PLANT_FALLBACKS["SIRMOUR"])
 _DEFAULT_PLANT_PROFILE_PATH = Path(
     os.getenv(
         "PLANT_PROFILE_PATH",
@@ -136,29 +160,29 @@ def _read_profile_float_setting(env_name: str, profile_key: str, default: float)
 
 
 PLANT_NAME = _read_profile_setting("PLANT_NAME", "plant_name", _DEFAULT_PLANT_NAME)
-PLANT_LAT = _read_profile_float_setting("PLANT_LAT", "latitude", 24.56253056)
-PLANT_LON = _read_profile_float_setting("PLANT_LON", "longitude", 75.09140278)
+PLANT_LAT = _read_profile_float_setting("PLANT_LAT", "latitude", _fallback["latitude"])
+PLANT_LON = _read_profile_float_setting("PLANT_LON", "longitude", _fallback["longitude"])
 
 # Rated (nameplate) capacity in MW. For Bhupalpally we prefer the AC
 # feed-in cap because that is the practical schedule ceiling.
 PLANT_CAPACITY_MW = _read_profile_mw_setting(
     "PLANT_CAPACITY_MW",
     "maximum_feed_in_ac_kw",
-    5.1,
+    _fallback["capacity_mw"],
 )
 
 # Separate DC-capacity metadata when available in the plant profile.
 PLANT_DC_CAPACITY_MW = _read_profile_mw_setting(
     "PLANT_DC_CAPACITY_MW",
     "dc_capacity_kw",
-    PLANT_CAPACITY_MW,
+    _fallback["dc_capacity_mw"],
 )
 
 # Hard AC feed-in cap for the final schedule and validator clamp.
 PLANT_MAX_FEED_IN_MW = _read_profile_mw_setting(
     "PLANT_MAX_FEED_IN_MW",
     "maximum_feed_in_ac_kw",
-    PLANT_CAPACITY_MW,
+    _fallback["max_feed_in_mw"],
 )
 
 PLANT_TILT_DEG = _read_profile_float_setting("PLANT_TILT_DEG", "tilt_deg", 20.0)
@@ -208,7 +232,7 @@ ANIMATION_LAYER = "satellite"
 ANIMATION_RECORD_SECONDS = 8
 
 # ---- Forecast settings ----
-NUM_FORECAST_BLOCKS = 8       # 8 x 15 min = next 2 hours
+NUM_FORECAST_BLOCKS = 12      # 12 x 15 min = next 3 hours
 BLOCK_MINUTES = 15
 
 # ---- Capture schedule ----
@@ -226,6 +250,7 @@ PREDICTIONS_DIR = _storage_path("energy_predictions")
 FEATURES_LOG_DIR = _storage_path("features_log")
 MODELS_DIR = _storage_path("models")
 ACCURACY_REPORTS_DIR = _storage_path("accuracy_reports")
+FEEDBACK_ANALYSIS_DIR = _storage_path("feedback_analysis")
 _DEFAULT_HISTORIC_CASES_DIR = _storage_path("historic_cases") if PLANT_NAME.upper() == "SIRMOUR" else _storage_path("historic_cases") / PLANT_NAME
 HISTORIC_CASES_DIR = _read_env_path("HISTORIC_CASES_DIR", _DEFAULT_HISTORIC_CASES_DIR)
 
@@ -241,6 +266,10 @@ ACTUALS_INBOX_PROCESSED_DIR = ACTUALS_INBOX_DIR / "processed"
 # llm_predictor.py) -- keeps only the most recent CONTEXT_WINDOW_DAYS days,
 # dropping the oldest each time a new day is added.
 PREDICTION_CONTEXT_PATH = _storage_path("prediction_context") / f"{PLANT_NAME}_context.json"
+METER_HISTORY_DIR = _storage_path("meter_history")
+PVLIB_SUMMARY_DIR = _storage_path("pvlib_summary")
+PLANT_PERFORMANCE_DIR = _storage_path("plant_performance")
+ECMWF_WEATHER_DIR = _storage_path("ecmwf_weather")
 CONTEXT_WINDOW_DAYS = 3
 
 # ---- Manual prediction input (see manual_prediction.py) ----
@@ -286,7 +315,7 @@ CBR_FEATURE_WEIGHTS = {
 }
 
 for _dir in (SCREENSHOT_DIR, VIDEO_DIR, PREDICTIONS_DIR, FEATURES_LOG_DIR, MODELS_DIR, ACCURACY_REPORTS_DIR,
-             HISTORIC_CASES_DIR, ACTUALS_INBOX_DIR, ACTUALS_INBOX_PROCESSED_DIR, PREDICTION_CONTEXT_PATH.parent,
+             HISTORIC_CASES_DIR, ACTUALS_INBOX_DIR, ACTUALS_INBOX_PROCESSED_DIR, PREDICTION_CONTEXT_PATH.parent, METER_HISTORY_DIR, PVLIB_SUMMARY_DIR, PLANT_PERFORMANCE_DIR, ECMWF_WEATHER_DIR,
              MANUAL_INPUT_SCREENSHOTS_DIR, MANUAL_INPUT_VIDEO_DIR, MANUAL_INPUT_ACTUALS_DIR, MANUAL_INPUT_OUTPUT_DIR,
              EVALUATION_OUTPUT_DIR):
     _dir.mkdir(parents=True, exist_ok=True)

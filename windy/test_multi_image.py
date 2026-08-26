@@ -31,7 +31,7 @@ from config import (
     PLANT_NAME, PLANT_LAT, PLANT_LON, ZOOM_LEVEL, VIEWPORT_WIDTH, VIEWPORT_HEIGHT,
     LAYERS, RECORD_ANIMATION_VIDEO, ANIMATION_LAYER,
     VIDEO_DIR, STORAGE_STATE_PATH, SCREENSHOT_DIR, RUN_INTERVAL_SECONDS,
-    SIRMOUR_REVISION_TIMES, LAMBDA_CAPTURE_OFFSET_MINUTES,
+    LAMBDA_GATED_VIDEO_SITES, REVISION_TIMES, LAMBDA_CAPTURE_OFFSET_MINUTES,
     S3_BUCKET_NAME, S3_REGION, S3_PREFIX, AUTO_CREATE_S3_BUCKET,
     OUTPUT_ROOT, IS_LAMBDA, PLANT_ID, SITE_ID, PLANT_CAPACITY_MW,
 )
@@ -46,18 +46,19 @@ def now_ist() -> datetime.datetime:
 
 def _lambda_capture_window(site_name: str, current_time: datetime.datetime | None = None) -> tuple[bool, str]:
     """
-    Lambda capture gate for SIRMOUR.
+    Lambda capture gate for revision-scheduled sites.
 
-    SIRMOUR videos should only run 5 minutes before the configured revision
-    times. Other sites are left un-gated by this helper.
+    Gated site videos should only run before the configured revision times.
+    Other sites are left un-gated by this helper.
     """
-    if site_name.strip().upper() != "SIRMOUR":
+    normalized_site_name = site_name.strip().upper()
+    if normalized_site_name not in LAMBDA_GATED_VIDEO_SITES:
         return True, "no revision window gating configured"
 
     current_time = current_time or now_ist()
     capture_offset = datetime.timedelta(minutes=LAMBDA_CAPTURE_OFFSET_MINUTES)
 
-    for revision_time in SIRMOUR_REVISION_TIMES:
+    for revision_time in REVISION_TIMES:
         rev_hour, rev_minute = (int(part) for part in revision_time.split(":"))
         capture_time = current_time.replace(
             hour=rev_hour,
@@ -70,7 +71,7 @@ def _lambda_capture_window(site_name: str, current_time: datetime.datetime | Non
             return True, f"matched capture window for revision {revision_time}"
 
     capture_times = []
-    for revision_time in SIRMOUR_REVISION_TIMES:
+    for revision_time in REVISION_TIMES:
         rev_hour, rev_minute = (int(part) for part in revision_time.split(":"))
         capture_time = (current_time.replace(
             hour=rev_hour,
@@ -81,7 +82,7 @@ def _lambda_capture_window(site_name: str, current_time: datetime.datetime | Non
         capture_times.append(capture_time)
 
     return False, (
-        "outside SIRMOUR capture window; allowed capture times are "
+        f"outside {normalized_site_name} capture window; allowed capture times are "
         + ", ".join(capture_times)
     )
 
@@ -216,6 +217,11 @@ def _make_s3_key(run_timestamp: str, asset_kind: str, filename: str) -> str:
     date_part = run_timestamp[:10]
     if IS_LAMBDA:
         lambda_asset_kind = "screenshots" if asset_kind == "images" else asset_kind
+        # BHUPALPALLY only keeps one video object per day in S3.
+        # Repeated Lambda invocations in the same capture window overwrite
+        # the same key instead of creating duplicate video files.
+        if PLANT_NAME == "BHUPALPALLY" and lambda_asset_kind == "videos":
+            filename = f"{PLANT_NAME}_{ANIMATION_LAYER}_{date_part}_clean.mp4"
         return f"raw/{PLANT_ID}/{PLANT_NAME}/{date_part}/windy/{lambda_asset_kind}/{filename}"
     return f"{S3_PREFIX}/{date_part}/{asset_kind}/{filename}"
 
@@ -774,8 +780,6 @@ def record_cloud_animation() -> Path | None:
         full_path = raw_path  # fall back to the original name if rename fails
 
     print(f"  [OK] Full video saved: {full_path.resolve()}")
-    print("  [INFO] Uploading raw video to S3 as a backup before trimming...")
-    _upload_file_to_s3(full_path, _make_s3_key(timestamp, "videos", full_path.name))
 
     # Trim the raw recording down to exactly one clean sweep. Preferred
     # path: use the DOM-verified sweep_start_time/sweep_end_time (real
@@ -813,12 +817,9 @@ def record_cloud_animation() -> Path | None:
               f"Falling back to the full untrimmed video.")
         final_video_path = full_path
 
-    if final_video_path != full_path:
-        s3_name = final_video_path.name
-        print("  [INFO] Uploading trimmed video to S3...")
-        _upload_file_to_s3(final_video_path, _make_s3_key(timestamp, "videos", s3_name))
-    else:
-        print("  [INFO] Raw video already uploaded; no trimmed copy to upload.")
+    s3_name = final_video_path.name
+    print("  [INFO] Uploading final video to S3...")
+    _upload_file_to_s3(final_video_path, _make_s3_key(timestamp, "videos", s3_name))
     return final_video_path
 
 

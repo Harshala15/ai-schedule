@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 
 from simour_forecast_scheduler import settings
-from simour_forecast_scheduler.service import run_schedule_job
+from simour_forecast_scheduler.scheduler_service import run_schedule_job
 
 
 def _pick(name: str, default: str = "") -> str:

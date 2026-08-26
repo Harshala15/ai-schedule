@@ -47,7 +47,7 @@ import datetime
 from pathlib import Path
 
 import config
-import daily_feedback
+from modules.feedback import daily_feedback
 from run_pipeline import run_prediction_pipeline
 
 

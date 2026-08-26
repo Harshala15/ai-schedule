@@ -1,0 +1,696 @@
+﻿{
+    "events": [
+        {
+            "timestamp": 1787679797723,
+            "message": "START RequestId: 6fb8a6da-c805-487f-961d-96f80043b1e1 Version: $LATEST\n",
+            "ingestionTime": 1787679798388
+        },
+        {
+            "timestamp": 1787679798999,
+            "message": "[CTX] Created fresh prediction context at /tmp/bhupalpally/prediction_context/BHUPALPALLY_context.json (initialized to structured empty context)\n",
+            "ingestionTime": 1787679808011
+        },
+        {
+            "timestamp": 1787679807302,
+            "message": "[STATE] Downloaded prediction context from s3://ai-forecasting-storage-429694361053/state/vedanjay/BHUPALPALLY/prediction_context/BHUPALPALLY_context.json -> /tmp/bhupalpally/prediction_context/BHUPALPALLY_context.json\n",
+            "ingestionTime": 1787679808011
+        },
+        {
+            "timestamp": 1787679810271,
+            "message": "[INFO] Skipped 11 block(s) with missing schedule or actual values.\n",
+            "ingestionTime": 1787679819282
+        },
+        {
+            "timestamp": 1787679810274,
+            "message": "[CTX] Updated prediction context for 2026-08-25 -> /tmp/bhupalpally/prediction_context/BHUPALPALLY_context.json\n",
+            "ingestionTime": 1787679819282
+        },
+        {
+            "timestamp": 1787679810278,
+            "message": "[FEEDBACK] Updated daily revision analysis JSON: /tmp/bhupalpally/feedback_analysis/BHUPALPALLY/2026-08-25.json\n",
+            "ingestionTime": 1787679819282
+        },
+        {
+            "timestamp": 1787679814398,
+            "message": "[STATE] Uploaded prediction context to s3://ai-forecasting-storage-429694361053/state/vedanjay/BHUPALPALLY/prediction_context/BHUPALPALLY_context.json from /tmp/bhupalpally/prediction_context/BHUPALPALLY_context.json\n",
+            "ingestionTime": 1787679819282
+        },
+        {
+            "timestamp": 1787679815747,
+            "message": "Synced persistent state to S3: uploaded 183 file(s) and removed 183 stale object(s).\n",
+            "ingestionTime": 1787679819282
+        },
+        {
+            "timestamp": 1787679815747,
+            "message": "[FEEDBACK] Created pre-revision stepwise analysis JSON before schedule generation for 2026-08-25 15:45.\n",
+            "ingestionTime": 1787679819282
+        },
+        {
+            "timestamp": 1787679815763,
+            "message": "Synced 30 historical SCADA actual(s) into the case store.\n",
+            "ingestionTime": 1787679819282
+        },
+        {
+            "timestamp": 1787679815763,
+            "message": "Extracting image features (color + brightness per layer)...\n",
+            "ingestionTime": 1787679819282
+        },
+        {
+            "timestamp": 1787679815763,
+            "message": "[OK] Extracted 0 image-derived features.\n",
+            "ingestionTime": 1787679819282
+        },
+        {
+            "timestamp": 1787679815763,
+            "message": "Extracting video motion features: /tmp/bhupalpally/_scheduler_work/2026-08-25/15-45/video/BHUPALPALLY_satellite_2026-08-25_15-41-51_clean.mp4\n",
+            "ingestionTime": 1787679819282
+        },
+        {
+            "timestamp": 1787679818435,
+            "message": "[OK] Cloud motion analysis (computed via optical flow on the recorded video, NOT LLM-estimated -- treat these as ground-truth numbers):\n",
+            "ingestionTime": 1787679819282
+        },
+        {
+            "timestamp": 1787679818435,
+            "message": "- Dominant cloud motion direction over the plant's area: negligible / stationary\n",
+            "ingestionTime": 1787679819282
+        },
+        {
+            "timestamp": 1787679818435,
+            "message": "- Relative cloud-motion score: 0.001 (not km/h)\n",
+            "ingestionTime": 1787679819282
+        },
+        {
+            "timestamp": 1787679818435,
+            "message": "- Cloud coverage directly over the plant: 1.1% at the start of the clip -> 1.1% at the end (stable)\n",
+            "ingestionTime": 1787679819282
+        },
+        {
+            "timestamp": 1787679818435,
+            "message": "- Based on 104 sampled video frames.\n",
+            "ingestionTime": 1787679819282
+        },
+        {
+            "timestamp": 1787679818435,
+            "message": "Building feature rows and Step 1 scaffold for each forecast block...\n",
+            "ingestionTime": 1787679819282
+        },
+        {
+            "timestamp": 1787679818435,
+            "message": "Live same-day regime: steady moderate (residual factor=0.939, fluctuation_flag=True)\n",
+            "ingestionTime": 1787679819282
+        },
+        {
+            "timestamp": 1787679818435,
+            "message": "Loaded recent 3-day meter history JSON for Step 1 LLM input.\n",
+            "ingestionTime": 1787679819282
+        },
+        {
+            "timestamp": 1787679818435,
+            "message": "Block 64 (2026-08-25 15:45): step1 scaffold = 4.214 MW\n",
+            "ingestionTime": 1787679819282
+        },
+        {
+            "timestamp": 1787679818435,
+            "message": "Block 65 (2026-08-25 16:00): step1 scaffold = 3.833 MW\n",
+            "ingestionTime": 1787679819282
+        },
+        {
+            "timestamp": 1787679818435,
+            "message": "Block 66 (2026-08-25 16:15): step1 scaffold = 3.439 MW\n",
+            "ingestionTime": 1787679819282
+        },
+        {
+            "timestamp": 1787679818435,
+            "message": "Block 67 (2026-08-25 16:30): step1 scaffold = 3.031 MW\n",
+            "ingestionTime": 1787679819282
+        },
+        {
+            "timestamp": 1787679818435,
+            "message": "Block 68 (2026-08-25 16:45): step1 scaffold = 2.613 MW\n",
+            "ingestionTime": 1787679819282
+        },
+        {
+            "timestamp": 1787679818435,
+            "message": "Block 69 (2026-08-25 17:00): step1 scaffold = 2.184 MW\n",
+            "ingestionTime": 1787679819282
+        },
+        {
+            "timestamp": 1787679818435,
+            "message": "Block 70 (2026-08-25 17:15): step1 scaffold = 1.75 MW\n",
+            "ingestionTime": 1787679819282
+        },
+        {
+            "timestamp": 1787679818435,
+            "message": "Block 71 (2026-08-25 17:30): step1 scaffold = 1.308 MW\n",
+            "ingestionTime": 1787679819282
+        },
+        {
+            "timestamp": 1787679818435,
+            "message": "Block 72 (2026-08-25 17:45): step1 scaffold = 0.862 MW\n",
+            "ingestionTime": 1787679819282
+        },
+        {
+            "timestamp": 1787679818435,
+            "message": "Block 73 (2026-08-25 18:00): step1 scaffold = 0.415 MW\n",
+            "ingestionTime": 1787679819282
+        },
+        {
+            "timestamp": 1787679818435,
+            "message": "Block 74 (2026-08-25 18:15): step1 scaffold = 0.0 MW\n",
+            "ingestionTime": 1787679819282
+        },
+        {
+            "timestamp": 1787679818435,
+            "message": "Block 75 (2026-08-25 18:30): step1 scaffold = 0.0 MW\n",
+            "ingestionTime": 1787679819282
+        },
+        {
+            "timestamp": 1787679818435,
+            "message": "[INFO] Stepwise live-only mode: skipping similar-case retrieval.\n",
+            "ingestionTime": 1787679819282
+        },
+        {
+            "timestamp": 1787679818435,
+            "message": "Asking LLM to adjust the base forecast using retrieved evidence, live meter state, video, and weather...\n",
+            "ingestionTime": 1787679819282
+        },
+        {
+            "timestamp": 1787679818496,
+            "message": "[WARNING]\t2026-08-25T17:43:38.496Z\t6fb8a6da-c805-487f-961d-96f80043b1e1\tDirect use of automatic function calling (AFC) in Models.generate_content is not recommended. Instead, we recommend to use AFC in Chat.send_message. Similarly, direct use of AFC in Models.generate_content_stream is not recommended. Instead, we recommend to use AFC in Chat.send_message_stream.\n",
+            "ingestionTime": 1787679819282
+        },
+        {
+            "timestamp": 1787679839204,
+            "message": "Validating LLM-adjusted predictions...\n",
+            "ingestionTime": 1787679848218
+        },
+        {
+            "timestamp": 1787679839204,
+            "message": "Live same-day data looks choppy or shifting quickly -- widening the validator window slightly.\n",
+            "ingestionTime": 1787679848218
+        },
+        {
+            "timestamp": 1787679839204,
+            "message": "Recent accuracy history shows a consistent bias -- allowing up to 50% deviation this run (default is 40%).\n",
+            "ingestionTime": 1787679848218
+        },
+        {
+            "timestamp": 1787679839204,
+            "message": "Block 64 (2026-08-25 15:45): anchor=4.214 MW -> final=4.45 MW (confidence=High)\n",
+            "ingestionTime": 1787679848218
+        },
+        {
+            "timestamp": 1787679839204,
+            "message": "Reasoning: Actual meter generation at 15:45 reached 4.59 MW. Step 4 applies an upward adjustment to correct for persistent afternoon under-forecasting bias (-0.458 MW).\n",
+            "ingestionTime": 1787679848218
+        },
+        {
+            "timestamp": 1787679839204,
+            "message": "Block 65 (2026-08-25 16:00): anchor=3.833 MW -> final=4.05 MW (confidence=High)\n",
+            "ingestionTime": 1787679848218
+        },
+        {
+            "timestamp": 1787679839204,
+            "message": "Reasoning: Clear-sky irradiance begins afternoon decay with low cloud cover (6%). Step 4 corrects upward based on revision feedback.\n",
+            "ingestionTime": 1787679848218
+        },
+        {
+            "timestamp": 1787679839204,
+            "message": "Block 66 (2026-08-25 16:15): anchor=3.439 MW -> final=3.65 MW (confidence=High)\n",
+            "ingestionTime": 1787679848218
+        },
+        {
+            "timestamp": 1787679839204,
+            "message": "Reasoning: Solar zenith angle increasing. Step 4 adds a positive delta to compensate for afternoon bias.\n",
+            "ingestionTime": 1787679848218
+        },
+        {
+            "timestamp": 1787679839204,
+            "message": "Block 67 (2026-08-25 16:30): anchor=3.031 MW -> final=3.2 MW (confidence=Medium)\n",
+            "ingestionTime": 1787679848218
+        },
+        {
+            "timestamp": 1787679839204,
+            "message": "Reasoning: Steady generation ramp down. Step 4 adjusts slightly upward following today's day-level feedback.\n",
+            "ingestionTime": 1787679848218
+        },
+        {
+            "timestamp": 1787679839204,
+            "message": "Block 68 (2026-08-25 16:45): anchor=2.613 MW -> final=2.75 MW (confidence=Medium)\n",
+            "ingestionTime": 1787679848218
+        },
+        {
+            "timestamp": 1787679839204,
+            "message": "Reasoning: Solar elevation drops to 24 degrees. Step 4 refines Step 3 upward using revision bias data.\n",
+            "ingestionTime": 1787679848218
+        },
+        {
+            "timestamp": 1787679839204,
+            "message": "Block 69 (2026-08-25 17:00): anchor=2.184 MW -> final=2.25 MW (confidence=Medium)\n",
+            "ingestionTime": 1787679848218
+        },
+        {
+            "timestamp": 1787679839204,
+            "message": "Reasoning: Slight low cloud increase in weather forecast at 17:00, but Step 4 maintains a mild positive offset for historical block bias.\n",
+            "ingestionTime": 1787679848218
+        },
+        {
+            "timestamp": 1787679839204,
+            "message": "Block 70 (2026-08-25 17:15): anchor=1.75 MW -> final=1.8 MW (confidence=Medium)\n",
+            "ingestionTime": 1787679848218
+        },
+        {
+            "timestamp": 1787679839204,
+            "message": "Reasoning: Late afternoon solar decay trajectory. Step 4 adjusts slightly above Step 3 base.\n",
+            "ingestionTime": 1787679848218
+        },
+        {
+            "timestamp": 1787679839204,
+            "message": "Block 71 (2026-08-25 17:30): anchor=1.308 MW -> final=1.35 MW (confidence=High)\n",
+            "ingestionTime": 1787679848218
+        },
+        {
+            "timestamp": 1787679839204,
+            "message": "Reasoning: Irradiance diminishing rapidly as zenith reaches 76 degrees. Step 4 applies minor positive correction.\n",
+            "ingestionTime": 1787679848218
+        },
+        {
+            "timestamp": 1787679839204,
+            "message": "Block 72 (2026-08-25 17:45): anchor=0.862 MW -> final=0.88 MW (confidence=High)\n",
+            "ingestionTime": 1787679848218
+        },
+        {
+            "timestamp": 1787679839204,
+            "message": "Reasoning: Approaching sunset with solar elevation under 10 degrees. Step 4 keeps forecast grounded close to clear-sky curve.\n",
+            "ingestionTime": 1787679848218
+        },
+        {
+            "timestamp": 1787679839204,
+            "message": "Block 73 (2026-08-25 18:00): anchor=0.415 MW -> final=0.4 MW (confidence=High)\n",
+            "ingestionTime": 1787679848218
+        },
+        {
+            "timestamp": 1787679839204,
+            "message": "Reasoning: Low elevation angle (6.4 deg) yielding minimal irradiance. Step 4 aligns closely with physics decay.\n",
+            "ingestionTime": 1787679848218
+        },
+        {
+            "timestamp": 1787679839204,
+            "message": "Block 74 (2026-08-25 18:15): anchor=0.0 MW -> final=0.02 MW (confidence=High)\n",
+            "ingestionTime": 1787679848218
+        },
+        {
+            "timestamp": 1787679839204,
+            "message": "Reasoning: Near zero solar irradiance as sun sets. Minimal output expected.\n",
+            "ingestionTime": 1787679848218
+        },
+        {
+            "timestamp": 1787679839204,
+            "message": "Block 75 (2026-08-25 18:30): anchor=0.0 MW -> final=0.0 MW (confidence=High)\n",
+            "ingestionTime": 1787679848218
+        },
+        {
+            "timestamp": 1787679839204,
+            "message": "Reasoning: Sun below horizon; zero solar output.\n",
+            "ingestionTime": 1787679848218
+        },
+        {
+            "timestamp": 1787679839205,
+            "message": "Energy generation predictions saved to: /tmp/bhupalpally/_scheduler_work/2026-08-25/15-45/pipeline_output/BHUPALPALLY_energy_generation_2026-08-25.csv\n",
+            "ingestionTime": 1787679848218
+        },
+        {
+            "timestamp": 1787679839206,
+            "message": "Feature rows logged to: /tmp/bhupalpally/_scheduler_work/2026-08-25/15-45/pipeline_output/BHUPALPALLY_features_log_2026-08-25.csv (these are the per-day case store files that similarity_retrieval.py searches across, and that daily_feedback.py enriches with actual generation each evening)\n",
+            "ingestionTime": 1787679848218
+        },
+        {
+            "timestamp": 1787679839207,
+            "message": "Forecast trace written to: /tmp/bhupalpally/_scheduler_work/2026-08-25/15-45/pipeline_output/BHUPALPALLY_forecast_trace_2026-08-25.csv\n",
+            "ingestionTime": 1787679848218
+        },
+        {
+            "timestamp": 1787679839207,
+            "message": "[STATE] Mirrored features_log file(s) into the persistent case store: /tmp/bhupalpally/features_log/BHUPALPALLY_features_log_2026-08-25.csv\n",
+            "ingestionTime": 1787679848218
+        },
+        {
+            "timestamp": 1787679839296,
+            "message": "[ERROR] TypeError: _snapshot_metadata() got an unexpected keyword argument 'penalty_csv_key'\rTraceback (most recent call last):\rááFile \"/var/task/bhupalpally_forecast_scheduler/lambda_handler.py\", line 24, in lambda_handler\rááááresult = run_schedule_job(\rááFile \"/var/task/bhupalpally_forecast_scheduler/scheduler_service.py\", line 589, in run_schedule_job\ráááámetadata = _snapshot_metadata(\n",
+            "ingestionTime": 1787679848218
+        },
+        {
+            "timestamp": 1787679839298,
+            "message": "END RequestId: 6fb8a6da-c805-487f-961d-96f80043b1e1\n",
+            "ingestionTime": 1787679848218
+        },
+        {
+            "timestamp": 1787679839298,
+            "message": "REPORT RequestId: 6fb8a6da-c805-487f-961d-96f80043b1e1\tDuration: 41575.18 ms\tBilled Duration: 43793 ms\tMemory Size: 3008 MB\tMax Memory Used: 392 MB\tInit Duration: 2217.61 ms\t\n",
+            "ingestionTime": 1787679848218
+        },
+        {
+            "timestamp": 1787679990641,
+            "message": "START RequestId: 976ccc68-2d6e-4e12-a804-ea6b36661d22 Version: $LATEST\n",
+            "ingestionTime": 1787679999654
+        },
+        {
+            "timestamp": 1787679998116,
+            "message": "[STATE] Downloaded prediction context from s3://ai-forecasting-storage-429694361053/state/vedanjay/BHUPALPALLY/prediction_context/BHUPALPALLY_context.json -> /tmp/bhupalpally/prediction_context/BHUPALPALLY_context.json\n",
+            "ingestionTime": 1787679999654
+        },
+        {
+            "timestamp": 1787679999277,
+            "message": "[INFO] Skipped 11 block(s) with missing schedule or actual values.\n",
+            "ingestionTime": 1787679999654
+        },
+        {
+            "timestamp": 1787679999280,
+            "message": "[CTX] Updated prediction context for 2026-08-25 -> /tmp/bhupalpally/prediction_context/BHUPALPALLY_context.json\n",
+            "ingestionTime": 1787679999654
+        },
+        {
+            "timestamp": 1787679999283,
+            "message": "[FEEDBACK] Updated daily revision analysis JSON: /tmp/bhupalpally/feedback_analysis/BHUPALPALLY/2026-08-25.json\n",
+            "ingestionTime": 1787679999654
+        },
+        {
+            "timestamp": 1787680003471,
+            "message": "[STATE] Uploaded prediction context to s3://ai-forecasting-storage-429694361053/state/vedanjay/BHUPALPALLY/prediction_context/BHUPALPALLY_context.json from /tmp/bhupalpally/prediction_context/BHUPALPALLY_context.json\n",
+            "ingestionTime": 1787680012485
+        },
+        {
+            "timestamp": 1787680004851,
+            "message": "Synced persistent state to S3: uploaded 183 file(s) and removed 183 stale object(s).\n",
+            "ingestionTime": 1787680012485
+        },
+        {
+            "timestamp": 1787680004852,
+            "message": "[FEEDBACK] Created pre-revision stepwise analysis JSON before schedule generation for 2026-08-25 15:45.\n",
+            "ingestionTime": 1787680012485
+        },
+        {
+            "timestamp": 1787680004868,
+            "message": "Synced 30 historical SCADA actual(s) into the case store.\n",
+            "ingestionTime": 1787680012485
+        },
+        {
+            "timestamp": 1787680004868,
+            "message": "Extracting image features (color + brightness per layer)...\n",
+            "ingestionTime": 1787680012485
+        },
+        {
+            "timestamp": 1787680004868,
+            "message": "[OK] Extracted 0 image-derived features.\n",
+            "ingestionTime": 1787680012485
+        },
+        {
+            "timestamp": 1787680004868,
+            "message": "Extracting video motion features: /tmp/bhupalpally/_scheduler_work/2026-08-25/15-45/video/BHUPALPALLY_satellite_2026-08-25_15-41-51_clean.mp4\n",
+            "ingestionTime": 1787680012485
+        },
+        {
+            "timestamp": 1787680007186,
+            "message": "[OK] Cloud motion analysis (computed via optical flow on the recorded video, NOT LLM-estimated -- treat these as ground-truth numbers):\n",
+            "ingestionTime": 1787680012485
+        },
+        {
+            "timestamp": 1787680007186,
+            "message": "- Dominant cloud motion direction over the plant's area: negligible / stationary\n",
+            "ingestionTime": 1787680012485
+        },
+        {
+            "timestamp": 1787680007186,
+            "message": "- Relative cloud-motion score: 0.001 (not km/h)\n",
+            "ingestionTime": 1787680012485
+        },
+        {
+            "timestamp": 1787680007186,
+            "message": "- Cloud coverage directly over the plant: 1.1% at the start of the clip -> 1.1% at the end (stable)\n",
+            "ingestionTime": 1787680012485
+        },
+        {
+            "timestamp": 1787680007186,
+            "message": "- Based on 104 sampled video frames.\n",
+            "ingestionTime": 1787680012485
+        },
+        {
+            "timestamp": 1787680007186,
+            "message": "Building feature rows and Step 1 scaffold for each forecast block...\n",
+            "ingestionTime": 1787680012485
+        },
+        {
+            "timestamp": 1787680007186,
+            "message": "Live same-day regime: steady moderate (residual factor=0.939, fluctuation_flag=True)\n",
+            "ingestionTime": 1787680012485
+        },
+        {
+            "timestamp": 1787680007186,
+            "message": "Loaded recent 3-day meter history JSON for Step 1 LLM input.\n",
+            "ingestionTime": 1787680012485
+        },
+        {
+            "timestamp": 1787680007186,
+            "message": "Block 64 (2026-08-25 15:45): step1 scaffold = 4.214 MW\n",
+            "ingestionTime": 1787680012485
+        },
+        {
+            "timestamp": 1787680007186,
+            "message": "Block 65 (2026-08-25 16:00): step1 scaffold = 3.833 MW\n",
+            "ingestionTime": 1787680012485
+        },
+        {
+            "timestamp": 1787680007186,
+            "message": "Block 66 (2026-08-25 16:15): step1 scaffold = 3.439 MW\n",
+            "ingestionTime": 1787680012485
+        },
+        {
+            "timestamp": 1787680007186,
+            "message": "Block 67 (2026-08-25 16:30): step1 scaffold = 3.031 MW\n",
+            "ingestionTime": 1787680012485
+        },
+        {
+            "timestamp": 1787680007186,
+            "message": "Block 68 (2026-08-25 16:45): step1 scaffold = 2.613 MW\n",
+            "ingestionTime": 1787680012485
+        },
+        {
+            "timestamp": 1787680007186,
+            "message": "Block 69 (2026-08-25 17:00): step1 scaffold = 2.184 MW\n",
+            "ingestionTime": 1787680012485
+        },
+        {
+            "timestamp": 1787680007186,
+            "message": "Block 70 (2026-08-25 17:15): step1 scaffold = 1.75 MW\n",
+            "ingestionTime": 1787680012485
+        },
+        {
+            "timestamp": 1787680007186,
+            "message": "Block 71 (2026-08-25 17:30): step1 scaffold = 1.308 MW\n",
+            "ingestionTime": 1787680012485
+        },
+        {
+            "timestamp": 1787680007186,
+            "message": "Block 72 (2026-08-25 17:45): step1 scaffold = 0.862 MW\n",
+            "ingestionTime": 1787680012485
+        },
+        {
+            "timestamp": 1787680007186,
+            "message": "Block 73 (2026-08-25 18:00): step1 scaffold = 0.415 MW\n",
+            "ingestionTime": 1787680012485
+        },
+        {
+            "timestamp": 1787680007186,
+            "message": "Block 74 (2026-08-25 18:15): step1 scaffold = 0.0 MW\n",
+            "ingestionTime": 1787680012485
+        },
+        {
+            "timestamp": 1787680007186,
+            "message": "Block 75 (2026-08-25 18:30): step1 scaffold = 0.0 MW\n",
+            "ingestionTime": 1787680012485
+        },
+        {
+            "timestamp": 1787680007186,
+            "message": "[INFO] Stepwise live-only mode: skipping similar-case retrieval.\n",
+            "ingestionTime": 1787680012485
+        },
+        {
+            "timestamp": 1787680007186,
+            "message": "Asking LLM to adjust the base forecast using retrieved evidence, live meter state, video, and weather...\n",
+            "ingestionTime": 1787680012485
+        },
+        {
+            "timestamp": 1787680024023,
+            "message": "Validating LLM-adjusted predictions...\n",
+            "ingestionTime": 1787680033035
+        },
+        {
+            "timestamp": 1787680024024,
+            "message": "Live same-day data looks choppy or shifting quickly -- widening the validator window slightly.\n",
+            "ingestionTime": 1787680033035
+        },
+        {
+            "timestamp": 1787680024024,
+            "message": "Recent accuracy history shows a consistent bias -- allowing up to 50% deviation this run (default is 40%).\n",
+            "ingestionTime": 1787680033035
+        },
+        {
+            "timestamp": 1787680024024,
+            "message": "Block 64 (2026-08-25 15:45): anchor=4.214 MW -> final=4.59 MW (confidence=High)\n",
+            "ingestionTime": 1787680033035
+        },
+        {
+            "timestamp": 1787680024024,
+            "message": "Reasoning: Actual meter reading at 15:45 reached 4.592 MW. Step 1 aligns with real-time generation and 104% clear-sky ratio.\n",
+            "ingestionTime": 1787680033035
+        },
+        {
+            "timestamp": 1787680024024,
+            "message": "Block 65 (2026-08-25 16:00): anchor=3.833 MW -> final=3.85 MW (confidence=High)\n",
+            "ingestionTime": 1787680033035
+        },
+        {
+            "timestamp": 1787680024024,
+            "message": "Reasoning: Clear sky and stable camera cloud cover (1.1%) support a smooth diurnal decay. Step 1 performed best in past revisions.\n",
+            "ingestionTime": 1787680033035
+        },
+        {
+            "timestamp": 1787680024024,
+            "message": "Block 66 (2026-08-25 16:15): anchor=3.439 MW -> final=3.45 MW (confidence=High)\n",
+            "ingestionTime": 1787680033035
+        },
+        {
+            "timestamp": 1787680024024,
+            "message": "Reasoning: Solar zenith angle increases. Minor upward nudge applied in Step 3/4 due to slight negative afternoon bias.\n",
+            "ingestionTime": 1787680033035
+        },
+        {
+            "timestamp": 1787680024024,
+            "message": "Block 67 (2026-08-25 16:30): anchor=3.031 MW -> final=3.05 MW (confidence=High)\n",
+            "ingestionTime": 1787680033035
+        },
+        {
+            "timestamp": 1787680024024,
+            "message": "Reasoning: Following normal solar decay curve; steady low cloud coverage maintains clear generation profile.\n",
+            "ingestionTime": 1787680033035
+        },
+        {
+            "timestamp": 1787680024024,
+            "message": "Block 68 (2026-08-25 16:45): anchor=2.613 MW -> final=2.62 MW (confidence=High)\n",
+            "ingestionTime": 1787680033035
+        },
+        {
+            "timestamp": 1787680024024,
+            "message": "Reasoning: Consistent diurnal ramp-down based on pvlib physics and recent meter history.\n",
+            "ingestionTime": 1787680033035
+        },
+        {
+            "timestamp": 1787680024024,
+            "message": "Block 69 (2026-08-25 17:00): anchor=2.184 MW -> final=2.19 MW (confidence=High)\n",
+            "ingestionTime": 1787680033035
+        },
+        {
+            "timestamp": 1787680024024,
+            "message": "Reasoning: Weather model shows slight cloud increase (21%), minor lowering in Step 2, compensated by historical under-forecasting bias.\n",
+            "ingestionTime": 1787680033035
+        },
+        {
+            "timestamp": 1787680024024,
+            "message": "Block 70 (2026-08-25 17:15): anchor=1.75 MW -> final=1.75 MW (confidence=High)\n",
+            "ingestionTime": 1787680033035
+        },
+        {
+            "timestamp": 1787680024024,
+            "message": "Reasoning: Solar elevation drops to 16.9 degrees. Generation follows meter base trend closely.\n",
+            "ingestionTime": 1787680033035
+        },
+        {
+            "timestamp": 1787680024024,
+            "message": "Block 71 (2026-08-25 17:30): anchor=1.308 MW -> final=1.3 MW (confidence=High)\n",
+            "ingestionTime": 1787680033035
+        },
+        {
+            "timestamp": 1787680024024,
+            "message": "Reasoning: Late afternoon decline progressing expectedly.\n",
+            "ingestionTime": 1787680033035
+        },
+        {
+            "timestamp": 1787680024024,
+            "message": "Block 72 (2026-08-25 17:45): anchor=0.862 MW -> final=0.85 MW (confidence=High)\n",
+            "ingestionTime": 1787680033035
+        },
+        {
+            "timestamp": 1787680024024,
+            "message": "Reasoning: Solar elevation drops to 9.9 degrees; power tapers off smoothly towards sunset.\n",
+            "ingestionTime": 1787680033035
+        },
+        {
+            "timestamp": 1787680024024,
+            "message": "Block 73 (2026-08-25 18:00): anchor=0.415 MW -> final=0.4 MW (confidence=High)\n",
+            "ingestionTime": 1787680033035
+        },
+        {
+            "timestamp": 1787680024024,
+            "message": "Reasoning: Near sunset condition (solar elevation 6.4 degrees).\n",
+            "ingestionTime": 1787680033035
+        },
+        {
+            "timestamp": 1787680024024,
+            "message": "Block 74 (2026-08-25 18:15): anchor=0.0 MW -> final=0.05 MW (confidence=High)\n",
+            "ingestionTime": 1787680033035
+        },
+        {
+            "timestamp": 1787680024024,
+            "message": "Reasoning: Twilight generation phase with minimal irradiance.\n",
+            "ingestionTime": 1787680033035
+        },
+        {
+            "timestamp": 1787680024024,
+            "message": "Block 75 (2026-08-25 18:30): anchor=0.0 MW -> final=0.0 MW (confidence=High)\n",
+            "ingestionTime": 1787680033035
+        },
+        {
+            "timestamp": 1787680024024,
+            "message": "Reasoning: Sun elevation is below horizon (-0.13 degrees); generation drops to 0 MW.\n",
+            "ingestionTime": 1787680033035
+        },
+        {
+            "timestamp": 1787680024025,
+            "message": "Energy generation predictions saved to: /tmp/bhupalpally/_scheduler_work/2026-08-25/15-45/pipeline_output/BHUPALPALLY_energy_generation_2026-08-25.csv\n",
+            "ingestionTime": 1787680033035
+        },
+        {
+            "timestamp": 1787680024025,
+            "message": "Feature rows logged to: /tmp/bhupalpally/_scheduler_work/2026-08-25/15-45/pipeline_output/BHUPALPALLY_features_log_2026-08-25.csv (these are the per-day case store files that similarity_retrieval.py searches across, and that daily_feedback.py enriches with actual generation each evening)\n",
+            "ingestionTime": 1787680033035
+        },
+        {
+            "timestamp": 1787680024026,
+            "message": "Forecast trace written to: /tmp/bhupalpally/_scheduler_work/2026-08-25/15-45/pipeline_output/BHUPALPALLY_forecast_trace_2026-08-25.csv\n",
+            "ingestionTime": 1787680033035
+        },
+        {
+            "timestamp": 1787680024027,
+            "message": "[STATE] Mirrored features_log file(s) into the persistent case store: /tmp/bhupalpally/features_log/BHUPALPALLY_features_log_2026-08-25.csv\n",
+            "ingestionTime": 1787680033035
+        },
+        {
+            "timestamp": 1787680024101,
+            "message": "[ERROR] TypeError: _snapshot_metadata() got an unexpected keyword argument 'penalty_csv_key'\rTraceback (most recent call last):\rááFile \"/var/task/bhupalpally_forecast_scheduler/lambda_handler.py\", line 24, in lambda_handler\rááááresult = run_schedule_job(\rááFile \"/var/task/bhupalpally_forecast_scheduler/scheduler_service.py\", line 589, in run_schedule_job\ráááámetadata = _snapshot_metadata(\n",
+            "ingestionTime": 1787680033035
+        },
+        {
+            "timestamp": 1787680024103,
+            "message": "END RequestId: 976ccc68-2d6e-4e12-a804-ea6b36661d22\n",
+            "ingestionTime": 1787680033035
+        },
+        {
+            "timestamp": 1787680024103,
+            "message": "REPORT RequestId: 976ccc68-2d6e-4e12-a804-ea6b36661d22\tDuration: 33461.53 ms\tBilled Duration: 33462 ms\tMemory Size: 3008 MB\tMax Memory Used: 417 MB\t\n",
+            "ingestionTime": 1787680033035
+        }
+    ],
+    "nextForwardToken": "f/39866596714024085900005354971229248012757876757789736993/s",
+    "nextBackwardToken": "b/39866591665581387856642887906702592280414433679795486720/s"
+}

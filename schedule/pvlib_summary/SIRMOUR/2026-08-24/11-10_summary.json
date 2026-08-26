@@ -1,0 +1,8 @@
+{
+  "type": "pvlib_summary",
+  "plant_name": "SIRMOUR",
+  "reference_time": "2026-08-24 11:10",
+  "num_blocks": 31,
+  "timezone": "Asia/Kolkata",
+  "summary_text": "pvlib physics summary unavailable (No module named 'pvlib')."
+}

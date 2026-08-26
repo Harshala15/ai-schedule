@@ -1,0 +1,21 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowListBucketVersions",
+      "Effect": "Allow",
+      "Action": [
+        "s3:ListBucketVersions"
+      ],
+      "Resource": "arn:aws:s3:::ai-forecasting-storage-429694361053"
+    },
+    {
+      "Sid": "AllowDeleteObjectVersion",
+      "Effect": "Allow",
+      "Action": [
+        "s3:DeleteObjectVersion"
+      ],
+      "Resource": "arn:aws:s3:::ai-forecasting-storage-429694361053/state/vedanjay/SIRMOUR/*"
+    }
+  ]
+}

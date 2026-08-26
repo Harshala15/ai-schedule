@@ -11,8 +11,15 @@ Supported plants:
 - `KASIPET`
 - `BHUPALPALLY`
 
+For Lambda, point each function at the matching handler:
+- `context_generator.simour.lambda_handler.lambda_handler`
+- `context_generator.kasipet.lambda_handler.lambda_handler`
+- `context_generator.bhupalpally.lambda_handler.lambda_handler`
+
+If you keep a single generic function, pass `{"plant_name":"KASIPET"}` or the equivalent plant name in the event payload.
+
 The scripts:
-- read `LLM Schedule (MW)` from the schedule CSV
+- read `Schedule MW` from the schedule CSV when available, otherwise fall back to the earlier forecast columns
 - read actual power from `Active Power (kW)` or the plant's equivalent meter column
 - convert actual kW to MW
 - skip rows where either side is missing

@@ -8,9 +8,9 @@ A headless browser scrapes several Windy map layers (satellite clouds, cloud cov
 
 Asking an LLM to "look at a weather map and predict megawatts" is unreliable and non-deterministic. This pipeline instead gives the LLM a narrow, constrained job:
 
-1. **Physics anchor** (`physics_anchor.py`) computes a baseline MW estimate from solar elevation and cloud attenuation — pure math, always available, never wildly wrong.
-2. **Case-based retrieval** (`similarity_retrieval.py`) finds the most similar past situations (by weighted feature distance) that already have a real SCADA outcome.
-3. **The LLM** (`llm_predictor.py`) only *adjusts* the anchor using that retrieved evidence and explains why — it never invents a number from scratch, and one LLM call covers all 8 blocks at once.
+1. **Physics anchor** (`modules/physics/physics_anchor.py`) computes a baseline MW estimate from solar elevation and cloud attenuation — pure math, always available, never wildly wrong.
+2. **Case-based retrieval** (`modules/retrieval/similarity_retrieval.py`) finds the most similar past situations (by weighted feature distance) that already have a real SCADA outcome.
+3. **The LLM** (`modules/llm/predictor.py`) only *adjusts* the anchor using that retrieved evidence and explains why — it never invents a number from scratch, and one LLM call covers all 8 blocks at once.
 4. **The validator** (`validator.py`) clips the result to plant capacity, caps how far the LLM may deviate from the anchor, and smooths unrealistic block-to-block jumps.
 
 If the LLM is unavailable, missing an API key, or returns something unparseable, the pipeline automatically falls back to the physics anchor for every block — it never produces no output.
@@ -18,16 +18,16 @@ If the LLM is unavailable, missing an API key, or returns something unparseable,
 ## Pipeline architecture
 
 ```
-Windy screenshots (5 layers)  ---->  image_feature_extraction.py  --\
-                                                                       >-- feature_builder.py -> physics_anchor.py
-Windy satellite animation      ---->  video_motion_features.py    --/                                |
+Windy screenshots (5 layers)  ---->  modules/opencv/image_feature_extraction.py  --\
+                                                                                     >-- modules/features/feature_builder.py -> modules/physics/physics_anchor.py
+Windy satellite animation      ---->  modules/opencv/video_motion_features.py    --/                                |
 (optical flow)                                                                                        v
-                                                                                    similarity_retrieval.py
+                                                                                    modules/retrieval/similarity_retrieval.py
                                                                              (top-K similar past cases, from
                                                                               features_log.csv case store)
                                                                                                         |
                                                                                                         v
-                                                                                            llm_predictor.py
+                                                                                            modules/llm/predictor.py
                                                                                 (Gemini adjusts the anchor
                                                                                  using retrieved evidence)
                                                                                                         |
@@ -37,7 +37,7 @@ Windy satellite animation      ---->  video_motion_features.py    --/           
                                                                                     smoothness check)
                                                                                                         |
                                                                                                         v
-                                                                                       prediction_store.py
+                                                                                       modules/storage/prediction_store.py
                                                                               (saves predictions + updates
                                                                                the features_log case store)
 ```
@@ -51,18 +51,35 @@ Orchestrated end-to-end by [run_pipeline.py](run_pipeline.py), triggered every r
 | [test_multi_image.py](test_multi_image.py) | Entry point. Drives Playwright to log into Windy Premium, capture 5 map layers as screenshots, record + trim a satellite animation, then calls the prediction pipeline. Loops forever on an interval. |
 | [config.py](config.py) | Single source of truth: plant details (name/lat/lon/capacity/performance ratio), Windy capture settings, forecast block settings, file paths, and CBR retrieval weights. |
 | [run_pipeline.py](run_pipeline.py) | Orchestrates one end-to-end prediction run (the 5 phases in the diagram above). |
-| [image_feature_extraction.py](image_feature_extraction.py) | Computes brightness/saturation/hue/bright-pixel-% stats over a plant-centered region of interest in each layer screenshot. |
-| [video_motion_features.py](video_motion_features.py) | Runs Farneback optical flow on the recorded satellite animation to get cloud motion direction, a relative motion score, directional consistency, and cloud-coverage trend. |
-| [time_features.py](time_features.py) | Computes solar elevation (Cooper's equation) and calendar features for a timestamp; also generates the 8 upcoming 15-minute forecast-block timestamps. |
-| [feature_builder.py](feature_builder.py) | Merges image, motion, and time features into one flat row per forecast block; encodes categorical values numerically. |
-| [physics_anchor.py](physics_anchor.py) | Deterministic clear-sky × cloud-attenuation × capacity × performance-ratio formula — the baseline MW estimate, no ML or LLM involved. |
-| [similarity_retrieval.py](similarity_retrieval.py) | Case-based reasoning: finds the top-K nearest past feature rows (weighted, z-score-normalized Euclidean distance) that have a matched SCADA actual, and formats them as evidence text. |
-| [llm_predictor.py](llm_predictor.py) | The only module that calls an LLM (Google Gemini). Builds the prompt, parses the JSON response, and falls back to the anchor per-block on any failure. |
+| [modules/opencv/image_feature_extraction.py](modules/opencv/image_feature_extraction.py) | Computes brightness/saturation/hue/bright-pixel-% stats over a plant-centered region of interest in each layer screenshot. |
+| [modules/opencv/video_motion_features.py](modules/opencv/video_motion_features.py) | Runs Farneback optical flow on the recorded satellite animation to get cloud motion direction, a relative motion score, directional consistency, and cloud-coverage trend. |
+| [modules/weather/time_features.py](modules/weather/time_features.py) | Computes solar elevation (Cooper's equation) and calendar features for a timestamp; also generates the 8 upcoming 15-minute forecast-block timestamps. |
+| [modules/features/feature_builder.py](modules/features/feature_builder.py) | Merges image, motion, and time features into one flat row per forecast block; encodes categorical values numerically. |
+| [modules/physics/physics_anchor.py](modules/physics/physics_anchor.py) | Deterministic clear-sky × cloud-attenuation × capacity × performance-ratio formula — the baseline MW estimate, no ML or LLM involved. |
+| [modules/retrieval/similarity_retrieval.py](modules/retrieval/similarity_retrieval.py) | Case-based reasoning: finds the top-K nearest past feature rows (weighted, z-score-normalized Euclidean distance) that have a matched SCADA actual, and formats them as evidence text. |
+| [modules/llm/predictor.py](modules/llm/predictor.py) | The only module that calls an LLM (Google Gemini). Builds the prompt, parses the JSON response, and falls back to the anchor per-block on any failure. |
 | [validator.py](validator.py) | Safety net: range clip, max-deviation-from-anchor limit, and block-to-block smoothness cap. |
-| [prediction_store.py](prediction_store.py) | Writes/updates the two output CSVs (predictions + feature case store), keyed by timestamp so reruns update rather than duplicate rows. |
-| [daily_feedback.py](daily_feedback.py) | Run manually once real SCADA/meter data is available: joins actuals into the case store by timestamp and logs MAE/RMSE/MAPE/Bias. Also auto-syncs any CSV dropped into `historic_cases/` before every pipeline run. |
+| [modules/storage/prediction_store.py](modules/storage/prediction_store.py) | Writes/updates the two output CSVs (predictions + feature case store), keyed by timestamp so reruns update rather than duplicate rows. |
+| [modules/feedback/daily_feedback.py](modules/feedback/daily_feedback.py) | Run manually once real SCADA/meter data is available: joins actuals into the case store by timestamp and logs MAE/RMSE/MAPE/Bias. Also auto-syncs any CSV dropped into `historic_cases/` before every pipeline run. |
 | [accuracy_tracker.py](accuracy_tracker.py) | Standalone script comparing a predictions CSV against an actual-meter CSV and writing a plain-text accuracy report; flags when MAPE exceeds a retrain threshold. |
 | [simour_forecast_scheduler/](simour_forecast_scheduler/) | Separate Lambda-oriented scheduler package. At each scheduled time, it loads the latest S3 screenshots/video and meter CSV up to that cutoff, runs the pipeline, and writes timestamped daily schedule snapshots under `generated/{PLANT}/{YYYY-MM-DD}/`. |
+
+## Code Layout
+
+The reusable logic now lives under `modules/` so it is easy to find by domain:
+
+| Folder | What belongs here |
+|---|---|
+| `modules/llm/` | Gemini / LLM prompt building, parsing, and stepwise forecast adjustment. |
+| `modules/weather/` | Weather helpers, ECMWF/Open-Meteo fetch and summary code, and time/solar feature helpers. |
+| `modules/opencv/` | OpenCV-based image and video feature extraction. |
+| `modules/features/` | Feature assembly and encoding logic that combines weather, image, video, and time features. |
+| `modules/physics/` | Deterministic physics anchor logic. |
+| `modules/retrieval/` | Similarity search / case-based reasoning over historical feature rows. |
+| `modules/feedback/` | Daily feedback, actuals matching, context building, and accuracy logging. |
+| `modules/storage/` | Prediction CSV storage and persistent state sync helpers. |
+
+The old top-level files remain as thin compatibility wrappers so existing scripts and Lambda entrypoints continue to work while the real code stays in the module folders.
 
 ## Setup
 
@@ -95,13 +112,13 @@ On the very first run, a visible browser window opens so you can log in to Windy
 Each run prints its progress (physics anchors per block, retrieved similar cases, LLM-adjusted values, any validator corrections) and writes:
 
 - `energy_predictions/<PLANT>_energy_generation.csv` — human-facing output: Block, Time, Predicted Generation (MW/kW).
-- `features_log/<PLANT>_features_log.csv` — every engineered feature per block plus the prediction. This is the case store that `similarity_retrieval.py` searches, and that `daily_feedback.py` enriches with real outcomes.
+- `features_log/<PLANT>_features_log.csv` — every engineered feature per block plus the prediction. This is the case store that `modules/retrieval/similarity_retrieval.py` searches, and that `modules/feedback/daily_feedback.py` enriches with real outcomes.
 - `windy_screenshots/<lat>_<lon>/<timestamp>/` — the 5 raw layer screenshots for that run (for debugging).
 - `windy_videos/` — the raw and ffmpeg-trimmed satellite animation clips.
 
 ### Closing the feedback loop
 
-Drop any SCADA/meter export CSV into `historic_cases/` (columns matching `TIMESTAMP_COLUMN` / `POWER_COLUMN_MW` in [daily_feedback.py](daily_feedback.py), defaulting to `TimeStamp` / `Active Power (MW)`). It's automatically joined into the case store — by matching timestamp only — at the start of every pipeline run, so future forecasts can cite real outcomes ("in similar cloud conditions, actual generation was X% lower than the anchor formula") without a manual step.
+Drop any SCADA/meter export CSV into `historic_cases/` (columns matching `TIMESTAMP_COLUMN` / `POWER_COLUMN_MW` in [modules/feedback/daily_feedback.py](modules/feedback/daily_feedback.py), defaulting to `TimeStamp` / `Active Power (MW)`). It's automatically joined into the case store — by matching timestamp only — at the start of every pipeline run, so future forecasts can cite real outcomes ("in similar cloud conditions, actual generation was X% lower than the anchor formula") without a manual step.
 
 To make AWS Lambda use the same persistent history as your local runs, enable `ENABLE_S3_STATE_SYNC=1`. The scheduler will mirror these folders under `S3_STATE_PREFIX`:
 
@@ -112,7 +129,7 @@ To make AWS Lambda use the same persistent history as your local runs, enable `E
 To also get an error-metrics report and update the running accuracy log, run it directly:
 
 ```bash
-python daily_feedback.py path/to/actual_meter.csv
+python modules/feedback/daily_feedback.py path/to/actual_meter.csv
 ```
 
 ## Configuration knobs worth knowing

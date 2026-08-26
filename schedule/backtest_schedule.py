@@ -43,9 +43,9 @@ import re
 from pathlib import Path
 
 import config
-import daily_feedback
-import state_sync
-import time_features
+from modules.feedback import daily_feedback
+from modules.storage import state_sync
+from modules.weather import time_features
 from run_pipeline import run_prediction_pipeline
 
 # Allows an optional " (1)", " (2)" etc. suffix before ".mp4" -- browsers

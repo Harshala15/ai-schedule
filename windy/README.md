@@ -133,12 +133,15 @@ and use the Lambda IAM role for S3 access. Current valid `SITE_ID` values come
 from `config.py`: `SIRMOUR`, `KASIPET`, `BHUPALPALLY`, and `OSEPL`.
 
 Lambda no longer captures the five screenshot layers. It only records the
-satellite animation video and writes metadata for the run. Screenshot capture
-remains in the local/EC2 flow.
+satellite animation video and writes metadata for the run. Only the final
+video is uploaded to S3; the raw Playwright recording is used locally as the
+source for trimming. Screenshot capture remains in the local/EC2 flow.
 
-For SIRMOUR, the Lambda only runs when the current IST time is 5 minutes
-before one of these revision times:
-`05:15`, `06:45`, `08:15`, `09:45`, `11:15`, `14:15`, `15:45`.
+For SIRMOUR, KASIPET, and BHUPALPALLY, the Lambda only runs when the
+current IST time is 5 minutes before one of these revision times:
+`05:55`, `06:45`, `08:15`, `09:45`, `11:15`, `14:15`, `15:45`.
+That means video capture happens at:
+`05:50`, `06:40`, `08:10`, `09:40`, `11:10`, `14:10`, `15:40`.
 If the Lambda is invoked outside those capture minutes, it exits cleanly
 without recording video.
 

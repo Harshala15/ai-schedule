@@ -1,0 +1,5 @@
+{
+  "Arn": "arn:aws:lambda:ap-south-1:429694361053:function:KASIPET-windy-capture",
+  "RoleArn": "arn:aws:iam::429694361053:role/EventBridgeSchedulerInvokeWindyLambdaRole",
+  "Input": "{\"site_id\":\"KASIPET\",\"plant_id\":\"vedanjay\",\"bucket\":\"ai-forecasting-storage-429694361053\"}"
+}

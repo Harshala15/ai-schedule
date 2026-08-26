@@ -8,7 +8,7 @@ Use this at the end of the day when you already have:
   - the actual meter CSV for that same day
 
 It compares:
-  - LLM Schedule (MW)
+  - Schedule MW
   - Active Power (kW) converted to MW
 
 Blocks with missing or unparseable values are skipped.
@@ -26,12 +26,12 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-import daily_feedback
+from modules.feedback import daily_feedback
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Build day-level context from a forecast schedule and actual meter CSV.")
-    parser.add_argument("schedule_csv", help="Path to the forecast schedule CSV containing LLM Schedule (MW).")
+    parser.add_argument("schedule_csv", help="Path to the forecast schedule CSV containing Schedule MW.")
     parser.add_argument("actual_meter_csv", help="Path to the actual meter CSV containing Active Power (kW).")
     args = parser.parse_args()
 

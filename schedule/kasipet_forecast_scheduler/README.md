@@ -38,6 +38,8 @@ GEMINI_API_KEYS=key1,key2,key3
 
 For local testing, copy [.env.example](./.env.example) to `.env` in the same folder and fill in the plant values and Gemini key.
 
+The scheduler image now installs `pvlib` and its scientific Python dependencies through [requirements.txt](requirements.txt), which is required for the Step 1 pvlib summary in `modules/pvlib_utils.py`.
+
 ## Provision schedules
 
 Run the provisioning script to create the eight daily EventBridge schedules:
