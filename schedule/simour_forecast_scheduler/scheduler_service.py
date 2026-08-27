@@ -276,6 +276,10 @@ def _current_final_schedule_name(target_date: str) -> str:
     return shared_schedule_utils.current_final_schedule_name(target_date)
 
 
+def _penalty_schedule_name(target_date: str) -> str:
+    return shared_schedule_utils.penalty_schedule_name(target_date)
+
+
 def _download_previous_current_final_schedule(
     bucket: str,
     schedule_prefix: str,
@@ -494,7 +498,7 @@ def run_schedule_job(
     snapshot_metadata = generated_root / f"{target_date}_{target_time.replace(':', '-')}_metadata.json"
     latest_csv = generated_root / f"{target_date}_latest_schedule.csv"
     current_final_csv = generated_root / _current_final_schedule_name(target_date)
-    penalty_csv = generated_root / f"{target_date}_penalty_schedule.csv"
+    penalty_csv = generated_root / _penalty_schedule_name(target_date)
     latest_metadata = generated_root / f"{target_date}_latest_metadata.json"
 
     shutil.copyfile(snapshot_source, snapshot_csv)
@@ -562,6 +566,9 @@ def run_schedule_job(
     legacy_current_final_csv = generated_root / "current_final_schedule.csv"
     if legacy_current_final_csv != current_final_csv:
         shutil.copyfile(current_final_csv, legacy_current_final_csv)
+    legacy_penalty_csv = generated_root / f"{target_date}_penalty_schedule.csv"
+    if legacy_penalty_csv != penalty_csv:
+        shutil.copyfile(penalty_csv, legacy_penalty_csv)
     storage.upload_json(bucket, metadata["snapshot_metadata_key"], metadata)
     storage.upload_json(bucket, metadata["latest_metadata_key"], metadata)
 

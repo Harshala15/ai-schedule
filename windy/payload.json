@@ -1,5 +1,1 @@
-{
-  "bucket": "ai-forecasting-storage-429694361053",
-  "plant_id": "vedanjay",
-  "site_id": "SIRMOUR"
-}
+{"site_id":"KASIPET","plant_id":"vedanjay","bucket":"ai-forecasting-storage-429694361053","force_capture":true}

@@ -112,7 +112,7 @@ def save_generation_csv(rows, output_dir=None) -> list:
         "Step 1 Meter Base Forecast MW",
         "Step 2 Weather + Video Adjusted MW",
         "Step 3 Plant Performance MW",
-        "Step 4 Context Adjusted MW",
+        "Step 4 Revision Feedback MW",
         "LLM Schedule (MW)",
         "Schedule MW",
         "LLM Reasoning",
@@ -134,7 +134,15 @@ def save_generation_csv(rows, output_dir=None) -> list:
             step1_mw = _clip_display_mw(row.get("step1_mw", row.get("Step 1 Meter Base Forecast MW", row.get("anchor_mw", ""))))
             step2_mw = _clip_display_mw(row.get("step2_mw", row.get("Step 2 Weather + Video Adjusted MW", row.get("llm_mw", ""))))
             step3_mw = _clip_display_mw(row.get("step3_mw", row.get("Step 3 Plant Performance MW", row.get("llm_mw", ""))))
-            step4_mw = _clip_display_mw(row.get("step4_mw", row.get("Step 4 Context Adjusted MW", row.get("llm_mw", step3_mw))))
+            step4_mw = _clip_display_mw(
+                row.get(
+                    "step4_mw",
+                    row.get(
+                        "Step 4 Revision Feedback MW",
+                        row.get("Step 4 Revision Feedback Adjusted MW", row.get("Step 4 Context Adjusted MW", row.get("llm_mw", step3_mw))),
+                    ),
+                )
+            )
             llm_mw = _clip_display_mw(row.get("llm_mw", row.get("LLM Schedule (MW)", step4_mw)))
             final_mw = _clip_display_mw(row.get("final_mw", row.get("Schedule MW", row.get("Final Validated MW", llm_mw))))
             reasoning = row.get("reasoning", row.get("LLM Reasoning", ""))
@@ -229,10 +237,24 @@ def save_forecast_trace_csv(rows, output_dir=None) -> list:
         "Time",
         "Physics Anchor MW",
         "Base Physics Anchor MW",
+        "Raw Step 1 MW",
+        "Raw Step 2 MW",
+        "Raw Step 3 MW",
+        "Raw Step 4 MW",
+        "Raw LLM MW",
         "Step 1 Meter Base MW",
         "Step 2 Weather + Video MW",
         "Step 3 Plant Performance MW",
-        "Step 4 Context MW",
+        "Step 4 Revision Feedback MW",
+        "Stepwise Base Factor",
+        "Step 1 Factor",
+        "Step 2 Factor",
+        "Step 3 Factor",
+        "Step 4 Factor",
+        "Final Stage Cap MW",
+        "Revision Clamp Factor",
+        "Time of Day Bucket",
+        "Correction Note",
         "Live Residual Factor",
         "Regime",
         "Fluctuation Flag",
@@ -260,10 +282,24 @@ def save_forecast_trace_csv(rows, output_dir=None) -> list:
             time_label,
             str(row.get("Physics Anchor MW", "")),
             str(row.get("Base Physics Anchor MW", "")),
+            str(row.get("Raw Step 1 MW", "")),
+            str(row.get("Raw Step 2 MW", "")),
+            str(row.get("Raw Step 3 MW", "")),
+            str(row.get("Raw Step 4 MW", "")),
+            str(row.get("Raw LLM MW", "")),
             str(row.get("Step 1 Meter Base MW", "")),
             str(row.get("Step 2 Weather + Video MW", "")),
             str(row.get("Step 3 Plant Performance MW", "")),
-            str(row.get("Step 4 Context MW", "")),
+            str(row.get("Step 4 Revision Feedback MW", row.get("Step 4 Context MW", ""))),
+            str(row.get("Stepwise Base Factor", "")),
+            str(row.get("Step 1 Factor", "")),
+            str(row.get("Step 2 Factor", "")),
+            str(row.get("Step 3 Factor", "")),
+            str(row.get("Step 4 Factor", "")),
+            str(row.get("Final Stage Cap MW", "")),
+            str(row.get("Revision Clamp Factor", "")),
+            str(row.get("Time of Day Bucket", "")),
+            str(row.get("Correction Note", "")),
             str(row.get("Live Residual Factor", "")),
             str(row.get("Regime", "")),
             str(row.get("Fluctuation Flag", "")),

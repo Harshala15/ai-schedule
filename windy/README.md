@@ -108,6 +108,17 @@ If you want a dedicated BHUPALPALLY Lambda, use this handler instead:
 bhupalpally_lambda.lambda_handler
 ```
 
+If you want a dedicated KASIPET Lambda, use this handler instead:
+
+```text
+kasipet_lambda.lambda_handler
+```
+
+For image-based Lambda deployments, use the helper scripts:
+
+- `deploy-bhupalpally.ps1`
+- `deploy-kasipet.ps1`
+
 Configure the Lambda function with:
 
 - IAM execution role with S3 permissions for the configured bucket
@@ -116,8 +127,8 @@ Configure the Lambda function with:
 - ephemeral storage large enough for the video capture and metadata, for example 2048 MB+
 - environment variables such as `SITE_ID=SIRMOUR`, `SITE_ID=KASIPET`, `SITE_ID=BHUPALPALLY`, `SITE_ID=OSEPL`, `PLANT_ID=vedanjay`, and `S3_BUCKET=ai-forecasting-test-755611554012`
 
-For the dedicated BHUPALPALLY Lambda, `SITE_ID` is forced in code, so the
-event payload can stay minimal.
+For the dedicated BHUPALPALLY and KASIPET Lambdas, `SITE_ID` is forced in
+code, so the event payload can stay minimal.
 
 The Lambda handler captures the configured `SITE_ID`, writes working files to
 `/tmp`, and uploads to:

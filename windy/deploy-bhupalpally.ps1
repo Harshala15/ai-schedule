@@ -1,15 +1,15 @@
 param(
     [string]$AwsAccountId = "429694361053",
     [string]$Region = "ap-south-1",
-    [string]$RepositoryName = "kasipet-windy-capture",
-    [string]$FunctionName = "KASIPET-windy-capture",
+    [string]$RepositoryName = "bhupalpally-windy-capture",
+    [string]$FunctionName = "windy-capture-bhupalpally",
     [string]$ImageTag = "latest"
 )
 
 $ErrorActionPreference = "Stop"
 
 $ecrUri = "$AwsAccountId.dkr.ecr.$Region.amazonaws.com/$RepositoryName"
-$imageUri = "$ecrUri:$ImageTag"
+$imageUri = "${ecrUri}:$ImageTag"
 
 Write-Host "Logging in to ECR..."
 aws ecr get-login-password --region $Region |
@@ -31,7 +31,7 @@ Write-Host "Building image..."
 docker build -f Dockerfile.windy-capture-lambda -t $RepositoryName .
 
 Write-Host "Tagging image..."
-docker tag "$RepositoryName`:latest" $imageUri
+docker tag "${RepositoryName}:latest" $imageUri
 
 Write-Host "Pushing image..."
 docker push $imageUri
@@ -42,9 +42,9 @@ aws lambda update-function-code `
     --function-name $FunctionName `
     --image-uri $imageUri | Out-Null
 
-Write-Host "Pinning Lambda command to kasipet_lambda.lambda_handler..."
-$imageConfigPath = Join-Path $env:TEMP "kasipet-image-config.json"
-Set-Content -LiteralPath $imageConfigPath -Value '{"Command":["kasipet_lambda.lambda_handler"]}' -Encoding ascii
+Write-Host "Pinning Lambda command to bhupalpally_lambda.lambda_handler..."
+$imageConfigPath = Join-Path $env:TEMP "bhupalpally-image-config.json"
+Set-Content -LiteralPath $imageConfigPath -Value '{"Command":["bhupalpally_lambda.lambda_handler"]}' -Encoding ascii
 aws lambda update-function-configuration `
     --region $Region `
     --function-name $FunctionName `

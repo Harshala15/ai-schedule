@@ -32,6 +32,7 @@ from config import (
     LAYERS, RECORD_ANIMATION_VIDEO, ANIMATION_LAYER,
     VIDEO_DIR, STORAGE_STATE_PATH, SCREENSHOT_DIR, RUN_INTERVAL_SECONDS,
     LAMBDA_GATED_VIDEO_SITES, REVISION_TIMES, LAMBDA_CAPTURE_OFFSET_MINUTES,
+    LAMBDA_CAPTURE_WINDOW_MINUTES,
     S3_BUCKET_NAME, S3_REGION, S3_PREFIX, AUTO_CREATE_S3_BUCKET,
     OUTPUT_ROOT, IS_LAMBDA, PLANT_ID, SITE_ID, PLANT_CAPACITY_MW,
 )
@@ -42,6 +43,14 @@ IST = ZoneInfo(IST_TIMEZONE)
 
 def now_ist() -> datetime.datetime:
     return datetime.datetime.now(IST)
+
+
+def _as_bool(value, default: bool = False) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
 def _lambda_capture_window(site_name: str, current_time: datetime.datetime | None = None) -> tuple[bool, str]:
@@ -57,18 +66,24 @@ def _lambda_capture_window(site_name: str, current_time: datetime.datetime | Non
 
     current_time = current_time or now_ist()
     capture_offset = datetime.timedelta(minutes=LAMBDA_CAPTURE_OFFSET_MINUTES)
+    capture_window = datetime.timedelta(minutes=LAMBDA_CAPTURE_WINDOW_MINUTES)
 
     for revision_time in REVISION_TIMES:
         rev_hour, rev_minute = (int(part) for part in revision_time.split(":"))
-        capture_time = current_time.replace(
+        revision_dt = current_time.replace(
             hour=rev_hour,
             minute=rev_minute,
             second=0,
             microsecond=0,
-        ) - capture_offset
+        )
+        capture_time = revision_dt - capture_offset
+        window_end = capture_time + capture_window
 
-        if current_time.hour == capture_time.hour and current_time.minute == capture_time.minute:
-            return True, f"matched capture window for revision {revision_time}"
+        if capture_time <= current_time < window_end:
+            return True, (
+                f"matched capture window for revision {revision_time} "
+                f"({capture_time.strftime('%H:%M')} - {window_end.strftime('%H:%M')} IST)"
+            )
 
     capture_times = []
     for revision_time in REVISION_TIMES:
@@ -79,10 +94,18 @@ def _lambda_capture_window(site_name: str, current_time: datetime.datetime | Non
             second=0,
             microsecond=0,
         ) - capture_offset).strftime("%H:%M")
-        capture_times.append(capture_time)
+        window_end = (
+            current_time.replace(
+                hour=rev_hour,
+                minute=rev_minute,
+                second=0,
+                microsecond=0,
+            )
+        ).strftime("%H:%M")
+        capture_times.append(f"{capture_time}-{window_end}")
 
     return False, (
-        f"outside {normalized_site_name} capture window; allowed capture times are "
+        f"outside {normalized_site_name} capture window; allowed capture windows are "
         + ", ".join(capture_times)
     )
 
@@ -217,11 +240,6 @@ def _make_s3_key(run_timestamp: str, asset_kind: str, filename: str) -> str:
     date_part = run_timestamp[:10]
     if IS_LAMBDA:
         lambda_asset_kind = "screenshots" if asset_kind == "images" else asset_kind
-        # BHUPALPALLY only keeps one video object per day in S3.
-        # Repeated Lambda invocations in the same capture window overwrite
-        # the same key instead of creating duplicate video files.
-        if PLANT_NAME == "BHUPALPALLY" and lambda_asset_kind == "videos":
-            filename = f"{PLANT_NAME}_{ANIMATION_LAYER}_{date_part}_clean.mp4"
         return f"raw/{PLANT_ID}/{PLANT_NAME}/{date_part}/windy/{lambda_asset_kind}/{filename}"
     return f"{S3_PREFIX}/{date_part}/{asset_kind}/{filename}"
 
@@ -780,6 +798,8 @@ def record_cloud_animation() -> Path | None:
         full_path = raw_path  # fall back to the original name if rename fails
 
     print(f"  [OK] Full video saved: {full_path.resolve()}")
+    print("  [INFO] Uploading raw full video to S3...")
+    _upload_file_to_s3(full_path, _make_s3_key(timestamp, "videos", full_path.name))
 
     # Trim the raw recording down to exactly one clean sweep. Preferred
     # path: use the DOM-verified sweep_start_time/sweep_end_time (real
@@ -817,9 +837,9 @@ def record_cloud_animation() -> Path | None:
               f"Falling back to the full untrimmed video.")
         final_video_path = full_path
 
-    s3_name = final_video_path.name
-    print("  [INFO] Uploading final video to S3...")
-    _upload_file_to_s3(final_video_path, _make_s3_key(timestamp, "videos", s3_name))
+    if final_video_path != full_path:
+        print("  [INFO] Uploading trimmed video to S3...")
+        _upload_file_to_s3(final_video_path, _make_s3_key(timestamp, "videos", final_video_path.name))
     return final_video_path
 
 
@@ -907,6 +927,7 @@ def lambda_handler(event, context):
     event_site_id = str(event.get("site_id") or SITE_ID or "").strip().upper()
     event_plant_id = str(event.get("plant_id") or PLANT_ID or "vedanjay").strip()
     event_bucket = str(event.get("bucket") or os.getenv("S3_BUCKET") or S3_BUCKET_NAME).strip()
+    force_capture = _as_bool(event.get("force_capture") or os.getenv("FORCE_CAPTURE"), default=False)
 
     if not event_site_id:
         raise ValueError("SITE_ID is required as a Lambda environment variable or event field 'site_id'.")
@@ -925,7 +946,7 @@ def lambda_handler(event, context):
     print(f"\nSite: {PLANT_NAME} ({PLANT_LAT}, {PLANT_LON})")
 
     should_capture, capture_reason = _lambda_capture_window(PLANT_NAME)
-    if not should_capture:
+    if not should_capture and not force_capture:
         print(f"\n[INFO] Skipping Lambda capture for {PLANT_NAME}: {capture_reason}")
         return {
             "ok": True,
@@ -934,13 +955,21 @@ def lambda_handler(event, context):
             "site": PLANT_NAME,
             "reason": capture_reason,
         }
+    if force_capture and not should_capture:
+        print(f"\n[INFO] Force capture enabled for {PLANT_NAME}; bypassing gate: {capture_reason}")
 
     ensure_login()
     _ensure_s3_bucket()
 
     try:
         metadata = lambda_run_once()
-        return {"ok": True, "started_at": started_at, "site": PLANT_NAME, "metadata": metadata}
+        return {
+            "ok": True,
+            "started_at": started_at,
+            "site": PLANT_NAME,
+            "force_capture": force_capture,
+            "metadata": metadata,
+        }
     except Exception as e:
         print(f"\n[ERROR] Lambda run failed for {PLANT_NAME}: {e}")
         return {"ok": False, "started_at": started_at, "site": PLANT_NAME, "error": str(e)}

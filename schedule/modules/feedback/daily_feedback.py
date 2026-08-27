@@ -353,6 +353,11 @@ def _push_state_to_s3_if_enabled() -> None:
 
 
 def _daily_revision_feedback_path(date_str: str) -> Path:
+    return config.FEEDBACK_ANALYSIS_DIR / config.PLANT_NAME / f"{config.PLANT_NAME}_{date_str}.json"
+
+
+def _legacy_daily_revision_feedback_path(date_str: str) -> Path:
+    """Backward-compatible path for older date-only filenames."""
     return config.FEEDBACK_ANALYSIS_DIR / config.PLANT_NAME / f"{date_str}.json"
 
 
@@ -380,6 +385,9 @@ def _empty_daily_revision_feedback(date_str: str) -> dict:
 
 def _load_daily_revision_feedback(date_str: str) -> dict:
     path = _daily_revision_feedback_path(date_str)
+    if not path.exists():
+        legacy_path = _legacy_daily_revision_feedback_path(date_str)
+        path = legacy_path if legacy_path.exists() else path
     if not path.exists():
         return _empty_daily_revision_feedback(date_str)
     try:
@@ -425,6 +433,8 @@ def _build_revision_blocks(matched: list[dict]) -> list[dict]:
         step3_mw = _extract_named_mw(schedule_row, "Step 3 Plant Performance MW")
         step4_mw = _extract_named_mw(
             schedule_row,
+            "Step 4 Revision Feedback MW",
+            "Step 4 Revision Feedback Adjusted MW",
             "Step 4 Context Adjusted MW",
             "Step 4 Context MW",
             "Step 4 Context MW ",
@@ -566,6 +576,37 @@ def _update_daily_revision_summary(payload: dict) -> dict:
     return payload
 
 
+def _derive_revision_lessons(payload: dict) -> list[str]:
+    """Turn the latest revision entry into compact, next-run lessons."""
+    revisions = payload.get("revisions", [])
+    if not isinstance(revisions, list) or not revisions:
+        return []
+
+    latest_revision = revisions[-1] if isinstance(revisions[-1], dict) else {}
+    latest_analysis = latest_revision.get("analysis") if isinstance(latest_revision.get("analysis"), dict) else {}
+    latest_metrics = latest_analysis.get("metrics") if isinstance(latest_analysis.get("metrics"), dict) else {}
+
+    lesson_entry = {
+        "date": payload.get("date", ""),
+        "bias": latest_metrics.get("bias"),
+        "mae": latest_metrics.get("mae"),
+        "time_of_day_bias": latest_analysis.get("time_of_day_bias") if isinstance(latest_analysis.get("time_of_day_bias"), dict) else {},
+        "actual_pattern": latest_analysis.get("actual_pattern") if isinstance(latest_analysis.get("actual_pattern"), dict) else {},
+        "worst_block": latest_analysis.get("worst_block") if isinstance(latest_analysis.get("worst_block"), dict) else {},
+    }
+
+    previous_entry = None
+    if len(revisions) >= 2 and isinstance(revisions[-2], dict):
+        previous_analysis = revisions[-2].get("analysis") if isinstance(revisions[-2].get("analysis"), dict) else {}
+        previous_metrics = previous_analysis.get("metrics") if isinstance(previous_analysis.get("metrics"), dict) else {}
+        previous_entry = {
+            "date": revisions[-2].get("revision_time", revisions[-2].get("revision_id", "previous revision")),
+            "mae": previous_metrics.get("mae"),
+        }
+
+    return _derive_entry_lessons(lesson_entry, previous_entry=previous_entry)
+
+
 def _save_daily_revision_feedback(payload: dict) -> Path:
     date_str = payload.get("date") or datetime.date.today().isoformat()
     path = _daily_revision_feedback_path(date_str)
@@ -601,6 +642,12 @@ def format_daily_revision_feedback_for_prompt(date_value=None) -> str:
         lines.append(f"- Revision count so far: {daily_summary.get('revision_count')}")
     if daily_summary.get("latest_summary"):
         lines.append(f"- Latest revision summary: {daily_summary.get('latest_summary')}")
+
+    lessons = _derive_revision_lessons(payload)
+    if lessons:
+        lines.append("- Lessons to apply next revision:")
+        lines.extend(f"  - {lesson}" for lesson in lessons)
+
     latest_metrics = daily_summary.get("latest_metrics") if isinstance(daily_summary.get("latest_metrics"), dict) else {}
     if latest_metrics:
         metrics_text = ", ".join(
@@ -726,7 +773,7 @@ def _record_daily_revision_feedback(
     payload["revisions"] = revisions
     payload = _update_daily_revision_summary(payload)
     saved_path = _save_daily_revision_feedback(payload)
-    print(f"  [FEEDBACK] Updated daily revision analysis JSON: {saved_path.resolve()}")
+    print(f"  [FEEDBACK] Updated daily revision feedback JSON: {saved_path.resolve()}")
     return revision_entry
 
 
@@ -907,6 +954,103 @@ def _time_of_day_bucket(time_label: str) -> str:
     if hour < 14:
         return "midday (10:00-14:00)"
     return "afternoon (14:00+)"
+
+
+def bucket_name_for_time(value) -> str:
+    """Return the stable time-of-day bucket used for revision memory."""
+    if isinstance(value, datetime.datetime):
+        hour = value.hour
+    elif isinstance(value, datetime.date):
+        hour = 0
+    else:
+        text = str(value or "").strip()
+        if len(text) >= 13 and text[10] == " ":
+            try:
+                hour = int(text[11:13])
+            except ValueError:
+                hour = 0
+        else:
+            try:
+                hour = int(text[:2])
+            except ValueError:
+                hour = 0
+    if hour < 10:
+        return "morning (before 10:00)"
+    if hour < 14:
+        return "midday (10:00-14:00)"
+    return "afternoon (14:00+)"
+
+
+def get_recent_time_of_day_biases() -> dict:
+    """Return the rolling time-of-day bias map from the prediction context."""
+    context = _load_context()
+    recent = context.get("recent_summary", {}) if isinstance(context.get("recent_summary"), dict) else {}
+    bias = recent.get("time_of_day_bias", {}) if isinstance(recent.get("time_of_day_bias"), dict) else {}
+    return {
+        str(key): float(value)
+        for key, value in bias.items()
+        if isinstance(value, (int, float))
+    }
+
+
+def recommend_final_clamp_factor(block_time, live_state: dict | None = None) -> tuple[float, str]:
+    """Suggest a conservative final-stage clamp factor for a forecast block."""
+    factor = 1.0
+    bucket = bucket_name_for_time(block_time)
+    bucket_bias = get_recent_time_of_day_biases().get(bucket)
+
+    if live_state and isinstance(live_state.get("live_residual_factor"), (int, float)):
+        live_factor = float(live_state["live_residual_factor"])
+        if live_factor < 1.0:
+            factor = min(factor, max(0.55, live_factor))
+
+    if isinstance(bucket_bias, (int, float)) and bucket_bias > 0.01:
+        scale = min(0.22, abs(bucket_bias) / max(config.PLANT_CAPACITY_MW * 0.25, 0.25))
+        factor = min(factor, max(0.68, 1.0 - scale))
+
+    return round(factor, 3), bucket
+
+
+def recommend_stepwise_correction_factors(block_time, live_state: dict | None = None) -> dict:
+    """Return progressively stronger correction factors for step 1 through step 4.
+
+    The factors are intentionally conservative when the current day is
+    already underperforming the physics ramp, and they get stronger from
+    Step 1 through Step 4 so the model can correct in stages instead of
+    only at the final commit.
+    """
+    bucket = bucket_name_for_time(block_time)
+    bucket_bias = get_recent_time_of_day_biases().get(bucket)
+    live_factor = 1.0
+    fluctuation_flag = False
+    if live_state:
+        live_factor = float(live_state.get("live_residual_factor", 1.0) or 1.0)
+        fluctuation_flag = bool(live_state.get("fluctuation_flag"))
+
+    base_factor = max(0.55, min(1.15, live_factor))
+    bucket_adjustment = 0.0
+    if isinstance(bucket_bias, (int, float)) and bucket_bias > 0.01:
+        bucket_adjustment = -min(0.24, abs(bucket_bias) / max(config.PLANT_CAPACITY_MW * 0.20, 0.20))
+    elif isinstance(bucket_bias, (int, float)) and bucket_bias < -0.01:
+        bucket_adjustment = min(0.15, abs(bucket_bias) / max(config.PLANT_CAPACITY_MW * 0.25, 0.25))
+
+    if fluctuation_flag:
+        base_factor = max(0.55, min(1.12, base_factor * 0.97))
+        if bucket_adjustment < 0:
+            bucket_adjustment -= 0.02
+
+    def _stage_factor(strength: float) -> float:
+        return round(max(0.55, min(1.15, base_factor + (bucket_adjustment * strength))), 3)
+
+    return {
+        "bucket": bucket,
+        "bucket_bias": round(float(bucket_bias), 3) if isinstance(bucket_bias, (int, float)) else None,
+        "base_factor": round(base_factor, 3),
+        "step1_factor": _stage_factor(0.25),
+        "step2_factor": _stage_factor(0.55),
+        "step3_factor": _stage_factor(0.80),
+        "step4_factor": _stage_factor(1.00),
+    }
 
 
 def _analyze_day_patterns(date_str: str, matched: list) -> dict:
@@ -1124,6 +1268,10 @@ def format_context_for_prompt() -> str:
     )
     for e in entries:
         lines.append(f"- {e['summary']}")
+        if e.get("lessons"):
+            lines.append("  Lessons:")
+            for lesson in e["lessons"]:
+                lines.append(f"    - {lesson}")
         if e.get("actual_pattern"):
             lines.append(f"  Also, {e['actual_pattern']['summary']}")
     lines.append(
@@ -1229,6 +1377,19 @@ def _derive_entry_lessons(entry: dict, previous_entry: dict | None = None) -> li
             elif strongest_value < -0.01:
                 lessons.append(
                     f"Strongest bias came from {strongest_bucket}; that bucket ran low by {strongest_value:+.3f} MW."
+                )
+
+        for bucket_name in ("morning (before 10:00)", "midday (10:00-14:00)", "afternoon (14:00+)"):
+            bucket_value = bucket_bias.get(bucket_name)
+            if not isinstance(bucket_value, (int, float)):
+                continue
+            if bucket_value > 0.01:
+                lessons.append(
+                    f"{bucket_name} was over-forecast by {bucket_value:+.3f} MW; trim future blocks in that bucket more aggressively."
+                )
+            elif bucket_value < -0.01:
+                lessons.append(
+                    f"{bucket_name} was under-forecast by {bucket_value:+.3f} MW; allow a modest upward correction in that bucket."
                 )
 
     afternoon_bias = bucket_bias.get("afternoon (14:00+)")

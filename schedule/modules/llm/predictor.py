@@ -590,9 +590,9 @@ def _build_stepwise_prompt(base_predictions: list, feature_row: dict, step1_inpu
         )
     if step4_feedback_text.strip():
         sections.append(
-            "STEP 4 -- plant/day revision feedback JSON from earlier revisions today "
+            "STEP 4 -- revision feedback lessons from earlier revisions today "
             "(this is the ONLY Step 4 correction input; use Step 3 as the base and "
-            "refine it using this JSON):\n"
+            "revise it using these lessons, especially repeated bias and worst-block misses):\n"
             f"{step4_feedback_text.strip()}"
         )
 
@@ -605,8 +605,9 @@ Important rules:
 - Adjust Step 2 using rolling context / feedback for Step 3.
 - Use Step 3 as the base for Step 4.
 - Use today's plant/day revision feedback JSON as the ONLY Step 4 correction signal when it is available.
+- Step 4 should reflect the correction after applying those lessons and may differ from Step 3 when the feedback is meaningful.
 - Do not use Step 1, Step 2, weather, video, or prior-day context as Step 4 inputs.
-- Return the final forecast in llm_mw.
+- Return the final forecast in step4_mw and llm_mw.
 - Keep the output grounded in the provided evidence; do not invent unrelated values.
 - If a step does not need much change, keep it close to the previous step.
 - Return ONLY raw JSON, no markdown or prose.
@@ -626,12 +627,13 @@ Return each object with these fields:
 - "step1_mw"
 - "step2_mw"
 - "step3_mw"
+- "step4_mw"
 - "llm_mw"
 - "confidence"
 - "reasoning"
 
 Example:
-[{{"time":"2026-08-21 15:45","step1_mw":4.2,"step2_mw":4.0,"step3_mw":3.9,"llm_mw":3.9,"confidence":"Medium","reasoning":"Meter history is strong; clouds and context suggest a slight downward adjustment."}}]
+[{{"time":"2026-08-21 15:45","step1_mw":4.2,"step2_mw":4.0,"step3_mw":3.9,"step4_mw":3.8,"llm_mw":3.8,"confidence":"Medium","reasoning":"Meter history is strong; clouds and context suggest a slight downward adjustment."}}]
 """
 
 
@@ -690,6 +692,7 @@ def _parse_stepwise_llm_response(raw_text: str, base_predictions: list) -> list:
         step1_mw = _extract_numeric(item, ("step1_mw", "meter_base_mw", "base_mw", "adjusted_mw"))
         step2_mw = _extract_numeric(item, ("step2_mw", "weather_mw", "video_mw"))
         step3_mw = _extract_numeric(item, ("step3_mw", "context_mw"))
+        step4_mw = _extract_numeric(item, ("step4_mw", "revision_feedback_mw", "feedback_mw"))
         llm_mw = _extract_numeric(item, ("llm_mw", "final_mw", "forecast_mw", "predicted_mw", "adjusted_value", "value", "mw"))
 
         if step1_mw is None:
@@ -698,8 +701,10 @@ def _parse_stepwise_llm_response(raw_text: str, base_predictions: list) -> list:
             step2_mw = step1_mw
         if step3_mw is None:
             step3_mw = step2_mw
+        if step4_mw is None:
+            step4_mw = step3_mw
         if llm_mw is None:
-            llm_mw = step3_mw
+            llm_mw = step4_mw
 
         result = {
             "time": base["time"],
@@ -708,6 +713,7 @@ def _parse_stepwise_llm_response(raw_text: str, base_predictions: list) -> list:
             "step1_mw": step1_mw,
             "step2_mw": step2_mw,
             "step3_mw": step3_mw,
+            "step4_mw": step4_mw,
             "llm_mw": llm_mw,
             "confidence": (item or {}).get("confidence", "Low"),
             "reasoning": (item or {}).get(

@@ -59,7 +59,7 @@ def _current_final_fieldnames(existing_fieldnames: list[str]) -> list[str]:
         "Step 1 Meter Base Forecast MW",
         "Step 2 Weather + Video Adjusted MW",
         "Step 3 Plant Performance MW",
-        "Step 4 Context Adjusted MW",
+        "Step 4 Revision Feedback MW",
         "LLM Schedule (MW)",
         "Schedule MW",
         "LLM Reasoning",
@@ -144,7 +144,29 @@ def merge_latest_schedule(snapshot_csv: Path, latest_csv: Path) -> tuple[int, in
 
 
 def freeze_from_datetime(target_date: str, target_time: str, block_minutes: int | None = None) -> dt.datetime:
+    freeze_lag_minutes_by_plant = {
+        "BHUPALPALLY": 45,
+        "KASIPET": 45,
+        "SIRMOUR": 90,
+    }
+    freeze_lag_minutes = freeze_lag_minutes_by_plant.get(config.PLANT_NAME.upper(), 45)
+    return freeze_from_datetime_with_lag(
+        target_date,
+        target_time,
+        block_minutes=block_minutes,
+        freeze_lag_minutes=freeze_lag_minutes,
+    )
+
+
+def freeze_from_datetime_with_lag(
+    target_date: str,
+    target_time: str,
+    *,
+    block_minutes: int | None = None,
+    freeze_lag_minutes: int = 45,
+) -> dt.datetime:
     freeze_from = dt.datetime.strptime(f"{target_date} {target_time}", "%Y-%m-%d %H:%M")
+    freeze_from += dt.timedelta(minutes=max(0, int(freeze_lag_minutes)))
     block_minutes = block_minutes or config.BLOCK_MINUTES
     remainder = freeze_from.minute % block_minutes
     if remainder or freeze_from.second or freeze_from.microsecond:
@@ -158,6 +180,7 @@ def write_current_final_schedule(
     target_date: str,
     target_time: str,
     block_minutes: int | None = None,
+    freeze_lag_minutes: int | None = None,
 ) -> int:
     latest_fields, latest_rows = read_csv_rows(latest_csv)
     previous_exists = current_final_csv.exists()
@@ -167,7 +190,18 @@ def write_current_final_schedule(
     if not fieldnames:
         raise ValueError("Schedule CSV did not contain any headers.")
 
-    freeze_from = freeze_from_datetime(target_date, target_time, block_minutes=block_minutes)
+    if freeze_lag_minutes is None:
+        freeze_lag_minutes = {
+            "BHUPALPALLY": 45,
+            "KASIPET": 45,
+            "SIRMOUR": 90,
+        }.get(config.PLANT_NAME.upper(), 45)
+    freeze_from = freeze_from_datetime_with_lag(
+        target_date,
+        target_time,
+        block_minutes=block_minutes,
+        freeze_lag_minutes=freeze_lag_minutes,
+    )
 
     def _row_dt(row: dict) -> dt.datetime | None:
         key = row_time_key(row)
@@ -249,7 +283,11 @@ def write_current_final_schedule(
 
 
 def current_final_schedule_name(target_date: str) -> str:
-    return f"{target_date}_current_final_schedule.csv"
+    return f"{config.PLANT_NAME}_{target_date}_current_final_schedule.csv"
+
+
+def penalty_schedule_name(target_date: str) -> str:
+    return f"{config.PLANT_NAME}_{target_date}_penalty_schedule.csv"
 
 
 def download_previous_latest_schedule(
@@ -302,8 +340,13 @@ def download_previous_current_final_schedule(
     current_final_key = f"{schedule_prefix.rstrip('/')}/{target_date}/{current_final_schedule_name(target_date)}"
     try:
         storage_module.download_file(bucket, current_final_key, current_final_csv)
-    except Exception:
         return
+    except Exception:
+        legacy_key = f"{schedule_prefix.rstrip('/')}/{target_date}/{target_date}_current_final_schedule.csv"
+        try:
+            storage_module.download_file(bucket, legacy_key, current_final_csv)
+        except Exception:
+            return
 
 
 def blocks_from_time_to_end_of_day(
