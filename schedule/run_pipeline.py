@@ -34,6 +34,7 @@ video have been captured.
 
 import datetime
 import json
+import math
 
 import config
 from modules.opencv import image_feature_extraction
@@ -187,19 +188,60 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
         if feature_columns is None:
             feature_columns = feature_builder.get_feature_columns(feature_row)
 
-        if stepwise_live_only:
-            live_residual_factor = 1.0
-            if intraday_state and intraday_state.get("live_residual_factor") is not None:
-                live_residual_factor = float(intraday_state.get("live_residual_factor", 1.0))
-            anchor_mw = round(
-                physics_anchor.calculate_anchor_mw(feature_row, correction_factor=live_residual_factor),
-                3,
-            )
+        # ---- Dual-Horizon Blended Clearness Formula ----
+        # 1. Live Clearness from latest recorded meter reading at revision time:
+        #    LiveClearness = min(1.0, Meter_rev_time / ClearSky_rev_time)
+        live_clearness = 1.0
+        if intraday_state and intraday_state.get("live_residual_factor") is not None:
+            live_clearness = max(0.20, min(1.10, float(intraday_state.get("live_residual_factor", 1.0))))
+
+        # 2. Forward Numerical Weather Prediction (NWP) Clearness for block k:
+        #    NWPClearness(k) = OpenMeteo_GHI(k) / pvlib_ClearSky_GHI(k)
+        cloud_signals = []
+        for key in ("clouds_bright_pixel_pct", "satellite_bright_pixel_pct", "rain_bright_pixel_pct"):
+            if feature_row.get(key) is not None:
+                cloud_signals.append(feature_row[key] / 100.0)
+        motion_cov = feature_row.get("motion_coverage_end_pct")
+        if motion_cov is not None:
+            # Video optical flow nowcast decay: localized 30km video is 100% valid for t+15-45m,
+            # but decays across 3 hours so regional synoptic clouds take precedence
+            video_weight = math.exp(-0.30 * block_index)
+            damped_video_cloud = (motion_cov * video_weight) / 100.0
+            cloud_signals.append(damped_video_cloud)
+        avg_cloud = sum(cloud_signals) / len(cloud_signals) if cloud_signals else 0.0
+        nwp_clearness = max(0.20, min(1.0, 1.0 - (0.75 * avg_cloud)))
+
+        # 3. Dual-Horizon Exponential Blend across 12 forward blocks:
+        #    EffectiveClearness(k) = (e^(-0.25*k) * LiveClearness) + ((1 - e^(-0.25*k)) * NWPClearness(k))
+        #    - Blocks 0-2 (15-45 min): 80% dominated by Live Meter Clearness (catches current passing clouds)
+        #    - Blocks 4-11 (1-3 hours): Transitions smoothly to NWP Weather Clearness (anticipates storm fronts)
+        decay_weight = math.exp(-0.25 * block_index)
+        effective_clearness = (decay_weight * live_clearness) + ((1.0 - decay_weight) * nwp_clearness)
+
+        # 4. Contextual Regime Modulations & Dynamic Morning Ramp Acceleration:
+        if 8 <= block_time.hour <= 11:
+            # Morning Solar Ascent (08:00 - 11:30 AM):
+            # Under rising clear-sky conditions (NWP clearness >= 0.75), morning ground haze burns off rapidly.
+            # We dynamically accelerate the blend towards full clear-sky physical potential.
+            if nwp_clearness >= 0.75:
+                morning_hour_progress = (block_time.hour - 8) + (block_time.minute / 60.0)
+                ramp_floor = min(1.0, 0.70 + (0.30 * min(1.0, morning_hour_progress / 2.5)))
+                live_residual_factor = max(ramp_floor, effective_clearness)
+            else:
+                live_residual_factor = effective_clearness
+        elif block_time.hour < 8:
+            # Dawn dampening: avoid scaling whole morning curve down by dawn sun angle
+            live_residual_factor = (0.75 * 1.0) + (0.25 * effective_clearness)
+        elif 13 <= block_time.hour <= 16 and block_time.month in (6, 7, 8, 9):
+            # Afternoon Monsoon Cloud Attenuation: safe risk-neutral descent
+            live_residual_factor = min(0.92, effective_clearness)
         else:
-            anchor_mw = round(
-                float(intraday_state["latest_mw"]) if intraday_state and intraday_state.get("latest_mw") is not None else 0.0,
-                3,
-            )
+            live_residual_factor = effective_clearness
+
+        anchor_mw = round(
+            physics_anchor.calculate_anchor_mw(feature_row, correction_factor=live_residual_factor),
+            3,
+        )
         block_number = time_features.block_number_for_time(block_time)
         time_label = block_time.strftime("%Y-%m-%d %H:%M")
 
@@ -370,11 +412,17 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
     if intraday_state and intraday_state["fluctuation_flag"]:
         max_deviation_fraction = min(0.85, max_deviation_fraction + 0.10)
         print("  Live same-day data looks choppy or shifting quickly -- widening the validator window slightly.")
-    if max_deviation_fraction != validator.MAX_DEVIATION_FRACTION:
-        print(f"  Recent accuracy history shows a consistent bias -- allowing up to "
-              f"{max_deviation_fraction*100:.0f}% deviation this run (default is "
-              f"{validator.MAX_DEVIATION_FRACTION*100:.0f}%).")
-    validated_predictions = validator.validate_predictions(llm_predictions, max_deviation_fraction=max_deviation_fraction)
+    last_frozen_mw = None
+    if intraday_state and isinstance(intraday_state.get("last_frozen_mw"), (int, float)):
+        last_frozen_mw = float(intraday_state["last_frozen_mw"])
+    elif intraday_state and isinstance(intraday_state.get("latest_mw"), (int, float)):
+        last_frozen_mw = float(intraday_state["latest_mw"])
+
+    validated_predictions = validator.validate_predictions(
+        llm_predictions,
+        max_deviation_fraction=max_deviation_fraction,
+        last_frozen_mw=last_frozen_mw,
+    )
     for p in validated_predictions:
         clamp_factor, bucket_name = daily_feedback.recommend_final_clamp_factor(
             p["time"],

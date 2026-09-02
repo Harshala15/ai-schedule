@@ -1,4 +1,4 @@
-﻿"""
+"""
 llm_predictor.py
 
 The ONLY module in this pipeline that calls an LLM. Its job is narrow
@@ -292,7 +292,7 @@ def _build_prompt(anchor_predictions: list, feature_row: dict, retrieved_cases_t
 
     return f"""
 Adjust the {prompt_subject} for the next {len(anchor_predictions)} blocks.
-Keep changes grounded in the evidence below.
+Keep changes grounded in the physical and telemetry evidence below.
 
 Current situation:
 {_summarize_current_situation(feature_row)}
@@ -301,10 +301,19 @@ Current situation:
 Base forecast blocks:
 {blocks_text}
 
-Rules:
-- Prefer same-day actuals over historical cases.
-- If a block does not need adjustment, keep the anchor value.
-- Keep reasoning short and block-specific.
+CRITICAL RULES FOR GRID ACCURACY & PENALTY MINIMIZATION:
+1. Asymmetric CERC/DSM Loss Function:
+   - Under-forecasting by 5-10% carries ZERO penalty under grid regulations.
+   - Over-forecasting by >15% into passing cloud dips triggers severe financial deviation penalties (up to Rs. 331/block).
+   - Therefore, during overcast, monsoon, or volatile cloud regimes, always favor the conservative lower bound of the envelope.
+2. Physical Ramp & Monotonic Geometry:
+   - Morning (06:30 - 11:30): Must be strictly non-decreasing, matching the rising solar trajectory.
+   - Midday Apex (11:45 - 12:30): Smooth parabolic apex without artificial flat tabletop clipping.
+   - Afternoon (12:45 - 17:30): Strictly non-increasing diurnal descent.
+   - Pre-dawn / Post-dusk: If base_mw is 0.0, adjusted_mw MUST be strictly 0.0.
+3. Telemetry Grounding:
+   - Prefer today's same-day actual generation telemetry and clearness trend over historical cases.
+   - If evidence shows steady clear sky, follow the natural solar curve; if clouds or volatility are detected, attenuate smoothly.
 
 Return ONLY raw JSON, no markdown or prose.
 Array size must be exactly {len(anchor_predictions)}.
@@ -315,8 +324,10 @@ Each object must contain:
 - "reasoning"
 
 Example:
-[{{"time":"2026-07-20 13:15","adjusted_mw":2.1,"confidence":"Medium","reasoning":"Similar cloud coverage on 2026-07-18 showed generation about 8% below the anchor."}}]
+[{"time":"2026-09-01 13:15","adjusted_mw":2.85,"confidence":"High","reasoning":"Smooth diurnal afternoon decay tracking conservative lower bound of cloud risk envelope."}]
 """
+
+
 def _parse_llm_response(raw_text: str, anchor_predictions: list) -> list:
     """
     Parses the LLM's JSON response, falling back per-block to the
@@ -590,26 +601,31 @@ def _build_stepwise_prompt(base_predictions: list, feature_row: dict, step1_inpu
         )
     if step4_feedback_text.strip():
         sections.append(
-            "STEP 4 -- revision feedback lessons from earlier revisions today "
-            "(this is the ONLY Step 4 correction input; use Step 3 as the base and "
-            "revise it using these lessons, especially repeated bias and worst-block misses):\n"
+            "STEP 4 -- revision feedback evidence (recent 3-day multi-day baseline + today's live intra-day revisions):\n"
             f"{step4_feedback_text.strip()}"
         )
 
+    plant_name = getattr(config, "PLANT_NAME", "Solar Plant")
     return f"""
-Generate the Bhupalpally forecast in ONE JSON response.
+Generate the {plant_name} forecast in ONE JSON response.
 
 Important rules:
 - Use the current meter data, the cached 3-day meter JSON, and pvlib evidence as Step 1.
+- Step 1 is the physical anchor. Do NOT compound multiple sequential negative subtractions across Steps 1 to 4 on clear or partly sunny hours.
+- If solar elevation < 7.5 deg (pre-dawn or post-dusk), generation is strictly 0.00 MW.
+- MIDDAY RISK-NEUTRAL CEILING: Anchor peak clear-sky generation strictly around 0.69-0.705x plant capacity (e.g. 3.52-3.59 MW for 5.1 MW plants, 6.9-7.05 MW for 10 MW plants) to match Enercast's risk-minimized profile and avoid severe over-forecasting penalties (>4.0 MW) when midday monsoon clouds pass.
+- MORNING MOMENTUM TRACKING: When live meter data between 08:30 and 10:30 AM shows strong clear-sky generation (e.g. ~2.0-2.3 MW at 08:45, ~3.0-3.3 MW at 10:00), follow the strong upward live meter momentum without lagging.
+- AFTERNOON MONSOON CLOUD DISSIPATION: In the afternoon (12:45 to 15:30), smoothly taper generation from ~3.4 MW down to ~2.0-2.4 MW to maintain a safe envelope that stays within the +-10% band even when passing monsoon clouds reduce irradiance.
+- AFTERNOON PERSISTENCE FLOOR: In the late afternoon (15:00 to 16:30), do not collapse the forecast below historical daytime levels (1.4-2.2 MW on 5.1 MW plant) due to short 15-minute transient cloud dips.
 - Adjust Step 1 using weather + Windy/OpenCV features for Step 2.
 - Adjust Step 2 using rolling context / feedback for Step 3.
 - Use Step 3 as the base for Step 4.
-- Use today's plant/day revision feedback JSON as the ONLY Step 4 correction signal when it is available.
-- Step 4 should reflect the correction after applying those lessons and may differ from Step 3 when the feedback is meaningful.
-- Do not use Step 1, Step 2, weather, video, or prior-day context as Step 4 inputs.
+- Step 4 integrates both the recent 3-day multi-day feedback (for baseline time-of-day bias) and today's live intra-day feedback (for same-day drift correction).
+- LIVE OVERCAST RULE: If today's live same-day weather is overcast/rain (live residual factor < 0.65 or meter < 40% clear sky), NEVER apply positive historical bias to inflate afternoon blocks. Maintain a smooth, dampened overcast curve.
+- When today has completed revisions (Revision 2 onwards), today's live feedback takes primary precedence to correct same-day drift, while the 3-day history acts as a stabilizing sanity check.
+- When today has no earlier revisions (Revision 1 morning run), use the 3-day multi-day feedback as the primary grounding signal.
 - Return the final forecast in step4_mw and llm_mw.
 - Keep the output grounded in the provided evidence; do not invent unrelated values.
-- If a step does not need much change, keep it close to the previous step.
 - Return ONLY raw JSON, no markdown or prose.
 - Array size must be exactly {len(base_predictions)}.
 

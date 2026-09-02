@@ -7,7 +7,7 @@ ENV PYTHONUNBUFFERED=1 \
 WORKDIR ${LAMBDA_TASK_ROOT}
 
 COPY simour_forecast_scheduler/requirements.txt ./requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt -t ${LAMBDA_TASK_ROOT}
+RUN pip install --default-timeout=300 --retries=10 --prefer-binary -r requirements.txt -t ${LAMBDA_TASK_ROOT}
 
 # Copy the scheduler package and the forecasting modules it reuses from the repo root.
 COPY config.py daily_feedback.py feature_builder.py image_feature_extraction.py llm_predictor.py \

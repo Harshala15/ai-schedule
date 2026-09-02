@@ -509,6 +509,7 @@ def run_schedule_job(
     penalty_summary = shared_schedule_utils.write_full_block_schedule_from_llm_schedule(
         current_final_csv,
         penalty_csv,
+        fallback_csv_path=latest_csv,
     )
     penalty_total_blocks = int(penalty_summary.get("total_blocks", 96))
 

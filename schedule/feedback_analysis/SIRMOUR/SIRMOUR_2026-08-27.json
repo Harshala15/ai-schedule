@@ -1,0 +1,23 @@
+{
+  "plant_name": "SIRMOUR",
+  "date": "2026-08-27",
+  "revisions": [
+    {
+      "analysis": {
+        "time_of_day_bias": {
+          "morning": -0.05,
+          "midday": 0.02,
+          "afternoon": -0.08
+        }
+      }
+    }
+  ],
+  "daily_summary": {
+    "revision_count": 8,
+    "latest_metrics": {
+      "mae": 0.16,
+      "bias": -0.06
+    },
+    "best_step": "step4_mw"
+  }
+}

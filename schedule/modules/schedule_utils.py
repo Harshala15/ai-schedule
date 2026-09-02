@@ -10,8 +10,13 @@ from pathlib import Path
 import config
 
 
+from zoneinfo import ZoneInfo
+
+IST = ZoneInfo("Asia/Kolkata")
+
+
 def parse_target_datetime(event: dict | None) -> tuple[str, str, dt.datetime]:
-    now = dt.datetime.now()
+    now = dt.datetime.now(IST)
     target_date = (event or {}).get("target_date") or now.strftime("%Y-%m-%d")
     target_time = (event or {}).get("target_time") or now.strftime("%H:%M")
     target_dt = dt.datetime.strptime(f"{target_date} {target_time}", "%Y-%m-%d %H:%M")
@@ -278,6 +283,37 @@ def write_current_final_schedule(
             if column in row:
                 row[column] = "0"
 
+    # ---- Stitch boundary seam between past frozen blocks and new forward blocks ----
+    max_step = getattr(config, "PLANT_CAPACITY_MW", 10.0) * 0.065
+    mw_main_col = None
+    for candidate in ("Final Validated MW", "Schedule MW", "schedule_mw", "LLM Schedule (MW)"):
+        if candidate in current_final_fieldnames:
+            mw_main_col = candidate
+            break
+
+    if mw_main_col and len(frozen_rows) > 1:
+        for i in range(1, len(frozen_rows)):
+            r_prev_dt = _row_dt(frozen_rows[i - 1])
+            r_curr_dt = _row_dt(frozen_rows[i])
+            if r_prev_dt is not None and r_curr_dt is not None:
+                if r_prev_dt < freeze_from <= r_curr_dt:
+                    try:
+                        prev_mw = float(frozen_rows[i - 1].get(mw_main_col, 0.0) or 0.0)
+                        curr_mw = float(frozen_rows[i].get(mw_main_col, 0.0) or 0.0)
+                        diff = curr_mw - prev_mw
+                        if abs(diff) > max_step:
+                            smooth_mw = round(prev_mw + max_step * (1 if diff > 0 else -1), 3)
+                            frozen_rows[i][mw_main_col] = str(max(0.0, smooth_mw))
+                            if i + 1 < len(frozen_rows):
+                                next_mw = float(frozen_rows[i + 1].get(mw_main_col, 0.0) or 0.0)
+                                diff_next = next_mw - smooth_mw
+                                if abs(diff_next) > max_step:
+                                    smooth_next = round(smooth_mw + max_step * (1 if diff_next > 0 else -1), 3)
+                                    frozen_rows[i + 1][mw_main_col] = str(max(0.0, smooth_next))
+                    except (ValueError, TypeError):
+                        pass
+                    break
+
     write_csv(current_final_csv, current_final_fieldnames, frozen_rows)
     return len(frozen_rows)
 
@@ -369,33 +405,53 @@ def write_full_block_schedule_from_llm_schedule(
     input_csv_path: Path,
     output_csv_path: Path,
     *,
+    fallback_csv_path: Path | None = None,
     total_blocks: int = 96,
 ) -> dict:
     """Write a full block schedule with missing blocks filled with zero.
 
-    The input is expected to contain a `Block` column and an
-    `LLM Schedule (MW)` column. The output always contains exactly
-    `total_blocks` rows with the schema:
-
-        block,schedule_mw
+    The input is expected to contain a `Block` column and a validated
+    schedule MW column. If `fallback_csv_path` (e.g. latest_schedule.csv)
+    is provided, it fills future afternoon blocks up to sunset so the schedule
+    never drops to 0.0 MW prematurely on dashboards.
     """
     schedule_by_block: dict[int, float] = {}
-    with open(input_csv_path, "r", newline="", encoding="utf-8-sig") as handle:
-        reader = csv.DictReader(handle)
-        for row in reader:
-            raw_block = str(row.get("Block", "")).strip()
-            try:
-                block = int(raw_block)
-            except (TypeError, ValueError):
-                continue
 
-            raw_mw = row.get("LLM Schedule (MW)", "")
-            try:
-                schedule_mw = float(raw_mw or 0.0)
-            except (TypeError, ValueError):
-                schedule_mw = 0.0
+    # 1. Read fallback / latest schedule first (full diurnal curve)
+    if fallback_csv_path and fallback_csv_path.exists():
+        with open(fallback_csv_path, "r", newline="", encoding="utf-8-sig") as handle:
+            for row in csv.DictReader(handle):
+                raw_block = str(row.get("Block", "")).strip()
+                try:
+                    b = int(raw_block)
+                    mw = float(
+                        row.get("Final Validated MW")
+                        or row.get("Schedule MW")
+                        or row.get("schedule_mw")
+                        or row.get("LLM Schedule (MW)")
+                        or 0.0
+                    )
+                    schedule_by_block[b] = mw
+                except (ValueError, TypeError):
+                    continue
 
-            schedule_by_block[block] = schedule_mw
+    # 2. Overlay frozen current-final schedule (authoritative for past frozen blocks)
+    if input_csv_path.exists():
+        with open(input_csv_path, "r", newline="", encoding="utf-8-sig") as handle:
+            for row in csv.DictReader(handle):
+                raw_block = str(row.get("Block", "")).strip()
+                try:
+                    b = int(raw_block)
+                    mw = float(
+                        row.get("Final Validated MW")
+                        or row.get("Schedule MW")
+                        or row.get("schedule_mw")
+                        or row.get("LLM Schedule (MW)")
+                        or 0.0
+                    )
+                    schedule_by_block[b] = mw
+                except (ValueError, TypeError):
+                    continue
 
     output_csv_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_csv_path, "w", newline="", encoding="utf-8") as handle:
@@ -406,6 +462,7 @@ def write_full_block_schedule_from_llm_schedule(
                 "block": block,
                 "schedule_mw": schedule_by_block.get(block, 0.0),
             })
+    return {"total_blocks": total_blocks, "populated_blocks": len(schedule_by_block)}
 
     return {
         "input_csv": str(input_csv_path),

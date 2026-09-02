@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import datetime as dt
 import json
+import math
 import re
 import shutil
 from dataclasses import dataclass
@@ -522,6 +523,9 @@ def _snapshot_metadata(
     }
 
 
+
+
+
 def run_schedule_job(
     bucket: str,
     capture_prefix: str,
@@ -595,6 +599,7 @@ def run_schedule_job(
     penalty_summary = shared_schedule_utils.write_full_block_schedule_from_llm_schedule(
         current_final_csv,
         penalty_csv,
+        fallback_csv_path=latest_csv,
     )
 
     forecast_start_label = forecast_start_dt.strftime("%Y-%m-%d %H:%M")

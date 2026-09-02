@@ -9,18 +9,19 @@ from pathlib import Path
 import tempfile
 from typing import Any
 from urllib.parse import urlencode
-from urllib.request import urlopen
+from urllib.request import urlopen, Request
 from zoneinfo import ZoneInfo
 
 
 URL = "https://api.open-meteo.com/v1/forecast"
-HOURLY_VARIABLES = [
+MINUTELY_15_VARIABLES = [
     "global_tilted_irradiance_instant",
+    "shortwave_radiation_instant",
+    "direct_normal_irradiance",
     "temperature_2m",
-    "surface_temperature",
-    "precipitation",
-    "cloud_cover_low",
+    "cloud_cover",
 ]
+HOURLY_VARIABLES = MINUTELY_15_VARIABLES
 CACHE_DIR = Path(tempfile.gettempdir()) / "bhupalpally_openmeteo_cache"
 
 
@@ -54,8 +55,8 @@ def _request_payload(latitude: float, longitude: float, start_date: str, end_dat
     params = {
         "latitude": latitude,
         "longitude": longitude,
-        "hourly": HOURLY_VARIABLES,
-        "models": "ecmwf_ifs",
+        "minutely_15": MINUTELY_15_VARIABLES,
+        "models": "best_match",
         "timezone": timezone,
         "tilt": tilt,
         "azimuth": azimuth,
@@ -68,29 +69,29 @@ def _request_payload(latitude: float, longitude: float, start_date: str, end_dat
         from retry_requests import retry
         import openmeteo_requests
 
-        cache_session = requests_cache.CachedSession(str(CACHE_DIR), expire_after=3600)
+        cache_session = requests_cache.CachedSession(str(CACHE_DIR), expire_after=1800)
         retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
         client = openmeteo_requests.Client(session=retry_session)
         response = client.weather_api(URL, params=params)[0]
-        hourly = response.Hourly()
-        interval = int(hourly.Interval())
-        time_start = dt.datetime.fromtimestamp(int(hourly.Time()), tz=dt.timezone.utc)
-        values = [hourly.Variables(i).ValuesAsNumpy().tolist() for i in range(len(HOURLY_VARIABLES))]
+        min15 = response.Minutely15()
+        interval = int(min15.Interval())
+        time_start = dt.datetime.fromtimestamp(int(min15.Time()), tz=dt.timezone.utc)
+        values = [min15.Variables(i).ValuesAsNumpy().tolist() for i in range(len(MINUTELY_15_VARIABLES))]
         rows = []
         for index in range(len(values[0]) if values else 0):
             ts = time_start + dt.timedelta(seconds=interval * index)
             rows.append(
                 {
                     "time": ts.isoformat(),
-                    HOURLY_VARIABLES[0]: values[0][index],
-                    HOURLY_VARIABLES[1]: values[1][index],
-                    HOURLY_VARIABLES[2]: values[2][index],
-                    HOURLY_VARIABLES[3]: values[3][index],
-                    HOURLY_VARIABLES[4]: values[4][index],
+                    MINUTELY_15_VARIABLES[0]: values[0][index],
+                    MINUTELY_15_VARIABLES[1]: values[1][index] if len(values) > 1 else None,
+                    MINUTELY_15_VARIABLES[2]: values[2][index] if len(values) > 2 else None,
+                    MINUTELY_15_VARIABLES[3]: values[3][index] if len(values) > 3 else None,
+                    MINUTELY_15_VARIABLES[4]: values[4][index] if len(values) > 4 else None,
                 }
             )
         return {
-            "source": "openmeteo_requests",
+            "source": "openmeteo_requests_15min",
             "latitude": response.Latitude(),
             "longitude": response.Longitude(),
             "elevation": response.Elevation(),
@@ -100,37 +101,37 @@ def _request_payload(latitude: float, longitude: float, start_date: str, end_dat
             "rows": rows,
         }
     except Exception:
-        # Lightweight fallback that still works when the SDK is not
-        # installed or the retry/cache helpers are unavailable.
+        # Lightweight REST fallback for 15-min solar API
         query = urlencode({
             "latitude": latitude,
             "longitude": longitude,
-            "hourly": ",".join(HOURLY_VARIABLES),
-            "models": "ecmwf_ifs",
+            "minutely_15": ",".join(MINUTELY_15_VARIABLES),
+            "models": "best_match",
             "timezone": timezone,
             "tilt": tilt,
             "azimuth": azimuth,
             "start_date": start_date,
             "end_date": end_date,
         })
-        with urlopen(f"{URL}?{query}", timeout=30) as handle:
+        req = urllib.request.Request(f"{URL}?{query}", headers={"User-Agent": "Mozilla/5.0"})
+        with urlopen(req, timeout=30) as handle:
             payload = json.loads(handle.read().decode("utf-8"))
-        hourly = payload.get("hourly", {})
-        time_values = hourly.get("time", [])
+        min15_data = payload.get("minutely_15", payload.get("hourly", {}))
+        time_values = min15_data.get("time", [])
         rows = []
         for index, time_value in enumerate(time_values):
             rows.append(
                 {
                     "time": time_value,
-                    HOURLY_VARIABLES[0]: hourly.get(HOURLY_VARIABLES[0], [None])[index] if index < len(hourly.get(HOURLY_VARIABLES[0], [])) else None,
-                    HOURLY_VARIABLES[1]: hourly.get(HOURLY_VARIABLES[1], [None])[index] if index < len(hourly.get(HOURLY_VARIABLES[1], [])) else None,
-                    HOURLY_VARIABLES[2]: hourly.get(HOURLY_VARIABLES[2], [None])[index] if index < len(hourly.get(HOURLY_VARIABLES[2], [])) else None,
-                    HOURLY_VARIABLES[3]: hourly.get(HOURLY_VARIABLES[3], [None])[index] if index < len(hourly.get(HOURLY_VARIABLES[3], [])) else None,
-                    HOURLY_VARIABLES[4]: hourly.get(HOURLY_VARIABLES[4], [None])[index] if index < len(hourly.get(HOURLY_VARIABLES[4], [])) else None,
+                    MINUTELY_15_VARIABLES[0]: min15_data.get(MINUTELY_15_VARIABLES[0], [None])[index] if index < len(min15_data.get(MINUTELY_15_VARIABLES[0], [])) else None,
+                    MINUTELY_15_VARIABLES[1]: min15_data.get(MINUTELY_15_VARIABLES[1], [None])[index] if index < len(min15_data.get(MINUTELY_15_VARIABLES[1], [])) else None,
+                    MINUTELY_15_VARIABLES[2]: min15_data.get(MINUTELY_15_VARIABLES[2], [None])[index] if index < len(min15_data.get(MINUTELY_15_VARIABLES[2], [])) else None,
+                    MINUTELY_15_VARIABLES[3]: min15_data.get(MINUTELY_15_VARIABLES[3], [None])[index] if index < len(min15_data.get(MINUTELY_15_VARIABLES[3], [])) else None,
+                    MINUTELY_15_VARIABLES[4]: min15_data.get(MINUTELY_15_VARIABLES[4], [None])[index] if index < len(min15_data.get(MINUTELY_15_VARIABLES[4], [])) else None,
                 }
             )
         payload["rows"] = rows
-        payload["source"] = "open_meteo_rest"
+        payload["source"] = "open_meteo_rest_15min"
         return payload
 
 
