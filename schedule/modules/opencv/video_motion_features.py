@@ -174,9 +174,15 @@ def analyze_video(video_path, sample_step=FRAME_SAMPLE_STEP):
         gray_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
         roi_shape = gray_roi.shape
 
-        # ---- Cloud coverage %: fraction of ROI pixels above the
-        # brightness threshold ----
-        cloud_pixels = int(np.count_nonzero(gray_roi > CLOUD_BRIGHTNESS_THRESHOLD))
+        # ---- Cloud coverage %: uses both brightness AND color saturation
+        # to prevent terrain glare / reflective sand from being falsely detected as cloud ----
+        hsv_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+        val_channel = hsv_roi[:, :, 2]
+        sat_channel = hsv_roi[:, :, 1]
+        
+        # Clouds are achromatic white/light gray (high brightness V > threshold, low saturation S < 75)
+        cloud_mask = (val_channel > CLOUD_BRIGHTNESS_THRESHOLD) & (sat_channel < 75)
+        cloud_pixels = int(np.count_nonzero(cloud_mask))
         total_pixels = int(gray_roi.size)
         coverage_pct = 100.0 * cloud_pixels / total_pixels
         coverage_pcts.append(coverage_pct)

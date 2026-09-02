@@ -32,6 +32,7 @@ from config import (
     LAYERS, RECORD_ANIMATION_VIDEO, ANIMATION_LAYER,
     VIDEO_DIR, STORAGE_STATE_PATH, SCREENSHOT_DIR, RUN_INTERVAL_SECONDS,
     LAMBDA_GATED_VIDEO_SITES, REVISION_TIMES, LAMBDA_CAPTURE_OFFSET_MINUTES,
+    LAMBDA_CAPTURE_WINDOW_MINUTES,
     S3_BUCKET_NAME, S3_REGION, S3_PREFIX, AUTO_CREATE_S3_BUCKET,
     OUTPUT_ROOT, IS_LAMBDA, PLANT_ID, SITE_ID, PLANT_CAPACITY_MW,
 )
@@ -42,6 +43,14 @@ IST = ZoneInfo(IST_TIMEZONE)
 
 def now_ist() -> datetime.datetime:
     return datetime.datetime.now(IST)
+
+
+def _as_bool(value, default: bool = False) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
 def _lambda_capture_window(site_name: str, current_time: datetime.datetime | None = None) -> tuple[bool, str]:
@@ -57,18 +66,24 @@ def _lambda_capture_window(site_name: str, current_time: datetime.datetime | Non
 
     current_time = current_time or now_ist()
     capture_offset = datetime.timedelta(minutes=LAMBDA_CAPTURE_OFFSET_MINUTES)
+    capture_window = datetime.timedelta(minutes=LAMBDA_CAPTURE_WINDOW_MINUTES)
 
     for revision_time in REVISION_TIMES:
         rev_hour, rev_minute = (int(part) for part in revision_time.split(":"))
-        capture_time = current_time.replace(
+        revision_dt = current_time.replace(
             hour=rev_hour,
             minute=rev_minute,
             second=0,
             microsecond=0,
-        ) - capture_offset
+        )
+        capture_time = revision_dt - capture_offset
+        window_end = capture_time + capture_window
 
-        if current_time.hour == capture_time.hour and current_time.minute == capture_time.minute:
-            return True, f"matched capture window for revision {revision_time}"
+        if capture_time <= current_time < window_end:
+            return True, (
+                f"matched capture window for revision {revision_time} "
+                f"({capture_time.strftime('%H:%M')} - {window_end.strftime('%H:%M')} IST)"
+            )
 
     capture_times = []
     for revision_time in REVISION_TIMES:
@@ -79,10 +94,18 @@ def _lambda_capture_window(site_name: str, current_time: datetime.datetime | Non
             second=0,
             microsecond=0,
         ) - capture_offset).strftime("%H:%M")
-        capture_times.append(capture_time)
+        window_end = (
+            current_time.replace(
+                hour=rev_hour,
+                minute=rev_minute,
+                second=0,
+                microsecond=0,
+            )
+        ).strftime("%H:%M")
+        capture_times.append(f"{capture_time}-{window_end}")
 
     return False, (
-        f"outside {normalized_site_name} capture window; allowed capture times are "
+        f"outside {normalized_site_name} capture window; allowed capture windows are "
         + ", ".join(capture_times)
     )
 
@@ -215,15 +238,8 @@ def set_weather_picker_point(page):
 
 def _make_s3_key(run_timestamp: str, asset_kind: str, filename: str) -> str:
     date_part = run_timestamp[:10]
-    if IS_LAMBDA:
-        lambda_asset_kind = "screenshots" if asset_kind == "images" else asset_kind
-        # BHUPALPALLY only keeps one video object per day in S3.
-        # Repeated Lambda invocations in the same capture window overwrite
-        # the same key instead of creating duplicate video files.
-        if PLANT_NAME == "BHUPALPALLY" and lambda_asset_kind == "videos":
-            filename = f"{PLANT_NAME}_{ANIMATION_LAYER}_{date_part}_clean.mp4"
-        return f"raw/{PLANT_ID}/{PLANT_NAME}/{date_part}/windy/{lambda_asset_kind}/{filename}"
-    return f"{S3_PREFIX}/{date_part}/{asset_kind}/{filename}"
+    folder = "screenshots" if asset_kind == "images" else asset_kind
+    return f"raw/{PLANT_ID}/{PLANT_NAME}/{date_part}/windy/{folder}/{filename}"
 
 
 def _s3_client():
@@ -620,6 +636,9 @@ def read_timeline_offset_minutes(page):
     return None
 
 
+
+
+
 def record_cloud_animation() -> Path | None:
     """
     Records a short video of the animated Clouds layer (time-lapse cloud
@@ -648,23 +667,9 @@ def record_cloud_animation() -> Path | None:
             record_video_size={"width": VIEWPORT_WIDTH, "height": VIEWPORT_HEIGHT},
         )
 
-        # Playwright starts recording the video the moment this context is
-        # created (not from page.goto()) -- so THIS is the true t=0 for the
-        # video file. Capturing it here lets us later compute exactly how
-        # many real seconds our setup steps (page load, popups, seek, play,
-        # speed/forecast toggles, marker) actually took, instead of
-        # guessing a fixed number -- that real number is what tells us
-        # WHERE in the raw video actual playback begins.
         video_start_time = time.time()
-
         page = context.new_page()
 
-        # IMPORTANT: some layers (e.g. Satellite) only get a real
-        # animated timeline + play button on Windy's DEDICATED nowcast
-        # page (URL pattern "/-<Layer>-<layer>?..."). The generic
-        # "/{lat}/{lon}?{layer},..." URL used for screenshots instead opens
-        # the normal static forecast page for that layer, which has no
-        # play button at all -- that was why the recording stayed static.
         DEDICATED_NOWCAST_URLS = {
             "satellite": "https://www.windy.com/-Satellite-satellite?satellite,{lat},{lon},{zoom},p:cities",
         }
@@ -680,25 +685,25 @@ def record_cloud_animation() -> Path | None:
             )
         page.goto(url, wait_until="domcontentloaded", timeout=60000)
 
-        # Wait long enough for the map tiles AND the timeline/animation
-        # frames to fully load before we click play. Clicking play too
-        # early (while frames are still loading) causes the animation to
-        # already be partway through by the time it's actually playing
-        # smoothly -- this longer wait fixes that.
-        page.wait_for_timeout(15000)
+        # Wait for tiles & initial frames to load
+        page.wait_for_timeout(10000)
         dismiss_popups(page)
-        page.wait_for_timeout(1500)
+        page.wait_for_timeout(1000)
 
-        # Step 1: close any overlay/info box (e.g. the white timeline info
-        # box that the Satellite layer shows) that may be sitting on top
-        # of, or hiding, the play button.
+        # Step 1: Close any timeline overlay
         dismiss_timeline_overlay(page)
 
-        # Step 1b: seek the playhead back to "1h ago" BEFORE pressing play,
-        # so the recorded animation covers roughly the last hour through
-        # to the next hour, instead of starting from "now" onward only.
-        # If the label isn't found yet (page/timeline still rendering),
-        # retry a few times.
+        # Step 1b: Place marker/pointer on plant center BEFORE playback
+        # and wait for elevation/weather API calls to fully resolve
+        click_plant_marker(page)
+        page.wait_for_timeout(3500)  # ensures 'Loading elevation...' finishes and resolves
+
+        # Step 1c: Select slowest speed and enable Play with Forecast
+        click_slow_animation_speed(page)
+        click_play_with_forecast(page)
+        page.wait_for_timeout(1000)
+
+        # Step 1d: Seek timeline to 1h ago
         for seek_attempt in range(1, 4):
             if seek_timeline_to_one_hour_ago(page):
                 break
@@ -706,35 +711,13 @@ def record_cloud_animation() -> Path | None:
                 print(f"  Retrying timeline seek (attempt {seek_attempt + 1}/3)...")
                 page.wait_for_timeout(1500)
 
-        # Step 2: click the play button to start the time-lapse animation.
+        # Step 2: Click Play button to start animation
         click_play_button(page)
 
-        # Step 2b: select the slowest playback speed so the recorded clip
-        # plays back smoothly instead of jumping through frames too fast.
-        click_slow_animation_speed(page)
-
-        # Step 2c: also enable "Play with forecast" so the animation
-        # continues seamlessly from the nowcast into the forecast frames.
-        click_play_with_forecast(page)
-
-        # Step 3: click on the map at the plant's coordinates once, so a
-        # pointer/marker is dropped there for the recording.
-        click_plant_marker(page)
-
-        # ---- Precisely capture exactly one full "-1h..+1h" animation
-        # sweep, using Windy's OWN on-screen frame-time label as ground
-        # truth -- instead of guessing how many wall-clock seconds that
-        # takes (unreliable: depends on network/tile-load speed, and
-        # confirmed by inspecting real captures to sometimes land
-        # mid-sweep rather than exactly at "-1h ago"). The animation
-        # loops, and each loop restart shows up as the label jumping
-        # BACKWARD by far more than normal per-tick movement -- e.g.
-        # "10:45 AM - in 1h 0m" -> "8:47 AM - 58m ago". We watch for that
-        # jump happening twice; the real elapsed time between those two
-        # jumps is exactly one clean, complete sweep, with no guessing.
-        JUMP_MINUTES_THRESHOLD = 20  # a real loop restart jumps back by far more than one tick ever does
+        # ---- Precisely capture exactly one full "-1h..+1h" animation sweep ----
+        JUMP_MINUTES_THRESHOLD = 20
         POLL_INTERVAL_MS = 200
-        MAX_POLL_SECONDS = 30  # safety cap in case the label can't be read at all this run
+        MAX_POLL_SECONDS = 30
 
         jump_times = []
         prev_offset = None
@@ -758,11 +741,10 @@ def record_cloud_animation() -> Path | None:
             print(f"  [WARN] Could not detect a full timeline sweep from the on-screen "
                   f"label within {MAX_POLL_SECONDS}s -- falling back to the fixed-duration trim.")
 
-        page.wait_for_timeout(1000)  # small buffer so ffmpeg has full frames right at the boundary
-
+        page.wait_for_timeout(1000)
         video_obj = page.video
         print("  [INFO] Finalizing Playwright video context...")
-        context.close()  # finalizes and writes the video file
+        context.close()
         browser.close()
 
         if video_obj is None:
@@ -770,8 +752,6 @@ def record_cloud_animation() -> Path | None:
 
         print("  [INFO] Resolving raw video file path...")
         raw_path = Path(video_obj.path())
-
-    # Rename from Playwright's random hash filename to something readable
     timestamp = now_ist().strftime("%Y-%m-%d_%H-%M-%S")
     full_path = VIDEO_DIR / f"{PLANT_NAME}_{ANIMATION_LAYER}_{timestamp}_full.webm"
     try:
@@ -780,6 +760,8 @@ def record_cloud_animation() -> Path | None:
         full_path = raw_path  # fall back to the original name if rename fails
 
     print(f"  [OK] Full video saved: {full_path.resolve()}")
+    print("  [INFO] Uploading raw full video to S3...")
+    _upload_file_to_s3(full_path, _make_s3_key(timestamp, "videos", full_path.name))
 
     # Trim the raw recording down to exactly one clean sweep. Preferred
     # path: use the DOM-verified sweep_start_time/sweep_end_time (real
@@ -797,6 +779,7 @@ def record_cloud_animation() -> Path | None:
         clip_seconds = 11
 
     clean_path = VIDEO_DIR / f"{PLANT_NAME}_{ANIMATION_LAYER}_{timestamp}_clean.mp4"
+    final_video_path = full_path
     try:
         import subprocess
         subprocess.run(
@@ -813,15 +796,42 @@ def record_cloud_animation() -> Path | None:
         print(f"  [OK] Clean trimmed clip saved: {clean_path.resolve()}")
         final_video_path = clean_path
     except Exception as e:
-        print(f"  [WARN] Could not trim video with ffmpeg ({e}). "
-              f"Falling back to the full untrimmed video.")
-        final_video_path = full_path
+        print(f"  [INFO] ffmpeg not available ({e}); attempting trimming via OpenCV...")
+        try:
+            import cv2
+            cap = cv2.VideoCapture(str(full_path))
+            fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) or VIEWPORT_WIDTH
+            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or VIEWPORT_HEIGHT
+            start_frame = int(skip_seconds * fps)
+            num_frames = int(clip_seconds * fps)
 
-    s3_name = final_video_path.name
-    print("  [INFO] Uploading final video to S3...")
-    _upload_file_to_s3(final_video_path, _make_s3_key(timestamp, "videos", s3_name))
+            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+            writer = cv2.VideoWriter(str(clean_path), fourcc, fps, (width, height))
+
+            cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+            written = 0
+            while written < num_frames:
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                writer.write(frame)
+                written += 1
+            cap.release()
+            writer.release()
+            if written > 0:
+                print(f"  [OK] Clean trimmed clip saved via OpenCV ({written} frames): {clean_path.resolve()}")
+                final_video_path = clean_path
+            else:
+                final_video_path = full_path
+        except Exception as ex_cv:
+            print(f"  [WARN] OpenCV trimming failed ({ex_cv}). Falling back to the full untrimmed video.")
+            final_video_path = full_path
+
+    if final_video_path != full_path:
+        print("  [INFO] Uploading trimmed video to S3...")
+        _upload_file_to_s3(final_video_path, _make_s3_key(timestamp, "videos", final_video_path.name))
     return final_video_path
-
 
 def run_once():
     """Captures screenshots and records the cloud-animation video."""
@@ -907,6 +917,7 @@ def lambda_handler(event, context):
     event_site_id = str(event.get("site_id") or SITE_ID or "").strip().upper()
     event_plant_id = str(event.get("plant_id") or PLANT_ID or "vedanjay").strip()
     event_bucket = str(event.get("bucket") or os.getenv("S3_BUCKET") or S3_BUCKET_NAME).strip()
+    force_capture = _as_bool(event.get("force_capture") or os.getenv("FORCE_CAPTURE"), default=False)
 
     if not event_site_id:
         raise ValueError("SITE_ID is required as a Lambda environment variable or event field 'site_id'.")
@@ -925,7 +936,7 @@ def lambda_handler(event, context):
     print(f"\nSite: {PLANT_NAME} ({PLANT_LAT}, {PLANT_LON})")
 
     should_capture, capture_reason = _lambda_capture_window(PLANT_NAME)
-    if not should_capture:
+    if not should_capture and not force_capture:
         print(f"\n[INFO] Skipping Lambda capture for {PLANT_NAME}: {capture_reason}")
         return {
             "ok": True,
@@ -934,13 +945,21 @@ def lambda_handler(event, context):
             "site": PLANT_NAME,
             "reason": capture_reason,
         }
+    if force_capture and not should_capture:
+        print(f"\n[INFO] Force capture enabled for {PLANT_NAME}; bypassing gate: {capture_reason}")
 
     ensure_login()
     _ensure_s3_bucket()
 
     try:
         metadata = lambda_run_once()
-        return {"ok": True, "started_at": started_at, "site": PLANT_NAME, "metadata": metadata}
+        return {
+            "ok": True,
+            "started_at": started_at,
+            "site": PLANT_NAME,
+            "force_capture": force_capture,
+            "metadata": metadata,
+        }
     except Exception as e:
         print(f"\n[ERROR] Lambda run failed for {PLANT_NAME}: {e}")
         return {"ok": False, "started_at": started_at, "site": PLANT_NAME, "error": str(e)}

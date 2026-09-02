@@ -8,7 +8,7 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR ${LAMBDA_TASK_ROOT}
 
-RUN pip install --no-cache-dir \
+RUN pip install --default-timeout=300 --retries=10 --no-cache-dir \
     boto3 \
     numpy \
     opencv-python-headless \

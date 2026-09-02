@@ -105,7 +105,9 @@ def _extract_single_image_stats(filepath: str) -> dict:
     mean_cos = float(np.mean(np.cos(hue_rad)))
     avg_hue_deg = float(np.degrees(np.arctan2(mean_sin, mean_cos)) % 360)
 
-    bright_pixels = int(np.count_nonzero(gray > BRIGHT_PIXEL_THRESHOLD))
+    # Achromatic cloud detection (high brightness, low color saturation) to exclude terrain glare
+    bright_mask = (gray > BRIGHT_PIXEL_THRESHOLD) & (hsv[..., 1] < 80)
+    bright_pixels = int(np.count_nonzero(bright_mask))
     bright_pixel_pct = 100.0 * bright_pixels / gray.size
 
     return {

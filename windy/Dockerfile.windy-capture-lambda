@@ -2,7 +2,7 @@ FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
-ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+ENV PLAYWRIGHT_BROWSERS_PATH=0
 ENV TZ=Asia/Kolkata
 
 WORKDIR /app
@@ -49,14 +49,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     && rm -rf /var/lib/apt/lists/*
 
-COPY . /app
-
 RUN pip install --no-cache-dir \
     awslambdaric \
     playwright \
     boto3
 
 RUN playwright install chromium
+
+COPY . /app
 
 ENTRYPOINT ["/usr/local/bin/python", "-m", "awslambdaric"]
 CMD ["test_multi_image.lambda_handler"]

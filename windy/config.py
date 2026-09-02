@@ -98,14 +98,15 @@ RUN_INTERVAL_SECONDS = 20 * 60
 LAMBDA_GATED_VIDEO_SITES = ("SIRMOUR", "KASIPET", "BHUPALPALLY")
 REVISION_TIMES = ("05:55", "06:45", "08:15", "09:45", "11:15", "14:15", "15:45")
 LAMBDA_CAPTURE_OFFSET_MINUTES = 5
+LAMBDA_CAPTURE_WINDOW_MINUTES = int(_get_env_value("LAMBDA_CAPTURE_WINDOW_MINUTES", "5"))
 
 # ---- S3 upload ----
 S3_BUCKET_NAME = _normalize_s3_bucket_name(
-    _get_env_value("S3_BUCKET_NAME", _get_env_value("S3_BUCKET", "ai-forecasting-storage"))
+    _get_env_value("S3_BUCKET_NAME", _get_env_value("S3_BUCKET", "ai-forecasting-storage-429694361053"))
 )
 S3_REGION = _get_env_value("S3_REGION", "ap-south-1")
 S3_PREFIX = _get_env_value("S3_PREFIX", SITES[0]["s3_prefix"]).strip().strip("/")
-AUTO_CREATE_S3_BUCKET = _get_env_value("AUTO_CREATE_S3_BUCKET", "true").lower() not in {"0", "false", "no"}
+AUTO_CREATE_S3_BUCKET = _get_env_value("AUTO_CREATE_S3_BUCKET", "false").lower() not in {"0", "false", "no"}
 PLANT_ID = _get_env_value("PLANT_ID", "vedanjay")
 SITE_ID = _get_env_value("SITE_ID", "")
 

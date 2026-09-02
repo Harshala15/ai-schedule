@@ -353,6 +353,11 @@ def _push_state_to_s3_if_enabled() -> None:
 
 
 def _daily_revision_feedback_path(date_str: str) -> Path:
+    return config.FEEDBACK_ANALYSIS_DIR / config.PLANT_NAME / f"{config.PLANT_NAME}_{date_str}.json"
+
+
+def _legacy_daily_revision_feedback_path(date_str: str) -> Path:
+    """Backward-compatible path for older date-only filenames."""
     return config.FEEDBACK_ANALYSIS_DIR / config.PLANT_NAME / f"{date_str}.json"
 
 
@@ -380,6 +385,9 @@ def _empty_daily_revision_feedback(date_str: str) -> dict:
 
 def _load_daily_revision_feedback(date_str: str) -> dict:
     path = _daily_revision_feedback_path(date_str)
+    if not path.exists():
+        legacy_path = _legacy_daily_revision_feedback_path(date_str)
+        path = legacy_path if legacy_path.exists() else path
     if not path.exists():
         return _empty_daily_revision_feedback(date_str)
     try:
@@ -425,6 +433,8 @@ def _build_revision_blocks(matched: list[dict]) -> list[dict]:
         step3_mw = _extract_named_mw(schedule_row, "Step 3 Plant Performance MW")
         step4_mw = _extract_named_mw(
             schedule_row,
+            "Step 4 Revision Feedback MW",
+            "Step 4 Revision Feedback Adjusted MW",
             "Step 4 Context Adjusted MW",
             "Step 4 Context MW",
             "Step 4 Context MW ",
@@ -566,6 +576,37 @@ def _update_daily_revision_summary(payload: dict) -> dict:
     return payload
 
 
+def _derive_revision_lessons(payload: dict) -> list[str]:
+    """Turn the latest revision entry into compact, next-run lessons."""
+    revisions = payload.get("revisions", [])
+    if not isinstance(revisions, list) or not revisions:
+        return []
+
+    latest_revision = revisions[-1] if isinstance(revisions[-1], dict) else {}
+    latest_analysis = latest_revision.get("analysis") if isinstance(latest_revision.get("analysis"), dict) else {}
+    latest_metrics = latest_analysis.get("metrics") if isinstance(latest_analysis.get("metrics"), dict) else {}
+
+    lesson_entry = {
+        "date": payload.get("date", ""),
+        "bias": latest_metrics.get("bias"),
+        "mae": latest_metrics.get("mae"),
+        "time_of_day_bias": latest_analysis.get("time_of_day_bias") if isinstance(latest_analysis.get("time_of_day_bias"), dict) else {},
+        "actual_pattern": latest_analysis.get("actual_pattern") if isinstance(latest_analysis.get("actual_pattern"), dict) else {},
+        "worst_block": latest_analysis.get("worst_block") if isinstance(latest_analysis.get("worst_block"), dict) else {},
+    }
+
+    previous_entry = None
+    if len(revisions) >= 2 and isinstance(revisions[-2], dict):
+        previous_analysis = revisions[-2].get("analysis") if isinstance(revisions[-2].get("analysis"), dict) else {}
+        previous_metrics = previous_analysis.get("metrics") if isinstance(previous_analysis.get("metrics"), dict) else {}
+        previous_entry = {
+            "date": revisions[-2].get("revision_time", revisions[-2].get("revision_id", "previous revision")),
+            "mae": previous_metrics.get("mae"),
+        }
+
+    return _derive_entry_lessons(lesson_entry, previous_entry=previous_entry)
+
+
 def _save_daily_revision_feedback(payload: dict) -> Path:
     date_str = payload.get("date") or datetime.date.today().isoformat()
     path = _daily_revision_feedback_path(date_str)
@@ -574,108 +615,126 @@ def _save_daily_revision_feedback(payload: dict) -> Path:
     return path
 
 
-def format_daily_revision_feedback_for_prompt(date_value=None) -> str:
-    """Render the day-level revision feedback JSON as compact prompt text."""
+def format_daily_revision_feedback_for_prompt(date_value=None, n_past_days: int = 3) -> str:
+    """Render both recent 3-day multi-day revision feedback and today's live intra-day
+    revision feedback JSON as structured evidence for Step 4."""
     if date_value is None:
-        date_str = datetime.date.today().isoformat()
+        target_date = datetime.date.today()
     elif isinstance(date_value, datetime.datetime):
-        date_str = date_value.date().isoformat()
+        target_date = date_value.date()
     elif isinstance(date_value, datetime.date):
-        date_str = date_value.isoformat()
+        target_date = date_value
     else:
-        date_str = str(date_value).strip()[:10]
+        try:
+            target_date = datetime.datetime.strptime(str(date_value).strip()[:10], "%Y-%m-%d").date()
+        except ValueError:
+            target_date = datetime.date.today()
 
-    payload = _load_daily_revision_feedback(date_str)
-    revisions = payload.get("revisions", []) if isinstance(payload.get("revisions", []), list) else []
-    daily_summary = payload.get("daily_summary", {}) if isinstance(payload.get("daily_summary"), dict) else {}
-    if not revisions:
-        return (
-            f"No revision-level feedback JSON is available yet for "
-            f"{payload.get('plant_name', config.PLANT_NAME)} on {payload.get('date', date_str)}."
-        )
+    date_str = target_date.isoformat()
+    plant_name = config.PLANT_NAME
 
-    lines = [
-        f"Daily revision feedback JSON for {payload.get('plant_name', config.PLANT_NAME)} on {payload.get('date', date_str)}:",
-    ]
-    if daily_summary.get("revision_count") is not None:
-        lines.append(f"- Revision count so far: {daily_summary.get('revision_count')}")
-    if daily_summary.get("latest_summary"):
-        lines.append(f"- Latest revision summary: {daily_summary.get('latest_summary')}")
-    latest_metrics = daily_summary.get("latest_metrics") if isinstance(daily_summary.get("latest_metrics"), dict) else {}
-    if latest_metrics:
-        metrics_text = ", ".join(
-            f"{key}={latest_metrics[key]}"
-            for key in ("n_matched_blocks", "mae", "rmse", "mape_pct", "bias")
-            if latest_metrics.get(key) is not None
-        )
-        if metrics_text:
-            lines.append(f"- Latest metrics: {metrics_text}")
-    latest_step_metrics = daily_summary.get("latest_step_metrics") if isinstance(daily_summary.get("latest_step_metrics"), dict) else {}
-    if latest_step_metrics:
-        step_lines = []
-        for step_name in ("step1_mw", "step2_mw", "step3_mw", "step4_mw", "llm_schedule_mw", "schedule_mw"):
-            step_metric = latest_step_metrics.get(step_name) if isinstance(latest_step_metrics.get(step_name), dict) else {}
-            if step_metric and step_metric.get("mae") is not None:
-                step_lines.append(f"{step_name} MAE={step_metric.get('mae')}")
-        if step_lines:
-            lines.append("- Latest step metrics: " + "; ".join(step_lines))
-    best_step = daily_summary.get("best_step")
-    worst_step = daily_summary.get("worst_step")
-    if best_step or worst_step:
-        lines.append(
-            "- Step ranking: "
-            + ", ".join(
-                part for part in (
-                    f"best={best_step}" if best_step else "",
-                    f"worst={worst_step}" if worst_step else "",
-                )
-                if part
-            )
-        )
-    average_metrics = daily_summary.get("average_metrics") if isinstance(daily_summary.get("average_metrics"), dict) else {}
-    if average_metrics:
-        avg_text = ", ".join(
-            f"{key}={average_metrics[key]}"
-            for key in ("mae", "rmse", "mape_pct", "bias")
-            if average_metrics.get(key) is not None
-        )
-        if avg_text:
-            lines.append(f"- Average revision metrics: {avg_text}")
-    revision_times = daily_summary.get("revision_times") if isinstance(daily_summary.get("revision_times"), list) else []
-    if revision_times:
-        lines.append("- Revision times: " + ", ".join(str(item) for item in revision_times))
+    sections = []
 
-    latest_revision = revisions[-1] if revisions and isinstance(revisions[-1], dict) else {}
-    analysis = latest_revision.get("analysis") if isinstance(latest_revision.get("analysis"), dict) else {}
-    if analysis.get("summary"):
-        lines.append(f"- Latest block feedback: {analysis.get('summary')}")
-    time_of_day_bias = analysis.get("time_of_day_bias") if isinstance(analysis.get("time_of_day_bias"), dict) else {}
-    if time_of_day_bias:
-        lines.append(
-            "- Latest time-of-day bias: "
-            + "; ".join(f"{bucket}: {value:+.3f} MW" for bucket, value in time_of_day_bias.items() if isinstance(value, (int, float)))
-        )
-    worst_block = analysis.get("worst_block") if isinstance(analysis.get("worst_block"), dict) else {}
-    if worst_block.get("time"):
-        lines.append(
-            f"- Latest worst block: {worst_block.get('time')} "
-            f"(error {worst_block.get('error_mw')})"
-        )
-    blocks = analysis.get("blocks") if isinstance(analysis.get("blocks"), list) else []
-    if blocks:
-        preview = []
-        for item in blocks[:5]:
-            if not isinstance(item, dict):
-                continue
-            preview.append(
-                f"{item.get('time')}: final_validated_mw={item.get('final_validated_mw')}, "
-                f"actual_mw={item.get('actual_mw')}, error_mw={item.get('error_mw')}"
-            )
-        if preview:
-            lines.append("- Block feedback preview:")
-            lines.extend(f"  {line}" for line in preview)
+    # ---- 1. Recent N-Day Feedback Summary (D-3 to D-1) ----
+    past_summaries = []
+    bucket_bias_totals = {}
+    bucket_bias_counts = {}
 
-    return "\n".join(lines)
+    for day_offset in range(n_past_days, 0, -1):
+        past_date = target_date - datetime.timedelta(days=day_offset)
+        past_date_str = past_date.isoformat()
+        past_payload = _load_daily_revision_feedback(past_date_str)
+        past_revisions = past_payload.get("revisions", []) if isinstance(past_payload.get("revisions", []), list) else []
+        past_summary = past_payload.get("daily_summary", {}) if isinstance(past_payload.get("daily_summary"), dict) else {}
+
+        if past_revisions or past_summary.get("revision_count", 0) > 0:
+            rev_count = past_summary.get("revision_count", len(past_revisions))
+            avg_metrics = past_summary.get("average_metrics") or past_summary.get("latest_metrics") or {}
+            mae = avg_metrics.get("mae")
+            bias = avg_metrics.get("bias")
+            best_step = past_summary.get("best_step")
+
+            latest_rev = past_revisions[-1] if past_revisions and isinstance(past_revisions[-1], dict) else {}
+            tod_bias = latest_rev.get("analysis", {}).get("time_of_day_bias") or {}
+            tod_str_parts = []
+            for b_name, b_val in tod_bias.items():
+                if isinstance(b_val, (int, float)):
+                    tod_str_parts.append(f"{b_name}={b_val:+.3f} MW")
+                    bucket_bias_totals[b_name] = bucket_bias_totals.get(b_name, 0.0) + b_val
+                    bucket_bias_counts[b_name] = bucket_bias_counts.get(b_name, 0) + 1
+
+            tod_text = f" | Time-of-day: {', '.join(tod_str_parts)}" if tod_str_parts else ""
+            best_text = f" | Best={best_step}" if best_step else ""
+            metrics_text = f"MAE={mae} MW, Bias={bias:+.3f} MW" if (mae is not None and bias is not None) else "metrics logged"
+            past_summaries.append(f"- {past_date_str}: {rev_count} revs | {metrics_text}{best_text}{tod_text}")
+
+    past_lines = ["RECENT 3-DAY MULTI-DAY REVISION FEEDBACK (Past 72h Baseline):"]
+    if past_summaries:
+        past_lines.extend(past_summaries)
+        if bucket_bias_totals:
+            avg_tod_parts = [
+                f"{b}: {bucket_bias_totals[b] / bucket_bias_counts[b]:+.3f} MW"
+                for b in bucket_bias_totals if bucket_bias_counts.get(b, 0) > 0
+            ]
+            past_lines.append(f"- 3-Day Rolling Bias: {'; '.join(avg_tod_parts)}")
+    else:
+        past_lines.append("- No prior multi-day revision feedback JSONs found in history.")
+    sections.append("\n".join(past_lines))
+
+    # ---- 2. Today's Live Intra-Day Feedback ----
+    today_payload = _load_daily_revision_feedback(date_str)
+    today_revisions = today_payload.get("revisions", []) if isinstance(today_payload.get("revisions", []), list) else []
+    today_summary = today_payload.get("daily_summary", {}) if isinstance(today_payload.get("daily_summary"), dict) else {}
+
+    today_lines = [f"TODAY'S LIVE INTRA-DAY REVISION FEEDBACK ({plant_name} on {date_str}):"]
+    if today_revisions:
+        rev_count = today_summary.get("revision_count", len(today_revisions))
+        today_lines.append(f"- Revision count so far today: {rev_count}")
+        if today_summary.get("latest_summary"):
+            today_lines.append(f"- Latest revision summary: {today_summary.get('latest_summary')}")
+
+        lessons = _derive_revision_lessons(today_payload)
+        if lessons:
+            today_lines.append("- Lessons learned today for next revision:")
+            today_lines.extend(f"  - {lesson}" for lesson in lessons)
+
+        latest_metrics = today_summary.get("latest_metrics") or {}
+        if latest_metrics:
+            m_parts = [f"{k}={latest_metrics[k]}" for k in ("n_matched_blocks", "mae", "rmse", "mape_pct", "bias") if latest_metrics.get(k) is not None]
+            if m_parts:
+                today_lines.append(f"- Today's latest metrics: {', '.join(m_parts)}")
+
+        latest_step_metrics = today_summary.get("latest_step_metrics") or {}
+        if latest_step_metrics:
+            step_lines = [
+                f"{s} MAE={latest_step_metrics[s]['mae']}"
+                for s in ("step1_mw", "step2_mw", "step3_mw", "step4_mw", "schedule_mw")
+                if isinstance(latest_step_metrics.get(s), dict) and latest_step_metrics[s].get("mae") is not None
+            ]
+            if step_lines:
+                today_lines.append("- Step error ranking today: " + "; ".join(step_lines))
+
+        latest_rev = today_revisions[-1] if today_revisions and isinstance(today_revisions[-1], dict) else {}
+        tod_bias = latest_rev.get("analysis", {}).get("time_of_day_bias") or {}
+        if tod_bias:
+            today_lines.append("- Today's latest time-of-day bias: " + "; ".join(f"{b}: {v:+.3f} MW" for b, v in tod_bias.items() if isinstance(v, (int, float))))
+
+        worst_block = latest_rev.get("analysis", {}).get("worst_block") or {}
+        if worst_block.get("time"):
+            today_lines.append(f"- Today's latest worst block: {worst_block.get('time')} (error {worst_block.get('error_mw')})")
+
+        today_lines.append(
+            "- GUIDANCE: Today has live revision history. Use today's intra-day feedback as the PRIMARY correction signal "
+            "to fix same-day drift, while using the 3-day multi-day baseline above as a stabilizing boundary."
+        )
+    else:
+        today_lines.append("- No revisions completed yet today (Revision 1 morning run).")
+        today_lines.append(
+            "- GUIDANCE: Use the 3-Day Multi-Day Feedback above as the primary grounding signal for morning ramp-up."
+        )
+    sections.append("\n".join(today_lines))
+
+    return "\n\n".join(sections)
 
 
 def _record_daily_revision_feedback(
@@ -726,7 +785,7 @@ def _record_daily_revision_feedback(
     payload["revisions"] = revisions
     payload = _update_daily_revision_summary(payload)
     saved_path = _save_daily_revision_feedback(payload)
-    print(f"  [FEEDBACK] Updated daily revision analysis JSON: {saved_path.resolve()}")
+    print(f"  [FEEDBACK] Updated daily revision feedback JSON: {saved_path.resolve()}")
     return revision_entry
 
 
@@ -907,6 +966,130 @@ def _time_of_day_bucket(time_label: str) -> str:
     if hour < 14:
         return "midday (10:00-14:00)"
     return "afternoon (14:00+)"
+
+
+def bucket_name_for_time(value) -> str:
+    """Return the stable time-of-day bucket used for revision memory."""
+    if isinstance(value, datetime.datetime):
+        hour = value.hour
+    elif isinstance(value, datetime.date):
+        hour = 0
+    else:
+        text = str(value or "").strip()
+        if len(text) >= 13 and text[10] == " ":
+            try:
+                hour = int(text[11:13])
+            except ValueError:
+                hour = 0
+        else:
+            try:
+                hour = int(text[:2])
+            except ValueError:
+                hour = 0
+    if hour < 10:
+        return "morning (before 10:00)"
+    if hour < 14:
+        return "midday (10:00-14:00)"
+    return "afternoon (14:00+)"
+
+
+def get_recent_time_of_day_biases() -> dict:
+    """Return the rolling time-of-day bias map from the prediction context."""
+    context = _load_context()
+    recent = context.get("recent_summary", {}) if isinstance(context.get("recent_summary"), dict) else {}
+    bias = recent.get("time_of_day_bias", {}) if isinstance(recent.get("time_of_day_bias"), dict) else {}
+    return {
+        str(key): float(value)
+        for key, value in bias.items()
+        if isinstance(value, (int, float))
+    }
+
+
+def recommend_final_clamp_factor(block_time, live_state: dict | None = None) -> tuple[float, str]:
+    """Suggest a conservative final-stage clamp factor for a forecast block.
+    
+    The AI model's 4-step reasoning and validator already incorporate
+    physics anchors, video features, context, and ramp constraints.
+    We return factor=1.0 to avoid redundant double-clamping.
+    """
+    bucket = bucket_name_for_time(block_time)
+    return 1.0, bucket
+
+
+def recommend_stepwise_correction_factors(block_time, live_state: dict | None = None) -> dict:
+    """Return progressively stronger correction factors for step 1 through step 4.
+
+    The factors are intentionally conservative when the current day is
+    already underperforming the physics ramp, and they get stronger from
+    Step 1 through Step 4 so the model can correct in stages instead of
+    only at the final commit.
+    """
+    bucket = bucket_name_for_time(block_time)
+    bucket_bias = get_recent_time_of_day_biases().get(bucket)
+    live_factor = 1.0
+    fluctuation_flag = False
+    if live_state:
+        live_factor = float(live_state.get("live_residual_factor", 1.0) or 1.0)
+        fluctuation_flag = bool(live_state.get("fluctuation_flag"))
+
+    hour = 12
+    if isinstance(block_time, datetime.datetime):
+        hour = block_time.hour
+    elif isinstance(block_time, str) and len(block_time) >= 13 and block_time[10] == " ":
+        try:
+            hour = int(block_time[11:13])
+        except ValueError:
+            hour = 12
+
+    # Dawn dampening: avoid broadcasting dawn's low sun-angle ratios into the mid-morning ramp
+    if hour < 9 and live_factor < 1.0:
+        dawn_blend = 0.5 if hour == 8 else 0.75
+        live_factor = (dawn_blend * 1.0) + ((1.0 - dawn_blend) * live_factor)
+
+    base_factor = max(0.70, min(1.15, live_factor))
+    bucket_adjustment = 0.0
+    if isinstance(bucket_bias, (int, float)) and bucket_bias > 0.01:
+        bucket_adjustment = -min(0.18, abs(bucket_bias) / max(config.PLANT_CAPACITY_MW * 0.25, 0.25))
+    elif isinstance(bucket_bias, (int, float)) and bucket_bias < -0.01:
+        bucket_adjustment = min(0.15, abs(bucket_bias) / max(config.PLANT_CAPACITY_MW * 0.25, 0.25))
+
+    # LIVE OVERCAST GATE: If current same-day weather is overcast/rain (live factor < 0.65),
+    # disable positive historical upward adjustment to prevent phantom spikes.
+    if live_factor < 0.65 and bucket_adjustment > 0:
+        bucket_adjustment = 0.0
+
+    # TIME-DECOUPLED FEEDBACK: Dawn bias (< 09:00 AM) must not drag down mid-morning and midday solar ascent
+    if hour >= 9 and bucket_adjustment < 0:
+        bucket_adjustment = max(-0.04, bucket_adjustment * 0.25)
+
+    # MORNING MOMENTUM BOOST (09:00 - 11:30): Allow strong morning meter to drive natural ascent
+    if 9 <= hour <= 11 and live_factor >= 0.85:
+        base_factor = min(1.10, live_factor)
+
+    # AFTERNOON MONSOON CLOUD ATTENUATION (13:00 - 16:30):
+    # Damps afternoon peak exposure so when passing clouds arrive, schedule stays within +-10% band.
+    if 13 <= hour <= 16:
+        base_factor = min(0.92, base_factor)
+
+    if fluctuation_flag:
+        base_factor = max(0.70, min(1.10, base_factor * 0.97))
+        if bucket_adjustment < 0:
+            bucket_adjustment -= 0.02
+
+    def _stage_factor(strength: float) -> float:
+        # Enforce stable bounded factors to prevent oscillation across revisions
+        val = base_factor + (bucket_adjustment * strength)
+        return round(max(0.70, min(1.10, val)), 3)
+
+    return {
+        "bucket": bucket,
+        "bucket_bias": round(float(bucket_bias), 3) if isinstance(bucket_bias, (int, float)) else None,
+        "base_factor": round(base_factor, 3),
+        "step1_factor": _stage_factor(0.25),
+        "step2_factor": _stage_factor(0.55),
+        "step3_factor": _stage_factor(0.80),
+        "step4_factor": _stage_factor(1.00),
+    }
 
 
 def _analyze_day_patterns(date_str: str, matched: list) -> dict:
@@ -1124,6 +1307,10 @@ def format_context_for_prompt() -> str:
     )
     for e in entries:
         lines.append(f"- {e['summary']}")
+        if e.get("lessons"):
+            lines.append("  Lessons:")
+            for lesson in e["lessons"]:
+                lines.append(f"    - {lesson}")
         if e.get("actual_pattern"):
             lines.append(f"  Also, {e['actual_pattern']['summary']}")
     lines.append(
@@ -1229,6 +1416,19 @@ def _derive_entry_lessons(entry: dict, previous_entry: dict | None = None) -> li
             elif strongest_value < -0.01:
                 lessons.append(
                     f"Strongest bias came from {strongest_bucket}; that bucket ran low by {strongest_value:+.3f} MW."
+                )
+
+        for bucket_name in ("morning (before 10:00)", "midday (10:00-14:00)", "afternoon (14:00+)"):
+            bucket_value = bucket_bias.get(bucket_name)
+            if not isinstance(bucket_value, (int, float)):
+                continue
+            if bucket_value > 0.01:
+                lessons.append(
+                    f"{bucket_name} was over-forecast by {bucket_value:+.3f} MW; trim future blocks in that bucket more aggressively."
+                )
+            elif bucket_value < -0.01:
+                lessons.append(
+                    f"{bucket_name} was under-forecast by {bucket_value:+.3f} MW; allow a modest upward correction in that bucket."
                 )
 
     afternoon_bias = bucket_bias.get("afternoon (14:00+)")
@@ -1603,10 +1803,15 @@ def summarize_intraday_state(actuals_csv_path, reference_time: datetime.datetime
         if choppy:
             live_residual_factor = max(0.50, min(1.10, live_residual_factor * 0.97))
 
+    today_max_mw = max([item["active_power_mw"] for item in rows]) if rows else 0.0
+    morning_ratios = ratios[:len(ratios)//2] if len(ratios) >= 4 else ratios
+    morning_ratio_avg = sum(morning_ratios) / len(morning_ratios) if morning_ratios else None
+    clearness_trend = "strengthening" if (recent_ratio and morning_ratio_avg and recent_ratio > morning_ratio_avg + 0.05) else ("weakening" if (recent_ratio and morning_ratio_avg and recent_ratio < morning_ratio_avg - 0.05) else "steady")
+
     summary = (
         f"Live same-day state up to {latest_ts.strftime('%Y-%m-%d %H:%M')}: "
-        f"latest={latest_mw:.3f} MW, recent_avg={recent_avg_mw:.3f} MW, "
-        f"trend={trend_label}, regime={regime}, "
+        f"latest={latest_mw:.3f} MW, today_peak={today_max_mw:.3f} MW, recent_avg={recent_avg_mw:.3f} MW, "
+        f"trend={trend_label}, clearness_trend={clearness_trend}, regime={regime}, "
         f"avg_step={avg_abs_step:.3f} MW, fluctuation_flag={fluctuation_flag}, "
         f"live_residual_factor={live_residual_factor:.3f}."
     )
@@ -1632,9 +1837,11 @@ def summarize_intraday_state(actuals_csv_path, reference_time: datetime.datetime
         "reference_time": reference_time.strftime("%Y-%m-%d %H:%M"),
         "latest_time": latest_ts.strftime("%Y-%m-%d %H:%M"),
         "latest_mw": round(latest_mw, 3),
+        "today_max_mw": round(today_max_mw, 3),
         "recent_avg_mw": round(recent_avg_mw, 3),
         "recent_delta_mw": round(recent_delta_mw, 3),
         "trend_label": trend_label,
+        "clearness_trend": clearness_trend,
         "avg_abs_step_mw": round(avg_abs_step, 3),
         "choppy": choppy,
         "fluctuation_flag": fluctuation_flag,
@@ -1657,12 +1864,14 @@ def format_intraday_state_for_prompt(state: dict | None) -> str:
     if not state:
         return "No live same-day state summary is available yet."
     lines = [
-        "Live same-day regime and fluctuation summary:",
+        "Live same-day regime and telemetry summary:",
         f"- {state['summary']}",
     ]
+    if state.get("today_max_mw") is not None:
+        lines.append(f"- Peak actual power generated so far today: {state['today_max_mw']:.3f} MW")
     if state.get("recent_clear_sky_ratio") is not None:
         lines.append(
-            f"- Recent actual-vs-clear-sky ratio: {state['recent_clear_sky_ratio'] * 100:.0f}%"
+            f"- Recent actual-vs-clear-sky ratio: {state['recent_clear_sky_ratio'] * 100:.0f}% ({state.get('clearness_trend', 'steady')})"
         )
     if state.get("recent_ghi_avg") is not None:
         lines.append(f"- Recent GHI average: {state['recent_ghi_avg']:.1f} W/m2")

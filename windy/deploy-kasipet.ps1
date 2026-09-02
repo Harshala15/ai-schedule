@@ -42,4 +42,12 @@ aws lambda update-function-code `
     --function-name $FunctionName `
     --image-uri $imageUri | Out-Null
 
+Write-Host "Pinning Lambda command to kasipet_lambda.lambda_handler..."
+$imageConfigPath = Join-Path $env:TEMP "kasipet-image-config.json"
+Set-Content -LiteralPath $imageConfigPath -Value '{"Command":["kasipet_lambda.lambda_handler"]}' -Encoding ascii
+aws lambda update-function-configuration `
+    --region $Region `
+    --function-name $FunctionName `
+    --image-config file://$imageConfigPath | Out-Null
+
 Write-Host "Deployment complete for $FunctionName using $imageUri"

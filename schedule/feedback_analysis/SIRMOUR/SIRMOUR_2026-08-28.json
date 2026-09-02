@@ -1,0 +1,36 @@
+{
+  "plant_name": "SIRMOUR",
+  "date": "2026-08-28",
+  "revisions": [
+    {
+      "analysis": {
+        "summary": "Morning was slightly low",
+        "time_of_day_bias": {
+          "morning": -0.15
+        },
+        "worst_block": {
+          "time": "08:45",
+          "error_mw": -0.32
+        }
+      }
+    }
+  ],
+  "daily_summary": {
+    "revision_count": 2,
+    "latest_summary": "Revision 2 shows morning under-forecasting",
+    "latest_metrics": {
+      "n_matched_blocks": 6,
+      "mae": 0.22,
+      "bias": -0.18
+    },
+    "latest_step_metrics": {
+      "step1_mw": {
+        "mae": 0.35
+      },
+      "step4_mw": {
+        "mae": 0.22
+      }
+    },
+    "best_step": "step4_mw"
+  }
+}

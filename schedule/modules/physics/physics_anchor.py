@@ -38,28 +38,19 @@ def calculate_anchor_mw(feature_row: dict, capacity_mw: float = config.PLANT_CAP
                          correction_factor: float = 1.0) -> float:
     """
     Main entry point: computes the physics-based anchor generation (MW)
-    for one forecast block's feature row. This is the "before LLM
-    adjustment" baseline that gets passed into llm_predictor.py.
-
-    correction_factor: optional empirical multiplier -- see
-    daily_feedback.compute_anchor_correction_factor(), which derives this
-    from real SCADA history once enough of it has accumulated. Lets the
-    anchor self-correct against real outcomes without hand-tuning the
-    formula's constants (PERFORMANCE_RATIO, cloud attenuation) blind.
-    Defaults to 1.0 (no change) for any caller that doesn't pass one.
+    for one forecast block's feature row.
     """
     elevation = feature_row.get("solar_elevation_deg", 0.0)
-    if elevation <= 0:
-        return 0.0  # sun below horizon -> no generation
+    # 1. Inverter Cut-in Threshold: Physical inverters require minimum string voltage
+    # and turn off when sun is below 7.5 degrees (eliminating pre-dawn & post-dusk creep).
+    if elevation < 7.5:
+        return 0.0
 
-    # Clear-sky proxy: rises with sin(elevation), roughly matching how
-    # actual clear-sky irradiance behaves through the day.
-    clear_sky_index = math.sin(math.radians(elevation))
-    clear_sky_index = max(0.0, min(1.0, clear_sky_index))
+    # 2. Clear-sky proxy: smooth natural bell curve scaling with solar zenith
+    raw_sine = math.sin(math.radians(elevation))
+    clear_sky_index = max(0.0, min(1.0, raw_sine ** 0.95))
 
-    # Cloud attenuation: average a few cloud-ish signals into one 0-1
-    # "how clear is it" factor. Higher bright_pixel_pct / coverage = more
-    # cloud = less clear.
+    # 3. Cloud attenuation from image and video motion features
     cloud_signals = []
     for key in ("clouds_bright_pixel_pct", "satellite_bright_pixel_pct", "rain_bright_pixel_pct"):
         if feature_row.get(key) is not None:
@@ -68,10 +59,26 @@ def calculate_anchor_mw(feature_row: dict, capacity_mw: float = config.PLANT_CAP
     if motion_cov is not None:
         cloud_signals.append(motion_cov / 100.0)
 
-    avg_cloud_fraction = sum(cloud_signals) / len(cloud_signals) if cloud_signals else 0.3
+    avg_cloud_fraction = sum(cloud_signals) / len(cloud_signals) if cloud_signals else 0.0
     avg_cloud_fraction = max(0.0, min(1.0, avg_cloud_fraction))
-    clearness_factor = 1.0 - (0.8 * avg_cloud_fraction)  # heavy cloud can cut ~80%
+    clearness_factor = max(0.20, 1.0 - (0.75 * avg_cloud_fraction))
 
-    generation_mw = capacity_mw * clear_sky_index * clearness_factor * performance_ratio * correction_factor
+    # 4. Safe Risk-Optimized Performance Ratio & Temperature Derating
+    # During monsoon (June-September), scales curve to naturally peak at ~3.55 MW without flat plateaus
+    # During dry/winter (October-May), scales curve to peak at ~4.15 MW.
+    month = feature_row.get("month", 9)
+    if isinstance(month, (int, float)) and int(month) in (6, 7, 8, 9):
+        effective_pr = max(0.68, min(0.705, performance_ratio or 0.695))
+    else:
+        effective_pr = max(0.74, min(0.81, performance_ratio or 0.78))
+
+    # Cell temperature derate: PV modules lose ~0.4% efficiency per deg C above 25C
+    temp_amb = feature_row.get("temp_air_c", feature_row.get("temperature_2m", 30.0))
+    poa_proxy = max(0.0, 1000.0 * raw_sine * clearness_factor)
+    t_cell = temp_amb + ((45.0 - 20.0) / 800.0) * poa_proxy
+    temp_derate = max(0.88, min(1.02, 1.0 - 0.0038 * (t_cell - 25.0)))
+
+    # 5. Physics generation computation (dynamic curved solar arch)
+    generation_mw = capacity_mw * clear_sky_index * clearness_factor * effective_pr * temp_derate * correction_factor
     generation_mw = max(0.0, min(capacity_mw, generation_mw))
     return round(generation_mw, 3)

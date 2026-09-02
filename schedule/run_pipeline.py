@@ -34,6 +34,7 @@ video have been captured.
 
 import datetime
 import json
+import math
 
 import config
 from modules.opencv import image_feature_extraction
@@ -187,19 +188,60 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
         if feature_columns is None:
             feature_columns = feature_builder.get_feature_columns(feature_row)
 
-        if stepwise_live_only:
-            live_residual_factor = 1.0
-            if intraday_state and intraday_state.get("live_residual_factor") is not None:
-                live_residual_factor = float(intraday_state.get("live_residual_factor", 1.0))
-            anchor_mw = round(
-                physics_anchor.calculate_anchor_mw(feature_row, correction_factor=live_residual_factor),
-                3,
-            )
+        # ---- Dual-Horizon Blended Clearness Formula ----
+        # 1. Live Clearness from latest recorded meter reading at revision time:
+        #    LiveClearness = min(1.0, Meter_rev_time / ClearSky_rev_time)
+        live_clearness = 1.0
+        if intraday_state and intraday_state.get("live_residual_factor") is not None:
+            live_clearness = max(0.20, min(1.10, float(intraday_state.get("live_residual_factor", 1.0))))
+
+        # 2. Forward Numerical Weather Prediction (NWP) Clearness for block k:
+        #    NWPClearness(k) = OpenMeteo_GHI(k) / pvlib_ClearSky_GHI(k)
+        cloud_signals = []
+        for key in ("clouds_bright_pixel_pct", "satellite_bright_pixel_pct", "rain_bright_pixel_pct"):
+            if feature_row.get(key) is not None:
+                cloud_signals.append(feature_row[key] / 100.0)
+        motion_cov = feature_row.get("motion_coverage_end_pct")
+        if motion_cov is not None:
+            # Video optical flow nowcast decay: localized 30km video is 100% valid for t+15-45m,
+            # but decays across 3 hours so regional synoptic clouds take precedence
+            video_weight = math.exp(-0.30 * block_index)
+            damped_video_cloud = (motion_cov * video_weight) / 100.0
+            cloud_signals.append(damped_video_cloud)
+        avg_cloud = sum(cloud_signals) / len(cloud_signals) if cloud_signals else 0.0
+        nwp_clearness = max(0.20, min(1.0, 1.0 - (0.75 * avg_cloud)))
+
+        # 3. Dual-Horizon Exponential Blend across 12 forward blocks:
+        #    EffectiveClearness(k) = (e^(-0.25*k) * LiveClearness) + ((1 - e^(-0.25*k)) * NWPClearness(k))
+        #    - Blocks 0-2 (15-45 min): 80% dominated by Live Meter Clearness (catches current passing clouds)
+        #    - Blocks 4-11 (1-3 hours): Transitions smoothly to NWP Weather Clearness (anticipates storm fronts)
+        decay_weight = math.exp(-0.25 * block_index)
+        effective_clearness = (decay_weight * live_clearness) + ((1.0 - decay_weight) * nwp_clearness)
+
+        # 4. Contextual Regime Modulations & Dynamic Morning Ramp Acceleration:
+        if 8 <= block_time.hour <= 11:
+            # Morning Solar Ascent (08:00 - 11:30 AM):
+            # Under rising clear-sky conditions (NWP clearness >= 0.75), morning ground haze burns off rapidly.
+            # We dynamically accelerate the blend towards full clear-sky physical potential.
+            if nwp_clearness >= 0.75:
+                morning_hour_progress = (block_time.hour - 8) + (block_time.minute / 60.0)
+                ramp_floor = min(1.0, 0.70 + (0.30 * min(1.0, morning_hour_progress / 2.5)))
+                live_residual_factor = max(ramp_floor, effective_clearness)
+            else:
+                live_residual_factor = effective_clearness
+        elif block_time.hour < 8:
+            # Dawn dampening: avoid scaling whole morning curve down by dawn sun angle
+            live_residual_factor = (0.75 * 1.0) + (0.25 * effective_clearness)
+        elif 13 <= block_time.hour <= 16 and block_time.month in (6, 7, 8, 9):
+            # Afternoon Monsoon Cloud Attenuation: safe risk-neutral descent
+            live_residual_factor = min(0.92, effective_clearness)
         else:
-            anchor_mw = round(
-                float(intraday_state["latest_mw"]) if intraday_state and intraday_state.get("latest_mw") is not None else 0.0,
-                3,
-            )
+            live_residual_factor = effective_clearness
+
+        anchor_mw = round(
+            physics_anchor.calculate_anchor_mw(feature_row, correction_factor=live_residual_factor),
+            3,
+        )
         block_number = time_features.block_number_for_time(block_time)
         time_label = block_time.strftime("%Y-%m-%d %H:%M")
 
@@ -317,24 +359,103 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
             p["step3_mw"] = p.get("llm_mw", base_mw)
             p["step4_mw"] = p.get("llm_mw", base_mw)
 
+    def _stage_factor_value(step_factors: dict, key: str) -> float:
+        value = step_factors.get(key, 1.0)
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return 1.0
+
+    def _apply_stepwise_corrections(predictions: list) -> None:
+        for p in predictions:
+            step_factors = daily_feedback.recommend_stepwise_correction_factors(
+                p["time"],
+                intraday_state,
+            )
+            p["time_of_day_bucket"] = step_factors["bucket"]
+            p["stepwise_base_factor"] = step_factors["base_factor"]
+            p["bucket_bias"] = step_factors["bucket_bias"]
+            p["step1_factor"] = step_factors["step1_factor"]
+            p["step2_factor"] = step_factors["step2_factor"]
+            p["step3_factor"] = step_factors["step3_factor"]
+            p["step4_factor"] = step_factors["step4_factor"]
+
+            raw_step1 = float(p.get("step1_mw", p.get("anchor_mw", 0.0)) or 0.0)
+            raw_step2 = float(p.get("step2_mw", raw_step1) or raw_step1)
+            raw_step3 = float(p.get("step3_mw", raw_step2) or raw_step2)
+            raw_step4 = float(p.get("step4_mw", raw_step3) or raw_step3)
+            raw_llm = float(p.get("llm_mw", raw_step4) or raw_step4)
+
+            p["raw_step1_mw"] = round(raw_step1, 3)
+            p["raw_step2_mw"] = round(raw_step2, 3)
+            p["raw_step3_mw"] = round(raw_step3, 3)
+            p["raw_step4_mw"] = round(raw_step4, 3)
+            p["raw_llm_mw"] = round(raw_llm, 3)
+
+            p["step1_mw"] = round(max(0.0, raw_step1 * _stage_factor_value(step_factors, "step1_factor")), 3)
+            p["step2_mw"] = round(max(0.0, raw_step2 * _stage_factor_value(step_factors, "step2_factor")), 3)
+            p["step3_mw"] = round(max(0.0, raw_step3 * _stage_factor_value(step_factors, "step3_factor")), 3)
+            p["step4_mw"] = round(max(0.0, raw_step4 * _stage_factor_value(step_factors, "step4_factor")), 3)
+            p["llm_mw"] = p["step4_mw"]
+            p["correction_note"] = (
+                f"bucket={step_factors['bucket']}; "
+                f"base_factor={step_factors['base_factor']}; "
+                f"factors=({step_factors['step1_factor']}, {step_factors['step2_factor']}, "
+                f"{step_factors['step3_factor']}, {step_factors['step4_factor']})"
+            )
+
+    _apply_stepwise_corrections(llm_predictions)
+
     # ---- Phase 4: validate (range/deviation/smoothness safety checks) ----
     print("\nValidating LLM-adjusted predictions...")
     max_deviation_fraction = daily_feedback.suggested_max_deviation_fraction()
     if intraday_state and intraday_state["fluctuation_flag"]:
         max_deviation_fraction = min(0.85, max_deviation_fraction + 0.10)
         print("  Live same-day data looks choppy or shifting quickly -- widening the validator window slightly.")
-    if max_deviation_fraction != validator.MAX_DEVIATION_FRACTION:
-        print(f"  Recent accuracy history shows a consistent bias -- allowing up to "
-              f"{max_deviation_fraction*100:.0f}% deviation this run (default is "
-              f"{validator.MAX_DEVIATION_FRACTION*100:.0f}%).")
-    validated_predictions = validator.validate_predictions(llm_predictions, max_deviation_fraction=max_deviation_fraction)
+    last_frozen_mw = None
+    if intraday_state and isinstance(intraday_state.get("last_frozen_mw"), (int, float)):
+        last_frozen_mw = float(intraday_state["last_frozen_mw"])
+    elif intraday_state and isinstance(intraday_state.get("latest_mw"), (int, float)):
+        last_frozen_mw = float(intraday_state["latest_mw"])
+
+    validated_predictions = validator.validate_predictions(
+        llm_predictions,
+        max_deviation_fraction=max_deviation_fraction,
+        last_frozen_mw=last_frozen_mw,
+    )
     for p in validated_predictions:
+        clamp_factor, bucket_name = daily_feedback.recommend_final_clamp_factor(
+            p["time"],
+            intraday_state if stepwise_live_only else None,
+        )
+        p["time_of_day_bucket"] = bucket_name
+        p["revision_clamp_factor"] = clamp_factor
+        p["final_stage_cap_mw"] = round(float(p.get("step4_mw", p["validated_mw"])) * clamp_factor, 3)
+        if clamp_factor < 1.0 and p["final_stage_cap_mw"] < p["validated_mw"]:
+            previous_final = p["validated_mw"]
+            p["validated_mw"] = round(min(p["validated_mw"], p["final_stage_cap_mw"]), 3)
+            p["was_adjusted"] = True
+            clamp_note = (
+                f"final-stage clamp for {bucket_name} using live meter / same-bucket memory "
+                f"(factor {clamp_factor:.3f}) pulled {previous_final} to {p['validated_mw']}"
+            )
+            existing_note = p.get("adjustment_note", "no adjustment needed")
+            p["adjustment_note"] = (
+                clamp_note if existing_note == "no adjustment needed" else f"{existing_note}; {clamp_note}"
+            )
+        if p.get("correction_note"):
+            existing_note = p.get("adjustment_note", "no adjustment needed")
+            p["adjustment_note"] = (
+                p["correction_note"] if existing_note == "no adjustment needed" else f"{existing_note}; {p['correction_note']}"
+            )
         flag = " [ADJUSTED BY VALIDATOR]" if p["was_adjusted"] else ""
         print(f"  Block {p['block_number']} ({p['time']}): anchor={p['anchor_mw']} MW -> "
               f"final={p['validated_mw']} MW (confidence={p['confidence']}){flag}")
         print(f"    Reasoning: {p['reasoning']}")
         if p["was_adjusted"]:
             print(f"    Validator note: {p['adjustment_note']}")
+        if p.get("correction_note"):
+            print(f"    Step corrections: {p['correction_note']}")
 
     def _compact_feature_snapshot(feature_row: dict) -> str:
         parts = []
@@ -397,10 +518,24 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
             "Time": p["time"],
             "Step 1 Scaffold MW": step1_scaffold_mw,
             "Base Anchor MW": base_anchor_mw,
+            "Raw Step 1 MW": p.get("raw_step1_mw", ""),
+            "Raw Step 2 MW": p.get("raw_step2_mw", ""),
+            "Raw Step 3 MW": p.get("raw_step3_mw", ""),
+            "Raw Step 4 MW": p.get("raw_step4_mw", ""),
+            "Raw LLM MW": p.get("raw_llm_mw", ""),
             "Step 1 LLM MW": step1_mw,
             "Step 2 Weather + Video MW": step2_mw,
             "Step 3 Plant Performance MW": step3_mw,
-            "Step 4 Context MW": step4_mw,
+            "Step 4 Revision Feedback MW": step4_mw,
+            "Stepwise Base Factor": p.get("stepwise_base_factor", ""),
+            "Step 1 Factor": p.get("step1_factor", ""),
+            "Step 2 Factor": p.get("step2_factor", ""),
+            "Step 3 Factor": p.get("step3_factor", ""),
+            "Step 4 Factor": p.get("step4_factor", ""),
+            "Final Stage Cap MW": p.get("final_stage_cap_mw", ""),
+            "Revision Clamp Factor": p.get("revision_clamp_factor", ""),
+            "Time of Day Bucket": p.get("time_of_day_bucket", ""),
+            "Correction Note": p.get("correction_note", ""),
             "Live Residual Factor": p.get("live_residual_factor", 1.0),
             "Regime": p.get("regime_label", ""),
             "Fluctuation Flag": p.get("fluctuation_flag", False),
