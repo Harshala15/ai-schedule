@@ -19,7 +19,7 @@ from modules.storage import state_sync
 from modules import plant_performance_utils as shared_performance_utils
 from modules import pvlib_utils as shared_pvlib_utils
 from modules import schedule_utils as shared_schedule_utils
-from bhupalpally_forecast_scheduler import ecmwf_weather, settings, storage
+from osepl_forecast_scheduler import ecmwf_weather, settings, storage
 
 
 @dataclass(frozen=True)
@@ -302,11 +302,23 @@ def _store_ecmwf_weather_report(target_date: str, target_time: str, weather_repo
 def _clip_meter_to_cutoff(source_csv: Path, destination_csv: Path, cutoff_dt: dt.datetime) -> tuple[Path, int, int]:
     """Write a meter CSV trimmed to the revision cutoff."""
     with open(source_csv, "r", newline="", encoding="utf-8") as handle:
-        reader = csv.DictReader(handle)
+        sample = handle.read(2048)
+        delim = ";" if (";" in sample and sample.count(";") > sample.count(",")) else ","
+        handle.seek(0)
+        reader = csv.DictReader(handle, delimiter=delim)
         fieldnames = list(reader.fieldnames or [])
+        plant = (config.PLANT_NAME or "").strip().upper()
+        column_profile = getattr(daily_feedback, "PLANT_ACTUAL_METER_COLUMNS", {}).get(plant, {})
+        timestamp_candidates = column_profile.get("timestamp", getattr(daily_feedback, "RAW_METER_TIMESTAMP_COLUMNS", ()))
+        all_ts_candidates = tuple(dict.fromkeys((
+            getattr(daily_feedback, "TIMESTAMP_COLUMN", "Time"),
+            *timestamp_candidates,
+            *getattr(daily_feedback, "RAW_METER_TIMESTAMP_COLUMNS", ()),
+            "TIME", "Time", "Timestamp", "TimeStamp", "DateTime", "Datetime", "Start (Asia/Calcutta)", "Start (Asia/Kolkata)", "Start"
+        )))
         timestamp_column = daily_feedback._pick_first_existing_column(  # type: ignore[attr-defined]
             fieldnames,
-            daily_feedback.RAW_METER_TIMESTAMP_COLUMNS,  # type: ignore[attr-defined]
+            all_ts_candidates,
         )
         rows = list(reader)
 
@@ -326,16 +338,15 @@ def _clip_meter_to_cutoff(source_csv: Path, destination_csv: Path, cutoff_dt: dt
             continue
         kept_rows.append(row)
 
+    destination_csv.parent.mkdir(parents=True, exist_ok=True)
     if not kept_rows:
-        destination_csv.parent.mkdir(parents=True, exist_ok=True)
         with open(destination_csv, "w", newline="", encoding="utf-8") as handle:
-            writer = csv.DictWriter(handle, fieldnames=fieldnames, extrasaction="ignore")
+            writer = csv.DictWriter(handle, fieldnames=fieldnames, delimiter=delim, extrasaction="ignore")
             writer.writeheader()
         return destination_csv, len(rows), 0
 
-    destination_csv.parent.mkdir(parents=True, exist_ok=True)
     with open(destination_csv, "w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fieldnames, extrasaction="ignore")
+        writer = csv.DictWriter(handle, fieldnames=fieldnames, delimiter=delim, extrasaction="ignore")
         writer.writeheader()
         for row in kept_rows:
             writer.writerow(row)
@@ -533,7 +544,7 @@ def run_schedule_job(
     schedule_prefix: str,
     event: dict | None = None,
 ) -> dict:
-    config.load_plant_profile(getattr(settings, "PLANT_NAME", "BHUPALPALLY"))
+    config.load_plant_profile(getattr(settings, "PLANT_NAME", "OSEPL"))
     target_date, target_time, target_dt = _parse_target_datetime(event)
     selection = _pick_latest_capture_bundle(bucket, capture_prefix, meter_prefix, target_dt)
 

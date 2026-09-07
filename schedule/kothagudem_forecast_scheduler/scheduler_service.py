@@ -19,7 +19,7 @@ from modules.storage import state_sync
 from modules import plant_performance_utils as shared_performance_utils
 from modules import pvlib_utils as shared_pvlib_utils
 from modules import schedule_utils as shared_schedule_utils
-from bhupalpally_forecast_scheduler import ecmwf_weather, settings, storage
+from kothagudem_forecast_scheduler import ecmwf_weather, settings, storage
 
 
 @dataclass(frozen=True)
@@ -533,7 +533,7 @@ def run_schedule_job(
     schedule_prefix: str,
     event: dict | None = None,
 ) -> dict:
-    config.load_plant_profile(getattr(settings, "PLANT_NAME", "BHUPALPALLY"))
+    config.load_plant_profile(getattr(settings, "PLANT_NAME", "KOTHAGUDEM"))
     target_date, target_time, target_dt = _parse_target_datetime(event)
     selection = _pick_latest_capture_bundle(bucket, capture_prefix, meter_prefix, target_dt)
 

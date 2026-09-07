@@ -693,23 +693,23 @@ def record_cloud_animation() -> Path | None:
         # Step 1: Close any timeline overlay
         dismiss_timeline_overlay(page)
 
-        # Step 1b: Place marker/pointer on plant center BEFORE playback
-        # and wait for elevation/weather API calls to fully resolve
-        click_plant_marker(page)
-        page.wait_for_timeout(3500)  # ensures 'Loading elevation...' finishes and resolves
-
-        # Step 1c: Select slowest speed and enable Play with Forecast
+        # Step 1b: Select slowest speed and enable Play with Forecast
         click_slow_animation_speed(page)
         click_play_with_forecast(page)
         page.wait_for_timeout(1000)
 
-        # Step 1d: Seek timeline to 1h ago
+        # Step 1c: Seek timeline to 1h ago
         for seek_attempt in range(1, 4):
             if seek_timeline_to_one_hour_ago(page):
                 break
             if seek_attempt < 3:
                 print(f"  Retrying timeline seek (attempt {seek_attempt + 1}/3)...")
                 page.wait_for_timeout(1500)
+
+        # Step 1d: Place marker/pointer on plant center BEFORE playback
+        # and wait for elevation/weather API calls to fully resolve
+        click_plant_marker(page)
+        page.wait_for_timeout(3500)  # ensures 'Loading elevation...' finishes and resolves
 
         # Step 2: Click Play button to start animation
         click_play_button(page)

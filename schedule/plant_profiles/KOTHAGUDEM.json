@@ -1,0 +1,12 @@
+﻿{
+  "plant_name": "KOTHAGUDEM",
+  "latitude": 17.52500925,
+  "longitude": 80.64616743,
+  "dc_capacity_kw": 40000,
+  "maximum_feed_in_ac_kw": 37000,
+  "tracker_type": "None",
+  "orientation_deg_from_south": 0,
+  "tilt_deg": 20,
+  "eeg_id": "Singareni Collieries Company Limited-Sitarampatnam",
+  "ppa_rate_inr_per_kwh": 5.65
+}

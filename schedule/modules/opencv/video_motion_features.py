@@ -7,15 +7,15 @@ and extracts NUMERIC cloud-motion + cloud-coverage features using
 classical computer vision (optical flow + brightness thresholding) --
 instead of asking an LLM to "watch" the raw video.
 
-WHY: Vision-language models like Gemini are not reliable at precisely
+WHY: Vision-language models are not reliable at precisely
 quantifying motion (exact direction/speed) from video frames -- they can
 describe things qualitatively ("clouds seem to be moving north-east") but
 struggle to give consistent, reproducible numbers. Classical optical flow
 gives deterministic, math-based numbers every time. The idea is:
     1. This script processes the video and produces a short text summary
        with real numbers (direction, speed, cloud-coverage trend).
-    2. That summary text gets sent to Gemini ALONGSIDE the screenshots
-       (instead of, or in addition to, the raw video) -- so Gemini is
+    2. That summary text gets sent to the LLM ALONGSIDE the screenshots
+       (instead of, or in addition to, the raw video) -- so the LLM is
        reasoning over solid numeric facts rather than raw pixels.
 
 Requirements:
@@ -30,7 +30,7 @@ Usage (as a module, e.g. import this from test_multi_image.py later):
     features = analyze_video(video_path)
     if features:
         print(features["summary_text"])
-        # features["summary_text"] can be added into the Gemini prompt,
+        # features["summary_text"] can be added into the LLM prompt,
         # e.g. as an extra line before the screenshots list.
 """
 
@@ -127,7 +127,7 @@ def analyze_video(video_path, sample_step=FRAME_SAMPLE_STEP):
             "coverage_end_pct":   e.g. 55.8  (cloud % in ROI, last sampled frame)
             "coverage_trend":    "increasing" / "decreasing" / "stable"
             "frame_count":       how many frames were sampled/used
-            "summary_text":      ready-to-paste text for the Gemini prompt
+            "summary_text":      ready-to-paste text for the LLM prompt
         }
     Returns None if the video couldn't be opened or had too few usable
     frames (need at least 2 sampled frames for optical flow to work).
@@ -287,5 +287,5 @@ if __name__ == "__main__":
             continue
         print(f"{key}: {value}")
 
-    print("\n--- Summary text (ready to paste into your Gemini prompt) ---")
+    print("\n--- Summary text (ready to paste into your LLM prompt) ---")
     print(result["summary_text"])

@@ -62,16 +62,20 @@ def _current_final_fieldnames(existing_fieldnames: list[str]) -> list[str]:
         "Block",
         "Time Interval (15 minute interval)",
         "Step 1 Meter Base Forecast MW",
-        "Step 2 Weather + Video Adjusted MW",
-        "Step 3 Plant Performance MW",
-        "Step 4 Revision Feedback MW",
-        "LLM Schedule (MW)",
-        "Schedule MW",
+        "Step 2 Weather Adjustment MW",
         "LLM Reasoning",
     ]
     ordered = [column for column in preferred if column in existing_fieldnames or column in preferred]
     for column in existing_fieldnames:
-        if column not in ordered:
+        if column not in ordered and column not in (
+            "Step 2 Weather + Video Adjusted MW",
+            "Step 3 Plant Performance MW",
+            "Step 4 Revision Feedback MW",
+            "Step 4 Revision Feedback Adjusted MW",
+            "LLM Schedule (MW)",
+            "Schedule MW",
+            "Final Validated MW",
+        ):
             ordered.append(column)
     return ordered
 
@@ -254,7 +258,24 @@ def write_current_final_schedule(
             return dt.datetime.max
 
     frozen_rows = sorted(merged_by_time.values(), key=_sort_key)
-    current_final_fieldnames = _current_final_fieldnames(fieldnames)
+    current_final_fieldnames = [
+        "Block",
+        "Time Interval (15 minute interval)",
+        "Step 1 Meter Base Forecast MW",
+        "Step 2 Weather Adjustment MW",
+        "LLM Reasoning",
+    ]
+
+    for row in frozen_rows:
+        if "Step 2 Weather Adjustment MW" not in row or not str(row.get("Step 2 Weather Adjustment MW", "")).strip():
+            row["Step 2 Weather Adjustment MW"] = str(
+                row.get("Step 2 Weather + Video Adjusted MW")
+                or row.get("Schedule MW")
+                or row.get("LLM Schedule (MW)")
+                or row.get("Final Validated MW")
+                or row.get("step2_mw")
+                or "0.0"
+            )
 
     def _row_block_number(row: dict) -> int | None:
         raw = row.get("Block", "")
@@ -284,9 +305,16 @@ def write_current_final_schedule(
                 row[column] = "0"
 
     # ---- Stitch boundary seam between past frozen blocks and new forward blocks ----
-    max_step = getattr(config, "PLANT_CAPACITY_MW", 10.0) * 0.065
+    cap_mw = float(getattr(config, "PLANT_CAPACITY_MW", 10.0))
     mw_main_col = None
-    for candidate in ("Final Validated MW", "Schedule MW", "schedule_mw", "LLM Schedule (MW)"):
+    for candidate in (
+        "Step 2 Weather Adjustment MW",
+        "Step 2 Weather + Video Adjusted MW",
+        "Final Validated MW",
+        "Schedule MW",
+        "schedule_mw",
+        "LLM Schedule (MW)",
+    ):
         if candidate in current_final_fieldnames:
             mw_main_col = candidate
             break
@@ -297,6 +325,21 @@ def write_current_final_schedule(
             r_curr_dt = _row_dt(frozen_rows[i])
             if r_prev_dt is not None and r_curr_dt is not None:
                 if r_prev_dt < freeze_from <= r_curr_dt:
+                    # Dynamic physical ramp limits based on solar geometry & time-of-day
+                    block_time = r_curr_dt.time()
+                    if dt.time(7, 45) <= block_time <= dt.time(10, 45):
+                        # Morning rapid solar geometric ramp-up (allow up to 20% plant capacity per 15 min)
+                        max_step = cap_mw * 0.20
+                    elif dt.time(16, 0) <= block_time <= dt.time(18, 15):
+                        # Late afternoon rapid sunset ramp-down
+                        max_step = cap_mw * 0.18
+                    elif dt.time(11, 0) <= block_time < dt.time(16, 0):
+                        # Midday solar arch
+                        max_step = cap_mw * 0.12
+                    else:
+                        # Pre-dawn / post-dusk
+                        max_step = cap_mw * 0.08
+
                     try:
                         prev_mw = float(frozen_rows[i - 1].get(mw_main_col, 0.0) or 0.0)
                         curr_mw = float(frozen_rows[i].get(mw_main_col, 0.0) or 0.0)
@@ -313,6 +356,7 @@ def write_current_final_schedule(
                     except (ValueError, TypeError):
                         pass
                     break
+
 
     write_csv(current_final_csv, current_final_fieldnames, frozen_rows)
     return len(frozen_rows)
@@ -415,6 +459,7 @@ def write_full_block_schedule_from_llm_schedule(
     is provided, it fills future afternoon blocks up to sunset so the schedule
     never drops to 0.0 MW prematurely on dashboards.
     """
+    import math
     schedule_by_block: dict[int, float] = {}
 
     # 1. Read fallback / latest schedule first (full diurnal curve)
@@ -425,7 +470,9 @@ def write_full_block_schedule_from_llm_schedule(
                 try:
                     b = int(raw_block)
                     mw = float(
-                        row.get("Final Validated MW")
+                        row.get("Step 2 Weather Adjustment MW")
+                        or row.get("Step 2 Weather + Video Adjusted MW")
+                        or row.get("Final Validated MW")
                         or row.get("Schedule MW")
                         or row.get("schedule_mw")
                         or row.get("LLM Schedule (MW)")
@@ -443,7 +490,9 @@ def write_full_block_schedule_from_llm_schedule(
                 try:
                     b = int(raw_block)
                     mw = float(
-                        row.get("Final Validated MW")
+                        row.get("Step 2 Weather Adjustment MW")
+                        or row.get("Step 2 Weather + Video Adjusted MW")
+                        or row.get("Final Validated MW")
                         or row.get("Schedule MW")
                         or row.get("schedule_mw")
                         or row.get("LLM Schedule (MW)")
@@ -453,16 +502,60 @@ def write_full_block_schedule_from_llm_schedule(
                 except (ValueError, TypeError):
                     continue
 
+    # 3. Dynamic Day-Ahead Diurnal Synthesis for Missing Afternoon Daylight Blocks:
+    # If the current snapshot only covers morning hours (e.g. 11:15 run),
+    # extrapolate the afternoon solar curve down to sunset using the prevailing clearness ratio.
+    dc_cap = float(getattr(config, "PLANT_DC_CAPACITY_MW", getattr(config, "PLANT_CAPACITY_MW", 10.0)))
+    ac_cap = float(getattr(config, "PLANT_CAPACITY_MW", 10.0))
+    pr = float(getattr(config, "PERFORMANCE_RATIO", 0.78))
+
+    clearness_ratios = []
+    for b, mw in schedule_by_block.items():
+        if 28 <= b <= 72 and mw > 0.01:
+            b_hour = (b - 1) * 0.25
+            h_from_noon = abs(b_hour - 12.25)
+            if h_from_noon < 6.0:
+                elev_sin = math.cos((h_from_noon / 6.0) * (math.pi / 2.0))
+                clear_theoretical = dc_cap * pr * (elev_sin ** 1.05)
+                if clear_theoretical > 0.1:
+                    clearness_ratios.append(min(1.0, mw / clear_theoretical))
+
+    if clearness_ratios:
+        implied_clearness = max(0.20, min(1.0, sum(clearness_ratios) / len(clearness_ratios)))
+    else:
+        implied_clearness = 0.55
+
+    max_populated_daylight_block = max(
+        [b for b, mw in schedule_by_block.items() if 28 <= b <= 72 and mw > 0.05],
+        default=27
+    )
+
+    # Seamlessly continue the afternoon curve for any un-forecasted daylight blocks
+    for block in range(max_populated_daylight_block + 1, 74):
+        block_hour = (block - 1) * 0.25
+        hours_from_noon = abs(block_hour - 12.25)
+        if hours_from_noon < 6.0:
+            elev_sin = math.cos((hours_from_noon / 6.0) * (math.pi / 2.0))
+            taper_mw = round(min(ac_cap, dc_cap * pr * implied_clearness * (elev_sin ** 1.05)), 3)
+            if taper_mw > 0.05:
+                schedule_by_block[block] = taper_mw
+            else:
+                schedule_by_block[block] = 0.0
+        else:
+            schedule_by_block[block] = 0.0
+
     output_csv_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_csv_path, "w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=["block", "schedule_mw"])
         writer.writeheader()
         for block in range(1, total_blocks + 1):
+            val = schedule_by_block.get(block, 0.0)
+            if block < 28 or block >= 74:
+                val = 0.0
             writer.writerow({
                 "block": block,
-                "schedule_mw": schedule_by_block.get(block, 0.0),
+                "schedule_mw": max(0.0, round(val, 3)),
             })
-    return {"total_blocks": total_blocks, "populated_blocks": len(schedule_by_block)}
 
     return {
         "input_csv": str(input_csv_path),
@@ -473,6 +566,7 @@ def write_full_block_schedule_from_llm_schedule(
 
 
 def download_recent_meter_history_files(
+
     storage_module,
     bucket: str,
     meter_prefix: str,

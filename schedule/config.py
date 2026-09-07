@@ -32,7 +32,11 @@ def _read_env_value(name: str) -> str:
     return ""
 
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", _read_env_value("GEMINI_API_KEY")).strip()
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", _read_env_value("OPENROUTER_API_KEY")).strip()
+OPENMETEO_API_KEY = os.getenv("OPENMETEO_API_KEY", _read_env_value("OPENMETEO_API_KEY")).strip()
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", _read_env_value("LLM_PROVIDER") or "openrouter").strip().lower()
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", _read_env_value("OPENROUTER_MODEL") or "openai/gpt-5.6-luna").strip()
+OPENROUTER_MODEL_CANDIDATES = os.getenv("OPENROUTER_MODEL_CANDIDATES", _read_env_value("OPENROUTER_MODEL_CANDIDATES") or "openai/gpt-5.6-luna").strip()
 
 
 def _read_env_str(name: str, default: str) -> str:
@@ -50,8 +54,19 @@ def _read_env_float(name: str, default: float) -> float:
         return default
 
 
+def _read_env_bool(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name, _read_env_value(name)).strip().lower()
+    if not raw:
+        return default
+    return raw in {"1", "true", "yes", "on"}
+
+
 def _read_env_setting(name: str) -> str:
     return os.getenv(name, _read_env_value(name)).strip()
+
+
+# Toggle to enable/disable Windy video motion processing in forecasts
+ENABLE_WINDY_VIDEO_FEATURES = _read_env_bool("ENABLE_WINDY_VIDEO_FEATURES", default=False)
 
 # ---- Local/runtime storage root ----
 # Default to the current working directory for local development.
@@ -131,6 +146,20 @@ _PLANT_FALLBACKS = {
         "dc_capacity_mw": 11.005,
         "max_feed_in_mw": 10.0,
     },
+    "KOTHAGUDEM": {
+        "latitude": 17.52500925,
+        "longitude": 80.64616743,
+        "capacity_mw": 37.0,
+        "dc_capacity_mw": 40.0,
+        "max_feed_in_mw": 37.0,
+    },
+    "OSEPL": {
+        "latitude": 17.9068,
+        "longitude": 76.3229,
+        "capacity_mw": 20.0,
+        "dc_capacity_mw": 26.0,
+        "max_feed_in_mw": 20.0,
+    },
 }
 _fallback = _PLANT_FALLBACKS.get(_DEFAULT_PLANT_NAME.upper(), _PLANT_FALLBACKS["SIRMOUR"])
 _DEFAULT_PLANT_PROFILE_PATH = Path(
@@ -205,11 +234,43 @@ PLANT_PPA_RATE_INR_PER_KWH = _read_profile_float_setting(
 PLANT_EEG_ID = _read_profile_setting("PLANT_EEG_ID", "eeg_id", "")
 PLANT_KEY = _read_profile_setting("PLANT_KEY", "plant_key", "")
 
-# Performance Ratio -- accounts for real-world losses (panel temperature,
-# inverter, wiring, soiling, shading, mismatch etc.). 0.75-0.85 is typical
-# for a well-maintained plant. Update this once you have your plant's
-# actual historical PR.
 PERFORMANCE_RATIO = _read_profile_float_setting("PERFORMANCE_RATIO", "performance_ratio", 0.78)
+
+
+def load_plant_profile(plant_name: str | None = None) -> dict:
+    """Authoritatively load and bind plant profile parameters into config globals."""
+    global PLANT_NAME, PLANT_LAT, PLANT_LON, PLANT_CAPACITY_MW, PLANT_DC_CAPACITY_MW
+    global PLANT_MAX_FEED_IN_MW, PLANT_TILT_DEG, PLANT_ORIENTATION_FROM_SOUTH_DEG
+    global PLANT_TRACKER_TYPE, PLANT_AVAILABILITY_PLANNED_PCT, PLANT_PPA_RATE_INR_PER_KWH
+    global PLANT_EEG_ID, PLANT_KEY, PERFORMANCE_RATIO, PLANT_PROFILE, PLANT_PROFILE_PATH
+    global PREDICTION_CONTEXT_PATH
+
+    name = (plant_name or PLANT_NAME or "SIRMOUR").strip().upper()
+    profile_path = Path(__file__).resolve().with_name("plant_profiles") / f"{name}.json"
+    profile = _load_json_profile(profile_path)
+    fallback = _PLANT_FALLBACKS.get(name, _PLANT_FALLBACKS["SIRMOUR"])
+
+    PLANT_NAME = name
+    PLANT_PROFILE_PATH = profile_path
+    PLANT_PROFILE = profile
+
+    PLANT_LAT = _profile_float(profile, "latitude", fallback["latitude"])
+    PLANT_LON = _profile_float(profile, "longitude", fallback["longitude"])
+    PLANT_CAPACITY_MW = _profile_float(profile, "maximum_feed_in_ac_kw", fallback["capacity_mw"] * 1000.0) / 1000.0
+    PLANT_DC_CAPACITY_MW = _profile_float(profile, "dc_capacity_kw", fallback["dc_capacity_mw"] * 1000.0) / 1000.0
+    PLANT_MAX_FEED_IN_MW = _profile_float(profile, "maximum_feed_in_ac_kw", fallback["max_feed_in_mw"] * 1000.0) / 1000.0
+    PLANT_TILT_DEG = _profile_float(profile, "tilt_deg", 20.0)
+    PLANT_ORIENTATION_FROM_SOUTH_DEG = _profile_float(profile, "orientation_deg_from_south", 0.0)
+    PLANT_TRACKER_TYPE = _profile_str(profile, "tracker_type", "None")
+    PLANT_AVAILABILITY_PLANNED_PCT = _profile_float(profile, "availability_planned_pct", 100.0)
+    PLANT_PPA_RATE_INR_PER_KWH = _profile_float(profile, "ppa_rate_inr_per_kwh", 0.0)
+    PLANT_EEG_ID = _profile_str(profile, "eeg_id", "")
+    PLANT_KEY = _profile_str(profile, "plant_key", "")
+    PERFORMANCE_RATIO = _profile_float(profile, "performance_ratio", 0.78)
+    PREDICTION_CONTEXT_PATH = _storage_path("prediction_context", f"{name}_context.json")
+
+    return profile
+
 
 # ---- Windy capture settings ----
 ZOOM_LEVEL = 11  # calibrated so the screenshot covers ~100km x 100km
