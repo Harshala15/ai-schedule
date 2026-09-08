@@ -1,4 +1,4 @@
-"""Shared scheduler helpers used by plant-specific Lambda wrappers."""
+﻿"""Shared scheduler helpers used by plant-specific Lambda wrappers."""
 
 from __future__ import annotations
 
@@ -15,10 +15,36 @@ from zoneinfo import ZoneInfo
 IST = ZoneInfo("Asia/Kolkata")
 
 
+def _capture_times_for_site() -> list[str]:
+    site = (getattr(config, "PLANT_NAME", "") or "").strip().upper()
+    if site in {"BHUPALPALLY", "KASIPET", "KOTHAGUDEM"}:
+        return ["06:00", "06:45", "08:15", "09:45", "11:15", "12:45", "14:15", "15:45"]
+    return list(getattr(config, "CAPTURE_TIMES", []) or [])
+
+
+def _nearest_configured_capture_time(now: dt.datetime, max_drift_minutes: int = 20) -> str:
+    """Snap automatic EventBridge runs to configured revision times."""
+    capture_times = _capture_times_for_site()
+    now_minutes = now.hour * 60 + now.minute
+    best_time = now.strftime("%H:%M")
+    best_delta = max_drift_minutes + 1
+    for item in capture_times:
+        try:
+            hour, minute = [int(part) for part in str(item).split(":")[:2]]
+        except Exception:
+            continue
+        delta = abs((hour * 60 + minute) - now_minutes)
+        if delta < best_delta:
+            best_delta = delta
+            best_time = f"{hour:02d}:{minute:02d}"
+    return best_time if best_delta <= max_drift_minutes else now.strftime("%H:%M")
+
+
 def parse_target_datetime(event: dict | None) -> tuple[str, str, dt.datetime]:
     now = dt.datetime.now(IST)
-    target_date = (event or {}).get("target_date") or now.strftime("%Y-%m-%d")
-    target_time = (event or {}).get("target_time") or now.strftime("%H:%M")
+    event = event or {}
+    target_date = event.get("target_date") or now.strftime("%Y-%m-%d")
+    target_time = event.get("target_time") or _nearest_configured_capture_time(now)
     target_dt = dt.datetime.strptime(f"{target_date} {target_time}", "%Y-%m-%d %H:%M")
     return target_date, target_time, target_dt
 
@@ -109,6 +135,21 @@ def select_preferred_meter_object(meter_objects: list, plant_name: str | None = 
         return None
     return sorted(meter_objects, key=lambda obj: _meter_object_sort_key(obj, plant_name))[-1]
 
+
+def meter_day_prefixes(meter_prefix: str, date_str: str) -> list[str]:
+    base = meter_prefix.rstrip("/")
+    return [
+        f"{base}/{date_str}/metered_data",
+        f"{base}/{date_str}/meter_data",
+    ]
+
+
+def list_meter_objects_for_day(storage_module, bucket: str, meter_prefix: str, date_str: str) -> list:
+    for day_prefix in meter_day_prefixes(meter_prefix, date_str):
+        objects = storage_module.list_objects(bucket, day_prefix)
+        if objects:
+            return objects
+    return []
 
 def merge_latest_schedule(snapshot_csv: Path, latest_csv: Path) -> tuple[int, int, int]:
     snapshot_fields, snapshot_rows = read_csv_rows(snapshot_csv)
@@ -585,8 +626,7 @@ def download_recent_meter_history_files(
     for offset in range(days, 0, -1):
         day = target_dt - dt.timedelta(days=offset)
         date_str = day.strftime("%Y-%m-%d")
-        day_prefix = f"{meter_prefix.rstrip('/')}/{date_str}/meter_data"
-        meter_objects = storage_module.list_objects(bucket, day_prefix)
+        meter_objects = list_meter_objects_for_day(storage_module, bucket, meter_prefix, date_str)
         if not meter_objects:
             continue
 
@@ -599,3 +639,6 @@ def download_recent_meter_history_files(
         downloaded.append(local_path)
 
     return downloaded
+
+
+

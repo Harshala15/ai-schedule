@@ -41,8 +41,8 @@ def fetch_premium_stream3_weather(
     base_url = "https://customer-api.open-meteo.com/v1/forecast" if api_key else "https://api.open-meteo.com/v1/forecast"
     prev_url = "https://customer-previous-runs-api.open-meteo.com/v1/forecast" if api_key else "https://previous-runs-api.open-meteo.com/v1/forecast"
 
-    # 1. Fetch 5-Agency Models for Consensus
-    models_5agency = ["ecmwf_ifs025", "icon_seamless", "gfs_seamless", "jma_seamless", "gem_seamless"]
+    # 1. Fetch 5-Agency Models for Consensus (ECMWF, ICON, GFS, CMA Asia, GEM)
+    models_5agency = ["ecmwf_ifs025", "icon_seamless", "gfs_seamless", "cma_grapes_global", "gem_seamless"]
     params_5agency: dict[str, Any] = {
         "latitude": latitude,
         "longitude": longitude,
@@ -85,10 +85,17 @@ def fetch_premium_stream3_weather(
         "minutely_15": [
             "sunshine_duration",
             "shortwave_radiation_instant",
-            "direct_normal_irradiance",
+            "direct_normal_irradiance_instant",
+            "diffuse_radiation_instant",
+            "global_tilted_irradiance_instant",
             "temperature_2m",
+            "wind_gusts_10m",
+            "cloud_cover_low",
+            "is_day",
         ],
         "models": "best_match",
+        "tilt": tilt,
+        "azimuth": azimuth,
         "timezone": "Asia/Kolkata",
         "forecast_days": 2,
     }
@@ -141,7 +148,7 @@ def fetch_premium_stream3_weather(
     sw_ecmwf = hourly_5ag.get("shortwave_radiation_ecmwf_ifs025", hourly_adv.get("shortwave_radiation", []))
     sw_icon = hourly_5ag.get("shortwave_radiation_icon_seamless", [])
     sw_gfs = hourly_5ag.get("shortwave_radiation_gfs_seamless", [])
-    sw_jma = hourly_5ag.get("shortwave_radiation_jma_seamless", [])
+    sw_cma = hourly_5ag.get("shortwave_radiation_cma_grapes_global", [])
     sw_gem = hourly_5ag.get("shortwave_radiation_gem_seamless", [])
 
     dnis = hourly_adv.get("direct_normal_irradiance", [])
@@ -176,7 +183,7 @@ def fetch_premium_stream3_weather(
 
         # 5-Agency Consensus GHI
         vals = []
-        for arr in [sw_ecmwf, sw_icon, sw_gfs, sw_jma, sw_gem]:
+        for arr in [sw_ecmwf, sw_icon, sw_gfs, sw_cma, sw_gem]:
             if i < len(arr) and arr[i] is not None:
                 vals.append(float(arr[i]))
 

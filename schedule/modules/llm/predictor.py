@@ -1,4 +1,4 @@
-"""
+﻿"""
 llm_predictor.py
 
 The ONLY module in this pipeline that calls an LLM. Its job is narrow
@@ -44,6 +44,27 @@ def _llm_chunk_size(anchor_predictions: list) -> int:
     adjust the entire remaining horizon in one pass.
     """
     return max(1, len(anchor_predictions))
+
+
+
+
+def _env_flag(name: str, default: str = "false") -> bool:
+    return os.getenv(name, default).strip().lower() in {"1", "true", "yes", "on"}
+def _llm_max_retries() -> int:
+    """Return max OpenRouter HTTP attempts per key/model for one schedule run."""
+    raw = os.getenv("OPENROUTER_MAX_RETRIES", "1").strip()
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        return 1
+
+
+def _llm_retry_base_delay_seconds() -> int:
+    raw = os.getenv("OPENROUTER_RETRY_BASE_DELAY_SECONDS", "5").strip()
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        return 5
 
 
 def _load_openrouter_api_keys() -> list[tuple[str, str]]:
@@ -175,7 +196,13 @@ def _call_llm_text(
     if not openrouter_keys:
         return "", RuntimeError("No OpenRouter API keys configured.")
 
+    if not _env_flag("OPENROUTER_ALLOW_KEY_FALLBACK"):
+        openrouter_keys = openrouter_keys[:1]
+
     model_names = _load_openrouter_model_names()
+    if not _env_flag("OPENROUTER_ALLOW_MODEL_FALLBACK"):
+        model_names = model_names[:1]
+
     last_error = None
     for key_index, (key_label, api_key) in enumerate(openrouter_keys, start=1):
         raw_text, err = _call_openrouter_with_key(
@@ -471,8 +498,8 @@ def predict_with_llm(anchor_predictions: list, feature_row: dict, retrieved_case
             "LLM adjustment unavailable for this block -- using fallback forecast unchanged.",
         )
 
-    max_retries = 4
-    base_delay = 5
+    max_retries = _llm_max_retries()
+    base_delay = _llm_retry_base_delay_seconds()
     all_predictions = []
     chunk_size = _llm_chunk_size(anchor_predictions)
     for start in range(0, len(anchor_predictions), chunk_size):
@@ -557,13 +584,13 @@ CRITICAL FORECAST RULES:
    - Step 2 (Weather Adjustment MW): Adjust Step 1 using ECMWF global tilted irradiance, cloud cover %, and live SCADA momentum.
    - Live SCADA Momentum: If live SCADA generation shows the plant is ramping strongly under clear ground conditions, blend 70% Live SCADA Ground Ramp with 30% ECMWF Weather to avoid morning lag from stale weather models.
 2. Weather & Overcast Enforcement:
-   - When ECMWF weather shows cloud cover (>50%) or reduced irradiance (<600 W/m²), follow the attenuated weather irradiance curve.
-   - DAWN EXEMPTION RULE: When solar elevation is < 20.0 deg (before 07:30 AM), low generation (< 2 MW) is normal due to inverter wake-up and low sun angles. DO NOT treat dawn low generation as heavy overcast! If ECMWF weather shows clear/rising irradiance (> 100 W/m²), follow the rising morning ramp toward full clear-sky capacity for forward blocks (07:30 - 11:00).
+   - When ECMWF weather shows cloud cover (>50%) or reduced irradiance (<600 W/mÂ²), follow the attenuated weather irradiance curve.
+   - DAWN EXEMPTION RULE: When solar elevation is < 20.0 deg (before 07:30 AM), low generation (< 2 MW) is normal due to inverter wake-up and low sun angles. DO NOT treat dawn low generation as heavy overcast! If ECMWF weather shows clear/rising irradiance (> 100 W/mÂ²), follow the rising morning ramp toward full clear-sky capacity for forward blocks (07:30 - 11:00).
    - SUSTAINED OVERCAST RULE: If ground SCADA shows low generation (< 35% of clear sky) between 10:30 and 14:00 (solar elevation >= 45 deg), DO NOT assume rapid recovery to clear sky based solely on NWP weather models. Overcast cloud decks in monsoon regimes persist for 2-4 hours. Step 2 Weather Adjustment MUST NOT exceed 1.25x the live SCADA generation during overcast regimes.
    - NEVER apply positive historical bias to inflate forecasts during cloudy, monsoon, or overcast conditions.
    - Favor the conservative lower bound during overcast conditions to avoid DSM penalties.
 3. Solar Geometry & Ramping:
-   - Pre-dawn / Post-dusk: If solar elevation < 3.0 deg, generation is strictly 0.00 MW. Between 3.0 deg and 7.5 deg, output small diffuse dawn/dusk power (0.10 to 0.45 MW) if irradiance > 25 W/m².
+   - Pre-dawn / Post-dusk: If solar elevation < 3.0 deg, generation is strictly 0.00 MW. Between 3.0 deg and 7.5 deg, output small diffuse dawn/dusk power (0.10 to 0.45 MW) if irradiance > 25 W/mÂ².
    - Morning (06:30 - 11:30): Smooth monotonic ascent tracking solar elevation and live meter momentum.
    - Midday Apex (11:45 - 12:45): Smooth apex capped by weather irradiance without flat tabletop clipping.
    - Afternoon (13:00 - 17:45): Smooth diurnal decay tracking afternoon irradiance down to 0 MW.
@@ -714,8 +741,8 @@ def predict_stepwise_with_llm(base_predictions: list, feature_row: dict, step1_i
         prompt_subject=prompt_subject,
     )
 
-    max_retries = 4
-    base_delay = 5
+    max_retries = _llm_max_retries()
+    base_delay = _llm_retry_base_delay_seconds()
     raw_text, last_error = _call_llm_text(
         prompt=prompt,
         vision_parts=[],
@@ -751,3 +778,6 @@ def predict_stepwise_with_llm(base_predictions: list, feature_row: dict, step1_i
             f"block(s) from {base_predictions[0]['time']} to {base_predictions[-1]['time']}."
         )
     return stepwise_predictions
+
+
+

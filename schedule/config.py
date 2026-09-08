@@ -1,4 +1,4 @@
-"""
+﻿"""
 config.py
 
 Single source of truth for plant details, file paths, and pipeline
@@ -73,7 +73,8 @@ ENABLE_WINDY_VIDEO_FEATURES = _read_env_bool("ENABLE_WINDY_VIDEO_FEATURES", defa
 # In Lambda/container deployments, set SIMOUR_STORAGE_ROOT to /tmp/... so
 # the shared pipeline modules can create their working folders on writable
 # storage instead of the read-only package directory.
-STORAGE_ROOT = Path(os.getenv("SIMOUR_STORAGE_ROOT", ".")).expanduser().resolve()
+_DEFAULT_STORAGE_ROOT = "/tmp/intellis_ai_scheduler" if os.getenv("AWS_LAMBDA_FUNCTION_NAME") else "."
+STORAGE_ROOT = Path(os.getenv("SIMOUR_STORAGE_ROOT", _DEFAULT_STORAGE_ROOT)).expanduser().resolve()
 
 
 def _storage_path(*parts: str) -> Path:
@@ -159,6 +160,13 @@ _PLANT_FALLBACKS = {
         "capacity_mw": 20.0,
         "dc_capacity_mw": 26.0,
         "max_feed_in_mw": 20.0,
+    },
+    "ANJANGOAN": {
+        "latitude": 21.97583333,
+        "longitude": 75.96833333,
+        "capacity_mw": 7.5,
+        "dc_capacity_mw": 7.63,
+        "max_feed_in_mw": 7.5,
     },
 }
 _fallback = _PLANT_FALLBACKS.get(_DEFAULT_PLANT_NAME.upper(), _PLANT_FALLBACKS["SIRMOUR"])
@@ -382,3 +390,4 @@ for _dir in (SCREENSHOT_DIR, VIDEO_DIR, PREDICTIONS_DIR, FEATURES_LOG_DIR, MODEL
     _dir.mkdir(parents=True, exist_ok=True)
 
 MODEL_PATH = MODELS_DIR / "generation_model.pkl"
+

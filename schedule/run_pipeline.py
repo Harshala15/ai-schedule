@@ -96,7 +96,7 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
         summary. Used as Step 3 in the stepwise prompt.
     """
     reference_time = reference_time or datetime.datetime.now()
-    stepwise_live_plants = {"BHUPALPALLY", "KASIPET", "SIRMOUR", "KOTHAGUDEM", "OSEPL"}
+    stepwise_live_plants = {"BHUPALPALLY", "KASIPET", "SIRMOUR", "KOTHAGUDEM", "OSEPL", "ANJANGOAN"}
     stepwise_live_only = config.PLANT_NAME.upper() in stepwise_live_plants
     intraday_state = (
         daily_feedback.summarize_intraday_state(intraday_actuals_path, reference_time)
@@ -110,6 +110,7 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
             reference_time,
         )
 
+    fused_weather_rows = []
     if not weather_text:
         try:
             from modules.weather import weather_fusion
@@ -126,8 +127,10 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
                 is_volatile=is_volatile,
             )
             weather_text = w_report.get("prompt_text", "")
+            fused_weather_rows = w_report.get("fused_rows", [])
         except Exception as w_exc:
             print(f"  [WARN] Auto-fetching dual-stream weather fusion failed: {w_exc}")
+    fused_weather_map = {r.get("hour_label"): r for r in fused_weather_rows if isinstance(r, dict) and r.get("hour_label")}
 
     def _load_recent_meter_history_payload(text: str) -> dict | None:
         text = (text or "").strip()
@@ -207,21 +210,48 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
         if feature_columns is None:
             feature_columns = feature_builder.get_feature_columns(feature_row)
 
+        b_label = block_time.strftime("%H:%M")
+        w_entry = fused_weather_map.get(b_label)
+        if not w_entry:
+            h_floor = f"{block_time.hour:02d}:00"
+            w_entry = fused_weather_map.get(h_floor, {})
+
+        elevation = block_time_feats.get("solar_elevation_deg", 0.0)
+        raw_sine = math.sin(math.radians(max(0.0, elevation)))
+        clearsky_gti = max(10.0, 1000.0 * (raw_sine ** 0.95))
+
+        gti_fused = w_entry.get("gti_fused")
+        temp_c = w_entry.get("temp_c", 28.0)
+        temp_sandia = w_entry.get("temp_cell_sandia_c")
+        temp_derate = w_entry.get("temp_derate_multiplier", 1.0)
+        precip_mm = w_entry.get("precip_mm", 0.0)
+        cloud_pct = w_entry.get("cloud_pct", 0.0)
+
         # 1. Forward Numerical Weather Prediction (NWP) Clearness for block k:
-        #    NWPClearness(k) = OpenMeteo_GHI(k) / pvlib_ClearSky_GHI(k)
-        cloud_signals = []
-        for key in ("clouds_bright_pixel_pct", "satellite_bright_pixel_pct", "rain_bright_pixel_pct"):
-            if feature_row.get(key) is not None:
-                cloud_signals.append(feature_row[key] / 100.0)
-        motion_cov = feature_row.get("motion_coverage_end_pct") if getattr(config, "ENABLE_WINDY_VIDEO_FEATURES", False) else None
-        if motion_cov is not None:
-            # Video optical flow nowcast decay: localized 30km video is 100% valid for t+15-45m,
-            # but decays across 3 hours so regional synoptic clouds take precedence
-            video_weight = math.exp(-0.30 * block_index)
-            damped_video_cloud = (motion_cov * video_weight) / 100.0
-            cloud_signals.append(damped_video_cloud)
-        avg_cloud = sum(cloud_signals) / len(cloud_signals) if cloud_signals else 0.0
-        nwp_clearness = max(0.20, min(1.0, 1.0 - (0.75 * avg_cloud)))
+        #    NWPClearness(k) = OpenMeteo_GTI_fused(k) / pvlib_ClearSky_GTI(k)
+        if gti_fused is not None and elevation >= 3.0 and clearsky_gti > 30.0:
+            nwp_clearness = max(0.15, min(1.0, round(float(gti_fused) / clearsky_gti, 3)))
+        else:
+            cloud_signals = []
+            for key in ("clouds_bright_pixel_pct", "satellite_bright_pixel_pct", "rain_bright_pixel_pct"):
+                if feature_row.get(key) is not None:
+                    cloud_signals.append(feature_row[key] / 100.0)
+            motion_cov = feature_row.get("motion_coverage_end_pct") if getattr(config, "ENABLE_WINDY_VIDEO_FEATURES", False) else None
+            if motion_cov is not None:
+                video_weight = math.exp(-0.30 * block_index)
+                damped_video_cloud = (motion_cov * video_weight) / 100.0
+                cloud_signals.append(damped_video_cloud)
+            avg_cloud = sum(cloud_signals) / len(cloud_signals) if cloud_signals else (cloud_pct / 100.0)
+            nwp_clearness = max(0.20, min(1.0, 1.0 - (0.75 * avg_cloud)))
+
+        # Inject physical weather features into feature_row for downstream anchor & LLM
+        feature_row["temperature_2m"] = temp_c
+        feature_row["temp_cell_sandia_c"] = temp_sandia
+        feature_row["temp_derate_multiplier"] = temp_derate
+        feature_row["nwp_clearness"] = nwp_clearness
+        feature_row["gti_fused"] = gti_fused
+        feature_row["precipitation"] = precip_mm
+        feature_row["cloud_cover"] = cloud_pct
 
         # 2. Live Clearness from latest recorded meter reading at revision time:
         #    LiveClearness = min(1.0, Meter_rev_time / ClearSky_rev_time)
@@ -618,3 +648,4 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
 
     trace_paths = prediction_store.save_forecast_trace_csv(trace_rows, output_dir=output_dir)
     print(f"Forecast trace written to: {', '.join(str(p.resolve()) for p in trace_paths)}")
+

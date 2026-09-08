@@ -1,0 +1,14 @@
+﻿{
+  "plant_name": "ANJANGOAN",
+  "latitude": 21.97583333,
+  "longitude": 75.96833333,
+  "dc_capacity_kw": 7630,
+  "maximum_feed_in_ac_kw": 7500,
+  "tracker_type": "None",
+  "orientation_deg_from_south": 0,
+  "tilt_deg": 20,
+  "eeg_id": "Anjangoan",
+  "plant_key": "ANJANGOAN",
+  "ppa_rate_inr_per_kwh": 0.0,
+  "performance_ratio": 0.78
+}

@@ -35,13 +35,21 @@ import config
 
 def calculate_anchor_mw(feature_row: dict, capacity_mw: float | None = None,
                          performance_ratio: float | None = None,
-                         correction_factor: float = 1.0) -> float:
+                         correction_factor: float | None = None,
+                         dc_capacity_mw: float | None = None) -> float:
     """
     Main entry point: computes the physics-based anchor generation (MW)
     for one forecast block's feature row.
     """
     ac_capacity_mw = float(capacity_mw if capacity_mw is not None else getattr(config, "PLANT_CAPACITY_MW", 10.0))
-    dc_capacity_mw = float(getattr(config, "PLANT_DC_CAPACITY_MW", ac_capacity_mw))
+    if dc_capacity_mw is None:
+        if capacity_mw is not None and getattr(config, "PLANT_CAPACITY_MW", None):
+            dc_ratio = getattr(config, "PLANT_DC_CAPACITY_MW", ac_capacity_mw) / max(0.1, config.PLANT_CAPACITY_MW)
+            dc_capacity_mw = float(capacity_mw * dc_ratio)
+        else:
+            dc_capacity_mw = float(getattr(config, "PLANT_DC_CAPACITY_MW", ac_capacity_mw))
+    else:
+        dc_capacity_mw = float(dc_capacity_mw)
     if performance_ratio is None:
         performance_ratio = getattr(config, "PERFORMANCE_RATIO", 0.78)
 
@@ -66,9 +74,17 @@ def calculate_anchor_mw(feature_row: dict, capacity_mw: float | None = None,
 
     avg_cloud_fraction = sum(cloud_signals) / len(cloud_signals) if cloud_signals else 0.0
     avg_cloud_fraction = max(0.0, min(1.0, avg_cloud_fraction))
-    clearness_factor = max(0.20, 1.0 - (0.75 * avg_cloud_fraction))
+    
+    # 4. Clearness Factor: If caller passed blended live/NWP correction_factor, use it.
+    # Otherwise use NWP forward clearness or image cloud attenuation.
+    if correction_factor is not None:
+        clearness_factor = float(correction_factor)
+    elif feature_row.get("nwp_clearness") is not None:
+        clearness_factor = float(feature_row["nwp_clearness"])
+    else:
+        clearness_factor = max(0.20, 1.0 - (0.75 * avg_cloud_fraction))
 
-    # 4. Safe Risk-Optimized Performance Ratio & Temperature Derating
+    # 5. Safe Risk-Optimized Performance Ratio & Temperature Derating
     month = feature_row.get("month", 9)
     if isinstance(month, (int, float)) and int(month) in (6, 7, 8, 9) and avg_cloud_fraction > 0.35:
         effective_pr = max(0.68, min(0.74, performance_ratio or 0.72))
@@ -76,12 +92,17 @@ def calculate_anchor_mw(feature_row: dict, capacity_mw: float | None = None,
         effective_pr = max(0.74, min(0.82, performance_ratio or 0.78))
 
     # Cell temperature derate: PV modules lose ~0.4% efficiency per deg C above 25C
-    temp_amb = feature_row.get("temp_air_c", feature_row.get("temperature_2m", 30.0))
-    poa_proxy = max(0.0, 1000.0 * raw_sine * clearness_factor)
-    t_cell = temp_amb + ((45.0 - 20.0) / 800.0) * poa_proxy
-    temp_derate = max(0.88, min(1.02, 1.0 - 0.0038 * (t_cell - 25.0)))
+    if feature_row.get("temp_derate_multiplier") is not None:
+        temp_derate = float(feature_row["temp_derate_multiplier"])
+    else:
+        temp_amb = feature_row.get("temp_air_c", feature_row.get("temperature_2m", 30.0))
+        t_cell = feature_row.get("temp_cell_sandia_c")
+        if t_cell is None:
+            poa_proxy = max(0.0, 1000.0 * raw_sine * clearness_factor)
+            t_cell = temp_amb + ((45.0 - 20.0) / 800.0) * poa_proxy
+        temp_derate = max(0.80, min(1.02, 1.0 - 0.0038 * (float(t_cell) - 25.0)))
 
-    # 5. Physics generation computation (dynamic curved solar arch scaled to DC capacity and clipped at AC feed-in)
-    generation_mw = dc_capacity_mw * clear_sky_index * clearness_factor * effective_pr * temp_derate * correction_factor
+    # 6. Physics generation computation (dynamic curved solar arch scaled to DC capacity and clipped at AC feed-in)
+    generation_mw = dc_capacity_mw * clear_sky_index * clearness_factor * effective_pr * temp_derate
     generation_mw = max(0.0, min(ac_capacity_mw, generation_mw))
     return round(generation_mw, 3)

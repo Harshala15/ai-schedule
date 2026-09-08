@@ -152,8 +152,8 @@ def _cache_file(cache_dir: Path | None, key: str, run_date: str) -> Path | None:
 def _s3_bucket() -> str:
     b = os.getenv("S3_BUCKET", "").strip()
     if not b:
-        b = getattr(config, "S3_BUCKET", "ai-forecasting-storage-429694361053")
-    return b or "ai-forecasting-storage-429694361053"
+        b = getattr(config, "S3_BUCKET", "vedanjay-schedules-test-608744602858")
+    return b or "vedanjay-schedules-test-608744602858"
 
 
 def _s3_client():
@@ -266,7 +266,6 @@ def _raw_ensemble_request(
         "temperature_2m",
         "cloud_cover",
         "precipitation",
-        "global_tilted_irradiance_instant",
     ]
 
     params = {
@@ -939,3 +938,70 @@ def fetch_openmeteo_ensemble_calibrated_summary(
                 pass
 
     return summary_result
+
+
+def interpolate_15min_clearsky_index(
+    hourly_times: list[str],
+    hourly_gti: list[float],
+    target_15min_datetimes: list[dt.datetime],
+    *,
+    latitude: float = config.PLANT_LAT,
+    longitude: float = config.PLANT_LON,
+) -> list[float]:
+    """
+    Interpolates hourly GTI values to 15-minute intervals using physical Clear-Sky Index (k_t) scaling.
+    Preserves the physical solar bell curve and zenith geometry between hourly points.
+    """
+    if not hourly_times or not hourly_gti or not target_15min_datetimes:
+        return []
+
+    from modules.weather import time_features
+
+    hourly_pts: list[tuple[float, float]] = []
+    for t_str, g_val in zip(hourly_times, hourly_gti):
+        try:
+            if "T" in t_str:
+                dt_obj = dt.datetime.fromisoformat(t_str)
+            else:
+                dt_obj = dt.datetime.strptime(t_str, "%Y-%m-%d %H:%M")
+        except Exception:
+            continue
+        hourly_pts.append((dt_obj.timestamp(), float(g_val)))
+
+    if not hourly_pts:
+        return [max(0.0, float(hourly_gti[0]))] * len(target_15min_datetimes)
+
+    results = []
+    for tgt_dt in target_15min_datetimes:
+        tgt_ts = tgt_dt.timestamp()
+        if tgt_ts <= hourly_pts[0][0]:
+            interpolated_gti = hourly_pts[0][1]
+        elif tgt_ts >= hourly_pts[-1][0]:
+            interpolated_gti = hourly_pts[-1][1]
+        else:
+            for k in range(len(hourly_pts) - 1):
+                t0, g0 = hourly_pts[k]
+                t1, g1 = hourly_pts[k + 1]
+                if t0 <= tgt_ts <= t1:
+                    fraction = (tgt_ts - t0) / max(1.0, (t1 - t0))
+                    dt0 = dt.datetime.fromtimestamp(t0, tz=tgt_dt.tzinfo or dt.timezone.utc)
+                    dt1 = dt.datetime.fromtimestamp(t1, tz=tgt_dt.tzinfo or dt.timezone.utc)
+                    elev0 = time_features.compute_time_features(dt0, latitude, longitude)["solar_elevation_deg"]
+                    elev1 = time_features.compute_time_features(dt1, latitude, longitude)["solar_elevation_deg"]
+                    elev_tgt = time_features.compute_time_features(tgt_dt, latitude, longitude)["solar_elevation_deg"]
+
+                    cs0 = max(10.0, 1000.0 * math.sin(math.radians(max(0.0, elev0)))) if elev0 > 0 else 10.0
+                    cs1 = max(10.0, 1000.0 * math.sin(math.radians(max(0.0, elev1)))) if elev1 > 0 else 10.0
+                    cs_tgt = max(0.0, 1000.0 * math.sin(math.radians(max(0.0, elev_tgt)))) if elev_tgt > 0 else 0.0
+
+                    kt0 = max(0.0, g0 / cs0)
+                    kt1 = max(0.0, g1 / cs1)
+                    kt_interp = kt0 + fraction * (kt1 - kt0)
+                    interpolated_gti = round(kt_interp * cs_tgt, 2)
+                    break
+            else:
+                interpolated_gti = hourly_pts[-1][1]
+
+        results.append(max(0.0, float(interpolated_gti)))
+
+    return results
