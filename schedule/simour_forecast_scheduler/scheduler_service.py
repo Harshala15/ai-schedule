@@ -442,6 +442,7 @@ def run_schedule_job(
     schedule_prefix: str,
     event: dict | None = None,
 ) -> dict:
+    config.load_plant_profile(getattr(settings, "PLANT_NAME", "SIRMOUR"))
     target_date, target_time, target_dt = _parse_target_datetime(event)
     selection = _pick_latest_capture_bundle(bucket, capture_prefix, meter_prefix, target_dt)
     image_map = _build_image_map(selection.screenshot_dir)

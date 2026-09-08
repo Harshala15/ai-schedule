@@ -1,177 +1,188 @@
-# Windy Solar Forecast Pipeline
+# Industrial AI Solar Power Forecasting Pipeline (2-Stage Architecture)
 
-Automated short-term (next 2 hours, 15-minute blocks) solar generation forecasting for a solar plant, built from live Windy.com weather imagery instead of a paid weather API.
+An automated, cyber-physical solar power forecasting system engineered for utility-scale solar plants. Compliant with **Indian Central Electricity Regulatory Commission (CERC)** and **State Deviation Settlement Mechanism (DSM)** regulations within the strict $\pm 15\%$ tolerance band.
 
-A headless browser scrapes several Windy map layers (satellite clouds, cloud cover, rain, solar irradiance, wind) around the plant's coordinates, turns them into numeric features with classical computer vision (color/brightness stats + optical flow), grounds a forecast in a deterministic physics formula, then asks an LLM to adjust that forecast using the most similar historical situations on record. A validator keeps the LLM's adjustment physically sane before anything is saved.
+---
 
-## Why this design
+## High-Level 2-Stage Pipeline Architecture
 
-Asking an LLM to "look at a weather map and predict megawatts" is unreliable and non-deterministic. This pipeline instead gives the LLM a narrow, constrained job:
+```mermaid
+flowchart TD
+    %% Styling
+    classDef stageBox fill:#0F172A,stroke:#3B82F6,stroke-width:2px,color:#FFFFFF;
+    classDef inputGroup fill:#1E293B,stroke:#64748B,stroke-width:1.5px,color:#E2E8F0;
+    classDef streamBox fill:#0369A1,stroke:#38BDF8,stroke-width:1.5px,color:#FFFFFF;
+    classDef arbiterBox fill:#6D28D9,stroke:#A855F7,stroke-width:2px,color:#FFFFFF;
+    classDef outputBox fill:#047857,stroke:#10B981,stroke-width:2px,color:#FFFFFF;
+    classDef triggerBox fill:#B45309,stroke:#F59E0B,stroke-width:1.5px,color:#FFFFFF;
 
-1. **Physics anchor** (`modules/physics/physics_anchor.py`) computes a baseline MW estimate from solar elevation and cloud attenuation — pure math, always available, never wildly wrong.
-2. **Case-based retrieval** (`modules/retrieval/similarity_retrieval.py`) finds the most similar past situations (by weighted feature distance) that already have a real SCADA outcome.
-3. **The LLM** (`modules/llm/predictor.py`) only *adjusts* the anchor using that retrieved evidence and explains why — it never invents a number from scratch, and one LLM call covers all 8 blocks at once.
-4. **The validator** (`validator.py`) clips the result to plant capacity, caps how far the LLM may deviate from the anchor, and smooths unrealistic block-to-block jumps.
+    subgraph TRIGGER["Automated Trigger Layer (AWS EventBridge)"]
+        TB["Cron Trigger (Every 15-90 Mins)<br/>05:15, 06:45, 08:15, 09:45, 11:15, 12:45, 14:15, 15:45 IST"]
+    end
 
-If the LLM is unavailable, missing an API key, or returns something unparseable, the pipeline automatically falls back to the physics anchor for every block — it never produces no output.
+    subgraph STAGE1["STAGE 1: Physics & Real-Time SCADA Anchor Engine"]
+        direction TB
+        subgraph S1_INPUTS["Live SCADA & Physical Inputs"]
+            I1["1. Live SCADA Inverter Readings<br/>• Real-time 15-min generation up to t₀ (MW)<br/>• Live Performance Ratio: η = SCADA / ClearSky"]
+            I2["2. PVLib Clear-Sky Solar Geometry<br/>• Solar elevation (α) & zenith (θ_z)<br/>• Plane-of-Array Irradiance (GHI, DNI, DHI)"]
+            I3["3. Plant Static Characteristics<br/>• AC / DC Capacity (MW)<br/>• Module tilt angle & orientation<br/>• Inverter clipping thresholds"]
+            I4["4. Sandia PV Cell Temperature (T_cell)<br/>• Ambient temp & wind speed<br/>• Silicon thermal derating (-0.38%/°C)"]
+        end
+        
+        S1_ENGINE["Physics & Meter Calibration Core<br/>• Computes theoretical clear-sky envelope<br/>• Applies real-time ground momentum calibration<br/>• Handles dawn inverter wake-up logic (α < 20°)"]
+        S1_OUTPUT["Stage 1 Output:<br/>Baseline Physics Anchor Forecast (MW)<br/>(12 x 15-minute blocks for next 3 hours)"]
 
-## Pipeline architecture
+        I1 --> S1_ENGINE
+        I2 --> S1_ENGINE
+        I3 --> S1_ENGINE
+        I4 --> S1_ENGINE
+        S1_ENGINE --> S1_OUTPUT
+    end
 
-```
-Windy screenshots (5 layers)  ---->  modules/opencv/image_feature_extraction.py  --\
-                                                                                     >-- modules/features/feature_builder.py -> modules/physics/physics_anchor.py
-Windy satellite animation      ---->  modules/opencv/video_motion_features.py    --/                                |
-(optical flow)                                                                                        v
-                                                                                    modules/retrieval/similarity_retrieval.py
-                                                                             (top-K similar past cases, from
-                                                                              features_log.csv case store)
-                                                                                                        |
-                                                                                                        v
-                                                                                            modules/llm/predictor.py
-                                                                                (Gemini adjusts the anchor
-                                                                                 using retrieved evidence)
-                                                                                                        |
-                                                                                                        v
-                                                                                             validator.py
-                                                                             (range clip / deviation limit /
-                                                                                    smoothness check)
-                                                                                                        |
-                                                                                                        v
-                                                                                       modules/storage/prediction_store.py
-                                                                              (saves predictions + updates
-                                                                               the features_log case store)
-```
+    subgraph STAGE2["STAGE 2: Cognitive Tri-Stream Weather & AI Arbitration"]
+        direction TB
+        
+        subgraph WEATHER_STREAMS["Tri-Stream Weather Intelligence"]
+            W1["Weather Stream 1: Deterministic<br/>ECMWF 9 km High-Resolution<br/>• Single Best-Match GHI & DNI<br/>• Microclimate rain & curve shape"]
+            W2["Weather Stream 2: Super-Ensemble<br/>91-Member Multi-Model Ensemble<br/>• 51 ECMWF + 40 DWD ICON members<br/>• Uncertainty Spread (σ)<br/>• Conservative P40 Penalty Defense Floor"]
+            W3["Weather Stream 3: Atmospheric Deep-Scan<br/>Open-Meteo Premium Multi-Agency<br/>• 5-Agency Consensus (ECMWF, ICON, GFS, JMA, CMC)<br/>• CAPE Convective Thunderstorm Index (J/kg)<br/>• CAMS Aerosol / Haze Attenuation (AOD 550nm)<br/>• Optical Cloud Transmissivity (UV/UV_clear)<br/>• 15-Min Native Sunshine Duration Fraction"]
+        end
 
-Orchestrated end-to-end by [run_pipeline.py](run_pipeline.py), triggered every run by [test_multi_image.py](test_multi_image.py).
+        ARBITER["Cognitive AI Fusion Arbiter (LLM / Neural Engine)<br/>• Blends Stage 1 Physics Anchor with Tri-Stream Weather<br/>• Dynamic SCADA Ground Blending (70% Ground / 30% Weather)<br/>• Downside Risk Protection using Stream 2 P40 Floor<br/>• Preemptive Thunderstorm & Dust Haze Attenuation"]
 
-## Modules
+        SAFETY["CERC Regulatory & Ramp Guardrails<br/>• Clamps to [0, AC Capacity MW]<br/>• Grid ramp-rate smoothing filter<br/>• Enforces strict CERC ±15% tolerance compliance"]
 
-| File | Role |
-|---|---|
-| [test_multi_image.py](test_multi_image.py) | Entry point. Drives Playwright to log into Windy Premium, capture 5 map layers as screenshots, record + trim a satellite animation, then calls the prediction pipeline. Loops forever on an interval. |
-| [config.py](config.py) | Single source of truth: plant details (name/lat/lon/capacity/performance ratio), Windy capture settings, forecast block settings, file paths, and CBR retrieval weights. |
-| [run_pipeline.py](run_pipeline.py) | Orchestrates one end-to-end prediction run (the 5 phases in the diagram above). |
-| [modules/opencv/image_feature_extraction.py](modules/opencv/image_feature_extraction.py) | Computes brightness/saturation/hue/bright-pixel-% stats over a plant-centered region of interest in each layer screenshot. |
-| [modules/opencv/video_motion_features.py](modules/opencv/video_motion_features.py) | Runs Farneback optical flow on the recorded satellite animation to get cloud motion direction, a relative motion score, directional consistency, and cloud-coverage trend. |
-| [modules/weather/time_features.py](modules/weather/time_features.py) | Computes solar elevation (Cooper's equation) and calendar features for a timestamp; also generates the 8 upcoming 15-minute forecast-block timestamps. |
-| [modules/features/feature_builder.py](modules/features/feature_builder.py) | Merges image, motion, and time features into one flat row per forecast block; encodes categorical values numerically. |
-| [modules/physics/physics_anchor.py](modules/physics/physics_anchor.py) | Deterministic clear-sky × cloud-attenuation × capacity × performance-ratio formula — the baseline MW estimate, no ML or LLM involved. |
-| [modules/retrieval/similarity_retrieval.py](modules/retrieval/similarity_retrieval.py) | Case-based reasoning: finds the top-K nearest past feature rows (weighted, z-score-normalized Euclidean distance) that have a matched SCADA actual, and formats them as evidence text. |
-| [modules/llm/predictor.py](modules/llm/predictor.py) | The only module that calls an LLM (Google Gemini). Builds the prompt, parses the JSON response, and falls back to the anchor per-block on any failure. |
-| [validator.py](validator.py) | Safety net: range clip, max-deviation-from-anchor limit, and block-to-block smoothness cap. |
-| [modules/storage/prediction_store.py](modules/storage/prediction_store.py) | Writes/updates the two output CSVs (predictions + feature case store), keyed by timestamp so reruns update rather than duplicate rows. |
-| [modules/feedback/daily_feedback.py](modules/feedback/daily_feedback.py) | Run manually once real SCADA/meter data is available: joins actuals into the case store by timestamp and logs MAE/RMSE/MAPE/Bias. Also auto-syncs any CSV dropped into `historic_cases/` before every pipeline run. |
-| [accuracy_tracker.py](accuracy_tracker.py) | Standalone script comparing a predictions CSV against an actual-meter CSV and writing a plain-text accuracy report; flags when MAPE exceeds a retrain threshold. |
-| [simour_forecast_scheduler/](simour_forecast_scheduler/) | Separate Lambda-oriented scheduler package. At each scheduled time, it loads the latest S3 screenshots/video and meter CSV up to that cutoff, runs the pipeline, and writes timestamped daily schedule snapshots under `generated/{PLANT}/{YYYY-MM-DD}/`. |
+        W1 --> ARBITER
+        W2 --> ARBITER
+        W3 --> ARBITER
+        ARBITER --> SAFETY
+    end
 
-## Code Layout
+    %% Workflow Connections
+    TB ==>|"Triggers Serverless Lambda"| S1_ENGINE
+    S1_OUTPUT ==>|"Feeds Baseline Physics Anchor"| ARBITER
 
-The reusable logic now lives under `modules/` so it is easy to find by domain:
+    FINAL["FINAL SCHEDULE OUTPUT<br/>5-Column Regulatory CSV<br/>(Block, Time, Plant Name, Base Forecast, Revised Forecast)"]
+    S3_STORE[("AWS S3 Data Lake<br/>s3://ai-forecasting-storage-429694361053/<br/>generated/PLANT/YYYY-MM-DD/")]
 
-| Folder | What belongs here |
-|---|---|
-| `modules/llm/` | Gemini / LLM prompt building, parsing, and stepwise forecast adjustment. |
-| `modules/weather/` | Weather helpers, ECMWF/Open-Meteo fetch and summary code, and time/solar feature helpers. |
-| `modules/opencv/` | OpenCV-based image and video feature extraction. |
-| `modules/features/` | Feature assembly and encoding logic that combines weather, image, video, and time features. |
-| `modules/physics/` | Deterministic physics anchor logic. |
-| `modules/retrieval/` | Similarity search / case-based reasoning over historical feature rows. |
-| `modules/feedback/` | Daily feedback, actuals matching, context building, and accuracy logging. |
-| `modules/storage/` | Prediction CSV storage and persistent state sync helpers. |
+    SAFETY ==> FINAL
+    FINAL ==> S3_STORE
 
-The old top-level files remain as thin compatibility wrappers so existing scripts and Lambda entrypoints continue to work while the real code stays in the module folders.
-
-## Setup
-
-**Requirements:** Python 3.11+, [Playwright](https://playwright.dev/python/), OpenCV, NumPy, the [`google-genai`](https://pypi.org/project/google-genai/) SDK, and (optional but recommended) [ffmpeg](https://ffmpeg.org/) on your `PATH` for trimming the recorded video.
-
-```bash
-pip install playwright opencv-python numpy google-genai
-playwright install chromium
+    %% Apply Styles
+    class STAGE1,STAGE2 stageBox;
+    class S1_INPUTS,WEATHER_STREAMS inputGroup;
+    class W1,W2,W3 streamBox;
+    class ARBITER arbiterBox;
+    class FINAL,S1_OUTPUT outputBox;
+    class TB,TRIGGER triggerBox;
 ```
 
-1. Update the plant details in [config.py](config.py) — `PLANT_NAME`, `PLANT_LAT`, `PLANT_LON`, `PLANT_CAPACITY_MW`, `PERFORMANCE_RATIO`.
-2. Create a `.env` file in the project root with your Gemini API key:
-   ```
-   GEMINI_API_KEYS=key1,key2,key3
-   # or use numbered fallbacks:
-   # GEMINI_API_KEY_1=key1
-   # GEMINI_API_KEY_2=key2
-   ```
-   (Without this, the pipeline still runs — every block simply falls back to the physics anchor with "Low" confidence.)
-3. You need a **Windy Premium** account (the animated satellite nowcast layer requires it).
+---
 
-## Running
+## Step-by-Step Forecast Generation Process
 
-```bash
-python test_multi_image.py
-```
+### Step 0: EventBridge Schedule Trigger
+* **Frequencies**: Fired automatically at revision checkpoints (`05:15`, `06:45`, `08:15`, `09:45`, `11:15`, `12:45`, `14:15`, `15:45 IST`).
+* **Target Horizon**: 12 continuous 15-minute time blocks (next 3 hours).
 
-On the very first run, a visible browser window opens so you can log in to Windy — your session is then saved to `windy_login.json` and reused for all future (headless) runs. After that, the script loops forever: capture screenshots → record animation → run the prediction pipeline → wait `RUN_INTERVAL_SECONDS` (default 20 min) → repeat.
+### Step 1: Live SCADA Ingestion & Ground Calibration
+* Fetches the latest 15-minute generation records up to the revision cutoff ($t_0$).
+* Calculates the **Live Performance Ratio**:
+  $$\eta_{\text{live}} = \frac{\text{Actual SCADA Power at } t_0}{\text{Theoretical Clear-Sky Power at } t_0}$$
 
-Each run prints its progress (physics anchors per block, retrieved similar cases, LLM-adjusted values, any validator corrections) and writes:
+### Step 2: Astronomical Geometry & PVLib Plane-of-Array Physics
+* Calculates exact solar elevation angle ($\alpha_s$), zenith ($\theta_z$), and azimuth.
+* Translates DNI and DHI to **Plane-of-Array (POA) Irradiance** ($\text{W/m}^2$) based on plant tilt ($\beta$) and orientation ($\gamma_{\text{panel}}$).
 
-- `energy_predictions/<PLANT>_energy_generation.csv` — human-facing output: Block, Time, Predicted Generation (MW/kW).
-- `features_log/<PLANT>_features_log.csv` — every engineered feature per block plus the prediction. This is the case store that `modules/retrieval/similarity_retrieval.py` searches, and that `modules/feedback/daily_feedback.py` enriches with real outcomes.
-- `windy_screenshots/<lat>_<lon>/<timestamp>/` — the 5 raw layer screenshots for that run (for debugging).
-- `windy_videos/` — the raw and ffmpeg-trimmed satellite animation clips.
+### Step 3: Sandia Thermal Loss & Stage 1 Base Anchor
+* Ingests ambient temperature ($T_{\text{ambient}}$) and wind speed ($v$).
+* Computes cell temperature ($T_{\text{cell}}$) and applies monocrystalline silicon derating ($\gamma = -0.38\% / ^\circ\text{C}$):
+  $$T_{\text{cell}} = T_{\text{ambient}} + \text{POA} \cdot \exp(-a - b \cdot v)$$
+  $$\mathbf{P}_{\text{anchor}} = \min\left(P_{\text{AC, max}}, \, P_{\text{DC}} \cdot \frac{\text{POA}_{\text{clearsky}}}{1000} \cdot (1 + \gamma (T_{\text{cell}} - 25^\circ\text{C})) \cdot \eta_{\text{live}}\right)$$
 
-### Closing the feedback loop
+### Step 4: Parallel Fetch of Tri-Stream Weather Intelligence
+* **Stream 1 (Deterministic)**: ECMWF 9 km High-Resolution deterministic GHI, precipitation, and cloud levels.
+* **Stream 2 (Super-Ensemble)**: 91-Member Multi-Model Ensemble (51 ECMWF + 40 DWD ICON). Computes spread $\sigma$ and the **Conservative P40 Risk Floor** to eliminate DSM over-forecasting penalties.
+* **Stream 3 (Deep-Scan)**: 5-Agency Consensus (ECMWF, ICON, GFS, JMA, CMC), CAPE convective thunderstorm index ($\text{J/kg}$), CAMS Aerosol Optical Depth (AOD 550nm), and 15-min native sunshine duration.
 
-Drop any SCADA/meter export CSV into `historic_cases/` (columns matching `TIMESTAMP_COLUMN` / `POWER_COLUMN_MW` in [modules/feedback/daily_feedback.py](modules/feedback/daily_feedback.py), defaulting to `TimeStamp` / `Active Power (MW)`). It's automatically joined into the case store — by matching timestamp only — at the start of every pipeline run, so future forecasts can cite real outcomes ("in similar cloud conditions, actual generation was X% lower than the anchor formula") without a manual step.
-
-To make AWS Lambda use the same persistent history as your local runs, enable `ENABLE_S3_STATE_SYNC=1`. The scheduler will mirror these folders under `S3_STATE_PREFIX`:
-
-- `historic_cases/`
-- `features_log/`
-- `prediction_context/<PLANT>_context.json`
-
-To also get an error-metrics report and update the running accuracy log, run it directly:
-
-```bash
-python modules/feedback/daily_feedback.py path/to/actual_meter.csv
-```
-
-## Configuration knobs worth knowing
-
-- `CBR_TOP_K` / `CBR_FEATURE_WEIGHTS` in [config.py](config.py) — how many similar cases are retrieved and how much each feature counts toward "similarity."
-- `MAX_DEVIATION_FRACTION` / `MAX_STEP_CHANGE_MW` in [validator.py](validator.py) — how far the LLM is allowed to move the forecast away from the physics anchor.
-- `NUM_FORECAST_BLOCKS` / `BLOCK_MINUTES` / `RUN_INTERVAL_SECONDS` in [config.py](config.py) — forecast horizon and how often the pipeline runs.
-- `LAYERS` in [config.py](config.py) — which Windy map layers get captured and fed into feature extraction.
-- `S3_STATE_PREFIX` / `ENABLE_S3_STATE_SYNC` — S3 mirror location for persistent state when running the Lambda scheduler.
-
-## Notes
-
-- `.venv/requirements.txt` in this repo is a stale, unrelated dependency list left over from the virtual environment's origin — it does not reflect what this project actually imports. Use the `pip install` command above instead.
-- Solar elevation uses a simplified formula (assumes local clock time ≈ solar time, no timezone/equation-of-time correction) — accurate enough to distinguish day/night/near-horizon, not astronomically precise.
-- The recorded animation's playback speed is a Windy UI artifact, not real time — motion features are intentionally relative/dimensionless (not km/h) for this reason.
-
-## Scheduler package
-
-The new [simour_forecast_scheduler/](simour_forecast_scheduler/) package is meant for the Lambda-driven day schedule flow you described:
-
-- EventBridge triggers the Lambda at `05:15`, `06:45`, `08:15`, `09:45`, `11:15`, `12:45`, `14:15`, and `15:45`.
-- The Lambda selects the latest capture bundle available up to that time.
-- It uses meter data only up to the same cutoff.
-- It reads raw inputs from `raw/vedanjay/SIRMOUR/{YYYY-MM-DD}/windy/` and `raw/vedanjay/SIRMOUR/{YYYY-MM-DD}/meter_data/`.
-- It writes a timestamped schedule snapshot plus a `latest` file under `generated/SIRMOUR/{YYYY-MM-DD}/`.
-- The package also includes `python -m simour_forecast_scheduler.provision`, which creates or updates all eight EventBridge schedules automatically so you do not need to run the AWS Scheduler CLI by hand.
-
-## Kasipet deployment
-
-Kasipet now has matching deployment packages:
-
-- [kasipet_fetcher/](kasipet_fetcher/) for the Kasipet SFTP fetch Lambda
-- [kasipet_forecast_scheduler/](kasipet_forecast_scheduler/) for the Kasipet forecast scheduler Lambda
-
-The shared forecasting engine in [config.py](config.py) is now plant-configurable through environment variables such as:
+### Step 5: Cognitive AI Fusion & Arbitration Decision Matrix
+The AI Arbiter evaluates the multi-stream evidence and arbitrates the optimal generation curve:
 
 ```text
-PLANT_NAME
-PLANT_LAT
-PLANT_LON
-PLANT_CAPACITY_MW
-PERFORMANCE_RATIO
+                          ┌───────────────────────────┐
+                          │   Stage 1 Physics Anchor  │
+                          └─────────────┬─────────────┘
+                                        │
+             ┌──────────────────────────┼──────────────────────────┐
+             ▼                          ▼                          ▼
+   [Scenario A: Clear Sky]     [Scenario B: Morning Ramp]  [Scenario C: Volatile Storm]
+   • High Agreement (>90%)     • Solar Elev: 15° - 45°     • High Spread (σ > 150 W/m²)
+   • Spread σ < 40 W/m²        • Clear ground conditions   • CAPE > 1000 J/kg
+   • CAPE < 500 J/kg           • Fast inverter ramping     • Cloud Cover > 60%
+             │                          │                          │
+             ▼                          ▼                          ▼
+   Follow 100% Physics Anchor  Blend 70% SCADA Ground      Clamp Down to Stream 2 P40
+   (Full Generation Ceiling)   + 30% Weather Trajectory    (Penalty Protection Floor)
 ```
 
-That means SIMOUR and Kasipet can use the same codebase but separate Lambda deployments, S3 prefixes, and EventBridge schedules.
+### Step 6: Regulatory Safety Clamping & CERC $\pm 15\%$ Guardrails
+* Hard physical limits enforced: $0.0 \le P \le P_{\text{AC, max}}$.
+* Ramp-rate smoothing filter applied between consecutive 15-minute intervals.
+* Early morning dawn inverter awakening threshold verified ($\alpha_s < 20.0^\circ$).
+
+### Step 7: Schedule Formatting & AWS S3 Dispatch
+* Merges the 12 revised blocks into the day's master 96-block schedule.
+* Formats as the standard 5-column CSV:
+  ```csv
+  Block,Time,Plant Name,Base Forecast (MW),Revised Forecast (MW)
+  24,12:00,KASIPET,14.850,14.250
+  25,12:15,KASIPET,14.900,14.300
+  ```
+* Uploads directly to AWS S3:
+  `s3://ai-forecasting-storage-429694361053/generated/<PLANT>/<DATE>/`
+
+---
+
+## Production Multi-Plant Deployment Matrix
+
+All 5 solar power plants execute using this identical, containerized engine on AWS Lambda:
+
+| Plant Name | AC Capacity | DC Capacity | Tilt Angle | Latitude | Longitude |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **SIRMOUR** | 5.1 MW | 5.48 MW | 20.0° | 24.562530 | 75.091403 |
+| **KASIPET** | 15.0 MW | 16.50 MW | 15.0° | 19.039439 | 79.436917 |
+| **BHUPALPALLY** | 10.0 MW | 11.005 MW | 15.0° | 18.447931 | 79.877263 |
+| **KOTHAGUDEM** | 10.0 MW | 11.20 MW | 15.0° | 17.525009 | 80.612501 |
+| **OSEPL** | 20.0 MW | 26.00 MW | 20.0° | 21.145800 | 79.088200 |
+
+---
+
+## Project Directory Layout
+
+```text
+schedule/
+├── config.py                               # Single source of truth for plant profiles and weights
+├── run_pipeline.py                         # End-to-end 2-stage execution orchestrator
+├── modules/
+│   ├── llm/
+│   │   └── predictor.py                    # AI Fusion Arbiter & Decision Matrix prompt builder
+│   ├── weather/
+│   │   ├── weather_fusion.py               # Tri-stream weather fusion engine
+│   │   ├── ecmwf_weather.py                # Stream 1: ECMWF 9 km deterministic model
+│   │   ├── openmeteo_ensemble.py           # Stream 2: 91-member multi-model super-ensemble
+│   │   └── premium_stream3.py              # Stream 3: 5-agency consensus, CAPE, & CAMS AOD
+│   ├── physics/
+│   │   └── physics_anchor.py               # PVLib clear-sky solar geometry & Sandia cell temp
+│   └── feedback/
+│       └── daily_feedback.py               # Evening SCADA ground-truth reconciliation
+├── Dockerfile.shared-all                   # Container image specification for AWS Lambda
+└── README.md                               # This technical specification document
+```
+
+---
+
+## AWS Serverless Architecture
+* **Compute**: AWS Lambda (Containerized Python 3.11, 2048 MB memory).
+* **Execution Time**: Sub-10 seconds average per revision run.
+* **Storage**: AWS S3 Bucket `ai-forecasting-storage-429694361053`.
+* **Automation**: AWS EventBridge Scheduler Rules.

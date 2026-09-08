@@ -1,0 +1,12 @@
+{
+  "plant_name": "OSEPL",
+  "latitude": 17.9068,
+  "longitude": 76.3229,
+  "dc_capacity_kw": 26000,
+  "maximum_feed_in_ac_kw": 20000,
+  "tracker_type": "None",
+  "orientation_deg_from_south": 0,
+  "tilt_deg": 14,
+  "eeg_id": "OSEPL",
+  "ppa_rate_inr_per_kwh": 9.27
+}

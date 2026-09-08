@@ -63,11 +63,18 @@ SITES = (
         "capacity_mw": 10,
     },
     {
+        "name": "KOTHAGUDEM",
+        "lat": 17.52500925,
+        "lon": 80.64616743,
+        "s3_prefix": "kothagudem",
+        "capacity_mw": 37.0,
+    },
+    {
         "name": "OSEPL",
         "lat": 17.9068,
         "lon": 76.3229,
         "s3_prefix": "osepl",
-        "capacity_mw": None,
+        "capacity_mw": 20.0,
     },
 )
 
@@ -95,7 +102,7 @@ ANIMATION_LAYER = "satellite"
 
 # ---- Run timing ----
 RUN_INTERVAL_SECONDS = 20 * 60
-LAMBDA_GATED_VIDEO_SITES = ("SIRMOUR", "KASIPET", "BHUPALPALLY")
+LAMBDA_GATED_VIDEO_SITES = ("SIRMOUR", "KASIPET", "BHUPALPALLY", "KOTHAGUDEM")
 REVISION_TIMES = ("05:55", "06:45", "08:15", "09:45", "11:15", "14:15", "15:45")
 LAMBDA_CAPTURE_OFFSET_MINUTES = 5
 LAMBDA_CAPTURE_WINDOW_MINUTES = int(_get_env_value("LAMBDA_CAPTURE_WINDOW_MINUTES", "5"))

@@ -110,11 +110,7 @@ def save_generation_csv(rows, output_dir=None) -> list:
         "Block",
         "Time Interval (15 minute interval)",
         "Step 1 Meter Base Forecast MW",
-        "Step 2 Weather + Video Adjusted MW",
-        "Step 3 Plant Performance MW",
-        "Step 4 Revision Feedback MW",
-        "LLM Schedule (MW)",
-        "Schedule MW",
+        "Step 2 Weather Adjustment MW",
         "LLM Reasoning",
     ]
 
@@ -132,54 +128,35 @@ def save_generation_csv(rows, output_dir=None) -> list:
             block_number = row.get("block_number", row.get("Block", ""))
             time_label = row.get("time", row.get("Time", ""))
             step1_mw = _clip_display_mw(row.get("step1_mw", row.get("Step 1 Meter Base Forecast MW", row.get("anchor_mw", ""))))
-            step2_mw = _clip_display_mw(row.get("step2_mw", row.get("Step 2 Weather + Video Adjusted MW", row.get("llm_mw", ""))))
-            step3_mw = _clip_display_mw(row.get("step3_mw", row.get("Step 3 Plant Performance MW", row.get("llm_mw", ""))))
-            step4_mw = _clip_display_mw(
+            step2_mw = _clip_display_mw(
                 row.get(
-                    "step4_mw",
+                    "step2_mw",
                     row.get(
-                        "Step 4 Revision Feedback MW",
-                        row.get("Step 4 Revision Feedback Adjusted MW", row.get("Step 4 Context Adjusted MW", row.get("llm_mw", step3_mw))),
+                        "Step 2 Weather Adjustment MW",
+                        row.get("Step 2 Weather + Video Adjusted MW", row.get("llm_mw", row.get("final_mw", ""))),
                     ),
                 )
             )
-            llm_mw = _clip_display_mw(row.get("llm_mw", row.get("LLM Schedule (MW)", step4_mw)))
-            final_mw = _clip_display_mw(row.get("final_mw", row.get("Schedule MW", row.get("Final Validated MW", llm_mw))))
             reasoning = row.get("reasoning", row.get("LLM Reasoning", ""))
         else:
             if len(row) == 5:
                 block_number, time_label, anchor_mw, final_mw, reasoning = row
                 step1_mw = _clip_display_mw(anchor_mw)
                 step2_mw = _clip_display_mw(final_mw)
-                step3_mw = _clip_display_mw(final_mw)
-                step4_mw = _clip_display_mw(final_mw)
-                llm_mw = _clip_display_mw(final_mw)
             elif len(row) == 8:
                 block_number, time_label, step1_mw, step2_mw, step3_mw, llm_mw, final_mw, reasoning = row
                 step1_mw = _clip_display_mw(step1_mw)
-                step2_mw = _clip_display_mw(step2_mw)
-                step3_mw = _clip_display_mw(step3_mw)
-                step4_mw = _clip_display_mw(step3_mw)
-                llm_mw = _clip_display_mw(llm_mw)
-                final_mw = _clip_display_mw(final_mw)
+                step2_mw = _clip_display_mw(step2_mw or final_mw)
             else:
                 block_number, time_label, step1_mw, step2_mw, step3_mw, step4_mw, llm_mw, final_mw, reasoning = row
                 step1_mw = _clip_display_mw(step1_mw)
-                step2_mw = _clip_display_mw(step2_mw)
-                step3_mw = _clip_display_mw(step3_mw)
-                step4_mw = _clip_display_mw(step4_mw)
-                llm_mw = _clip_display_mw(llm_mw)
-                final_mw = _clip_display_mw(final_mw)
+                step2_mw = _clip_display_mw(step2_mw or final_mw)
 
         rows_by_time[time_label] = [
             str(block_number),
             _format_time_interval(time_label),
             str(step1_mw),
             str(step2_mw),
-            str(step3_mw),
-            str(step4_mw),
-            str(llm_mw),
-            str(final_mw),
             reasoning,
         ]
 

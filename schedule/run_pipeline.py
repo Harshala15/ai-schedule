@@ -1,8 +1,7 @@
 """
 run_pipeline.py
 
-REPLACES analyze_with_gemini() from the old pipeline, and completes the
-move to the new hybrid architecture:
+Pipeline entry point for the hybrid architecture:
 
     Screenshot capture ----> Image feature extraction -----\\
                                                               >-- Combine features -> Physics anchor
@@ -97,7 +96,7 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
         summary. Used as Step 3 in the stepwise prompt.
     """
     reference_time = reference_time or datetime.datetime.now()
-    stepwise_live_plants = {"BHUPALPALLY", "KASIPET", "SIRMOUR"}
+    stepwise_live_plants = {"BHUPALPALLY", "KASIPET", "SIRMOUR", "KOTHAGUDEM", "OSEPL", "ANJANGOAN"}
     stepwise_live_only = config.PLANT_NAME.upper() in stepwise_live_plants
     intraday_state = (
         daily_feedback.summarize_intraday_state(intraday_actuals_path, reference_time)
@@ -110,6 +109,28 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
             intraday_actuals_path,
             reference_time,
         )
+
+    fused_weather_rows = []
+    if not weather_text:
+        try:
+            from modules.weather import weather_fusion
+            is_volatile = bool(intraday_state and intraday_state.get("fluctuation_flag"))
+            forecast_hours = max(1, int(math.ceil((num_blocks or config.NUM_FORECAST_BLOCKS) * config.BLOCK_MINUTES / 60.0)))
+            w_report = weather_fusion.fetch_dual_stream_weather_fusion(
+                latitude=config.PLANT_LAT,
+                longitude=config.PLANT_LON,
+                reference_time=reference_time,
+                hours_ahead=forecast_hours,
+                tilt=getattr(config, "PLANT_TILT_DEG", 20.0),
+                azimuth=getattr(config, "PLANT_ORIENTATION_DEG_FROM_SOUTH", 180.0),
+                plant_name=config.PLANT_NAME,
+                is_volatile=is_volatile,
+            )
+            weather_text = w_report.get("prompt_text", "")
+            fused_weather_rows = w_report.get("fused_rows", [])
+        except Exception as w_exc:
+            print(f"  [WARN] Auto-fetching dual-stream weather fusion failed: {w_exc}")
+    fused_weather_map = {r.get("hour_label"): r for r in fused_weather_rows if isinstance(r, dict) and r.get("hour_label")}
 
     def _load_recent_meter_history_payload(text: str) -> dict | None:
         text = (text or "").strip()
@@ -146,7 +167,7 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
     print(f"  [OK] Extracted {len(image_features)} image-derived features.")
 
     motion_features = None
-    if video_path is not None and video_path.exists():
+    if getattr(config, "ENABLE_WINDY_VIDEO_FEATURES", False) and video_path is not None and video_path.exists():
         print(f"\nExtracting video motion features: {video_path}")
         motion_features = video_motion_features.analyze_video(video_path)
         if motion_features is None:
@@ -156,7 +177,8 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
             if not video_text:
                 video_text = motion_features["summary_text"]
     else:
-        print("\n[INFO] No video available -- continuing without motion features.")
+        print("\n[INFO] Windy video features disabled -- schedule driven by Live SCADA telemetry, pvlib clear sky, and ECMWF weather.")
+        video_text = ""
 
     # ---- Phase 1: build feature rows + Step 1 scaffold for all blocks ----
     print("\nBuilding feature rows and Step 1 scaffold for each forecast block...")
@@ -188,28 +210,65 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
         if feature_columns is None:
             feature_columns = feature_builder.get_feature_columns(feature_row)
 
-        # ---- Dual-Horizon Blended Clearness Formula ----
-        # 1. Live Clearness from latest recorded meter reading at revision time:
+        b_label = block_time.strftime("%H:%M")
+        w_entry = fused_weather_map.get(b_label)
+        if not w_entry:
+            h_floor = f"{block_time.hour:02d}:00"
+            w_entry = fused_weather_map.get(h_floor, {})
+
+        elevation = block_time_feats.get("solar_elevation_deg", 0.0)
+        raw_sine = math.sin(math.radians(max(0.0, elevation)))
+        clearsky_gti = max(10.0, 1000.0 * (raw_sine ** 0.95))
+
+        gti_fused = w_entry.get("gti_fused")
+        temp_c = w_entry.get("temp_c", 28.0)
+        temp_sandia = w_entry.get("temp_cell_sandia_c")
+        temp_derate = w_entry.get("temp_derate_multiplier", 1.0)
+        precip_mm = w_entry.get("precip_mm", 0.0)
+        cloud_pct = w_entry.get("cloud_pct", 0.0)
+
+        # 1. Forward Numerical Weather Prediction (NWP) Clearness for block k:
+        #    NWPClearness(k) = OpenMeteo_GTI_fused(k) / pvlib_ClearSky_GTI(k)
+        if gti_fused is not None and elevation >= 3.0 and clearsky_gti > 30.0:
+            nwp_clearness = max(0.15, min(1.0, round(float(gti_fused) / clearsky_gti, 3)))
+        else:
+            cloud_signals = []
+            for key in ("clouds_bright_pixel_pct", "satellite_bright_pixel_pct", "rain_bright_pixel_pct"):
+                if feature_row.get(key) is not None:
+                    cloud_signals.append(feature_row[key] / 100.0)
+            motion_cov = feature_row.get("motion_coverage_end_pct") if getattr(config, "ENABLE_WINDY_VIDEO_FEATURES", False) else None
+            if motion_cov is not None:
+                video_weight = math.exp(-0.30 * block_index)
+                damped_video_cloud = (motion_cov * video_weight) / 100.0
+                cloud_signals.append(damped_video_cloud)
+            avg_cloud = sum(cloud_signals) / len(cloud_signals) if cloud_signals else (cloud_pct / 100.0)
+            nwp_clearness = max(0.20, min(1.0, 1.0 - (0.75 * avg_cloud)))
+
+        # Inject physical weather features into feature_row for downstream anchor & LLM
+        feature_row["temperature_2m"] = temp_c
+        feature_row["temp_cell_sandia_c"] = temp_sandia
+        feature_row["temp_derate_multiplier"] = temp_derate
+        feature_row["nwp_clearness"] = nwp_clearness
+        feature_row["gti_fused"] = gti_fused
+        feature_row["precipitation"] = precip_mm
+        feature_row["cloud_cover"] = cloud_pct
+
+        # 2. Live Clearness from latest recorded meter reading at revision time:
         #    LiveClearness = min(1.0, Meter_rev_time / ClearSky_rev_time)
         live_clearness = 1.0
-        if intraday_state and intraday_state.get("live_residual_factor") is not None:
-            live_clearness = max(0.20, min(1.10, float(intraday_state.get("live_residual_factor", 1.0))))
+        ref_elev = time_features.compute_time_features(reference_time)["solar_elevation_deg"]
 
-        # 2. Forward Numerical Weather Prediction (NWP) Clearness for block k:
-        #    NWPClearness(k) = OpenMeteo_GHI(k) / pvlib_ClearSky_GHI(k)
-        cloud_signals = []
-        for key in ("clouds_bright_pixel_pct", "satellite_bright_pixel_pct", "rain_bright_pixel_pct"):
-            if feature_row.get(key) is not None:
-                cloud_signals.append(feature_row[key] / 100.0)
-        motion_cov = feature_row.get("motion_coverage_end_pct")
-        if motion_cov is not None:
-            # Video optical flow nowcast decay: localized 30km video is 100% valid for t+15-45m,
-            # but decays across 3 hours so regional synoptic clouds take precedence
-            video_weight = math.exp(-0.30 * block_index)
-            damped_video_cloud = (motion_cov * video_weight) / 100.0
-            cloud_signals.append(damped_video_cloud)
-        avg_cloud = sum(cloud_signals) / len(cloud_signals) if cloud_signals else 0.0
-        nwp_clearness = max(0.20, min(1.0, 1.0 - (0.75 * avg_cloud)))
+        # DAWN EXEMPTION RULE: When solar elevation is < 20.0 deg (before 07:30 AM),
+        # low inverter wake-up generation is normal. Default live_clearness to 1.0 (Clear Sky)
+        # unless NWP satellite/weather irradiance confirms thick clouds (< 100 W/m2).
+        if ref_elev < 20.0:
+            if nwp_clearness >= 0.70:
+                live_clearness = 1.0
+            elif intraday_state and intraday_state.get("live_residual_factor") is not None:
+                live_clearness = max(0.50, min(1.10, float(intraday_state.get("live_residual_factor", 1.0))))
+        else:
+            if intraday_state and intraday_state.get("live_residual_factor") is not None:
+                live_clearness = max(0.20, min(1.10, float(intraday_state.get("live_residual_factor", 1.0))))
 
         # 3. Dual-Horizon Exponential Blend across 12 forward blocks:
         #    EffectiveClearness(k) = (e^(-0.25*k) * LiveClearness) + ((1 - e^(-0.25*k)) * NWPClearness(k))
@@ -218,25 +277,28 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
         decay_weight = math.exp(-0.25 * block_index)
         effective_clearness = (decay_weight * live_clearness) + ((1.0 - decay_weight) * nwp_clearness)
 
-        # 4. Contextual Regime Modulations & Dynamic Morning Ramp Acceleration:
-        if 8 <= block_time.hour <= 11:
-            # Morning Solar Ascent (08:00 - 11:30 AM):
-            # Under rising clear-sky conditions (NWP clearness >= 0.75), morning ground haze burns off rapidly.
-            # We dynamically accelerate the blend towards full clear-sky physical potential.
-            if nwp_clearness >= 0.75:
-                morning_hour_progress = (block_time.hour - 8) + (block_time.minute / 60.0)
-                ramp_floor = min(1.0, 0.70 + (0.30 * min(1.0, morning_hour_progress / 2.5)))
+        # 4. Contextual Regime Modulations & Dynamic Morning Ramp Acceleration (Gate-Closure Protection):
+        if 7 <= block_time.hour <= 11:
+            # Morning Solar Ascent (07:00 - 11:30 AM):
+            # Under rising clear-sky conditions (NWP clearness >= 0.70 AND live ground clearness >= 0.60 or ref_elev < 20.0),
+            # morning ground haze burns off rapidly.
+            # We dynamically accelerate the blend towards full clear-sky physical potential to protect T+4 frozen gate-closure blocks.
+            # CRITICAL SAFEGUARD: If live ground clearness is low (< 0.50) at midday (elev >= 45 deg), DO NOT force ramp_floor upward!
+            if nwp_clearness >= 0.70 and (live_clearness >= 0.60 or ref_elev < 20.0):
+                morning_hour_progress = max(0.0, (block_time.hour - 7) + (block_time.minute / 60.0))
+                ramp_floor = min(1.0, 0.75 + (0.25 * min(1.0, morning_hour_progress / 3.0)))
                 live_residual_factor = max(ramp_floor, effective_clearness)
             else:
                 live_residual_factor = effective_clearness
-        elif block_time.hour < 8:
-            # Dawn dampening: avoid scaling whole morning curve down by dawn sun angle
-            live_residual_factor = (0.75 * 1.0) + (0.25 * effective_clearness)
+        elif block_time.hour < 7:
+            # Dawn transition: pre-sunrise low sun angles
+            live_residual_factor = (0.80 * 1.0) + (0.20 * effective_clearness)
         elif 13 <= block_time.hour <= 16 and block_time.month in (6, 7, 8, 9):
             # Afternoon Monsoon Cloud Attenuation: safe risk-neutral descent
             live_residual_factor = min(0.92, effective_clearness)
         else:
             live_residual_factor = effective_clearness
+
 
         anchor_mw = round(
             physics_anchor.calculate_anchor_mw(feature_row, correction_factor=live_residual_factor),
@@ -295,17 +357,12 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
         step1_input_parts = []
         if intraday_actuals_text.strip():
             step1_input_parts.append(
-                "Current meter data up to revision time:\n"
+                "Current live SCADA meter data up to revision time:\n"
                 f"{intraday_actuals_text.strip()}"
-            )
-        if meter_history_text.strip():
-            step1_input_parts.append(
-                "Cached last 3 days meter JSON:\n"
-                f"{meter_history_text.strip()}"
             )
         if pvlib_text.strip():
             step1_input_parts.append(
-                "pvlib physics summary:\n"
+                "pvlib physics clear-sky summary:\n"
                 f"{pvlib_text.strip()}"
             )
         step1_inputs_text = "\n\n".join(step1_input_parts)
@@ -319,31 +376,45 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
         ]
         base_forecast_by_time = {anchor["time"]: anchor["anchor_mw"] for anchor in live_anchor_predictions}
         base_reference_by_time = {anchor["time"]: anchor.get("base_anchor_mw", anchor["anchor_mw"]) for anchor in live_anchor_predictions}
-        stepwise_context_parts = [
-            plant_performance_text.strip(),
-            context_text.strip(),
-        ]
-        stepwise_context_text = "\n\n".join(part for part in stepwise_context_parts if part)
         llm_predictions = llm_predictor.predict_stepwise_with_llm(
             meter_step_predictions,
             current_feature_row,
             step1_inputs_text,
-            stepwise_context_text,
+            "",
             intraday_state_text=intraday_state_text,
-            step4_feedback_text=daily_revision_feedback_text,
+            step4_feedback_text="",
             weather_text=weather_text,
-            video_text=video_text,
+            video_text="",
             fallback_base_predictions=meter_step_predictions,
             prompt_subject=f"{config.PLANT_NAME} one-call revision forecast",
         )
+        # Sustained Overcast Clamping Guardrail (Layer 3 Safety Net):
+        current_solar_elev = current_feature_row.get("solar_elevation_deg", 0.0)
+        live_res_factor = float(intraday_state.get("live_residual_factor", 1.0)) if intraday_state else 1.0
+        is_sustained_overcast = bool(current_solar_elev >= 45.0 and live_res_factor < 0.40)
+        overcast_ceiling_factor = max(live_res_factor * 1.30, 0.25) if is_sustained_overcast else 1.0
+
         for p in llm_predictions:
             base_mw = base_forecast_by_time.get(p["time"], p.get("anchor_mw", 0.0))
             base_ref_mw = base_reference_by_time.get(p["time"], base_mw)
             p["base_anchor_mw"] = base_ref_mw
             p["step1_mw"] = p.get("step1_mw", p.get("anchor_mw", base_mw))
-            p["step2_mw"] = p.get("step2_mw", p.get("step1_mw", p.get("anchor_mw", base_mw)))
-            p["step3_mw"] = p.get("step3_mw", p.get("step2_mw", p.get("llm_mw", base_mw)))
-            p["step4_mw"] = p.get("step4_mw", p.get("step3_mw", p.get("llm_mw", base_mw)))
+            step2 = p.get("step2_mw", p.get("step1_mw", p.get("anchor_mw", base_mw)))
+
+            if is_sustained_overcast:
+                b_feat = feature_rows_by_time.get(p["time"], {})
+                b_elev = b_feat.get("solar_elevation_deg", 0.0)
+                if b_elev >= 45.0:
+                    base_clear = p.get("step1_mw", p.get("anchor_mw", base_mw))
+                    max_allowed = round(base_clear * overcast_ceiling_factor, 3)
+                    if step2 > max_allowed:
+                        step2 = max_allowed
+                        p["reasoning"] = (p.get("reasoning", "") + f" [Overcast Guardrail applied: clamped to {max_allowed} MW]").strip()
+
+            p["step2_mw"] = step2
+            p["step3_mw"] = step2
+            p["step4_mw"] = step2
+            p["llm_mw"] = step2
             p["step2_confidence"] = p.get("confidence", "")
             p["step2_reasoning"] = p.get("reasoning", "")
     else:
@@ -352,12 +423,26 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
             intraday_state_text, weather_text, video_text,
             image_map=image_map_for_llm if stepwise_live_only else image_map,
         )
+        current_solar_elev = current_feature_row.get("solar_elevation_deg", 0.0)
+        live_res_factor = float(intraday_state.get("live_residual_factor", 1.0)) if intraday_state else 1.0
+        is_sustained_overcast = bool(current_solar_elev >= 45.0 and live_res_factor < 0.40)
+        overcast_ceiling_factor = max(live_res_factor * 1.30, 0.25) if is_sustained_overcast else 1.0
+
         for p in llm_predictions:
             base_mw = p.get("anchor_mw")
             p["step1_mw"] = p.get("base_anchor_mw", base_mw)
-            p["step2_mw"] = p.get("llm_mw", base_mw)
-            p["step3_mw"] = p.get("llm_mw", base_mw)
-            p["step4_mw"] = p.get("llm_mw", base_mw)
+            step2 = p.get("llm_mw", base_mw)
+            if is_sustained_overcast:
+                b_feat = feature_rows_by_time.get(p["time"], {})
+                b_elev = b_feat.get("solar_elevation_deg", 0.0)
+                if b_elev >= 45.0:
+                    base_clear = p.get("step1_mw", base_mw)
+                    max_allowed = round(base_clear * overcast_ceiling_factor, 3)
+                    if step2 > max_allowed:
+                        step2 = max_allowed
+            p["step2_mw"] = step2
+            p["step3_mw"] = step2
+            p["step4_mw"] = step2
 
     def _stage_factor_value(step_factors: dict, key: str) -> float:
         value = step_factors.get(key, 1.0)
@@ -563,3 +648,4 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
 
     trace_paths = prediction_store.save_forecast_trace_csv(trace_rows, output_dir=output_dir)
     print(f"Forecast trace written to: {', '.join(str(p.resolve()) for p in trace_paths)}")
+

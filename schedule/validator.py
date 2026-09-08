@@ -56,18 +56,29 @@ def _clip_and_check_deviation(prediction: dict, capacity_mw: float, max_deviatio
 
     # ---- Check 2: deviation limit vs anchor & afternoon floor ----
     if anchor_mw > 0:
-        max_allowed_deviation = anchor_mw * max_deviation_fraction
+        # Check 2: Asymmetric deviation check:
+        # Upward deviation is capped at max_allowed_deviation to prevent hallucinated spikes.
+        # Downward deviation is permitted down to weather/telemetry levels during overcast conditions.
         deviation = clipped_mw - anchor_mw
-        if abs(deviation) > max_allowed_deviation:
-            pulled_back = anchor_mw + max_allowed_deviation * (1 if deviation > 0 else -1)
+        max_allowed_deviation = anchor_mw * max_deviation_fraction
+        if deviation > max_allowed_deviation:
+            pulled_back = anchor_mw + max_allowed_deviation
             notes.append(
-                f"LLM adjustment ({llm_mw}) deviated more than "
+                f"LLM adjustment ({llm_mw}) deviated upward more than "
+                f"{max_deviation_fraction*100:.0f}% from anchor ({anchor_mw}) -- "
+                f"pulled back to {round(pulled_back, 3)}"
+            )
+            clipped_mw = max(0.0, min(capacity_mw, pulled_back))
+        elif deviation < -max_allowed_deviation and getattr(config, "STRICT_DOWNWARD_ANCHOR_LOCK", False):
+            pulled_back = anchor_mw - max_allowed_deviation
+            notes.append(
+                f"LLM adjustment ({llm_mw}) deviated downward more than "
                 f"{max_deviation_fraction*100:.0f}% from anchor ({anchor_mw}) -- "
                 f"pulled back to {round(pulled_back, 3)}"
             )
             clipped_mw = max(0.0, min(capacity_mw, pulled_back))
 
-        # Check 2B: Afternoon Daylight Floor (14:30 - 16:30)
+        # Check 2B: Afternoon Daylight Floor (14:30 - 16:30) -- only on verified clear-sky days
         t_str = str(prediction.get("time", ""))
         hr = 12
         if len(t_str) >= 13 and t_str[10] == " ":
@@ -75,7 +86,9 @@ def _clip_and_check_deviation(prediction: dict, capacity_mw: float, max_deviatio
                 hr = int(t_str[11:13])
             except ValueError:
                 hr = 12
-        if 14 <= hr <= 16 and anchor_mw >= 1.50:
+        # Only enforce floor if anchor indicates clear sky AND LLM has not flagged overcast/attenuated regime
+        is_cloudy_reason = any(w in str(prediction.get("reasoning", "")).lower() for w in ("cloud", "overcast", "attenuat", "scada", "weak", "rain"))
+        if 14 <= hr <= 16 and anchor_mw >= 2.0 and not is_cloudy_reason:
             afternoon_floor = round(min(anchor_mw * 0.85, capacity_mw * 0.38), 3)
             if clipped_mw < afternoon_floor:
                 notes.append(f"enforced afternoon historical floor from {clipped_mw} to {afternoon_floor}")
@@ -121,7 +134,18 @@ def validate_predictions(
                 hr = int(t_str[11:13])
             except ValueError:
                 hr = 12
-        return base_cap * (0.085 if (9 <= hr <= 12) else 0.065)
+        if 8 <= hr <= 10:
+            # Morning rapid solar geometric ramp-up (allow up to 20% plant capacity per 15 min)
+            return base_cap * 0.20
+        elif 16 <= hr <= 18:
+            # Late afternoon rapid sunset ramp-down
+            return base_cap * 0.18
+        elif 11 <= hr <= 15:
+            # Midday solar arch
+            return base_cap * 0.12
+        else:
+            return base_cap * 0.08
+
 
     # ---- Checks 1 + 2: per-block range clip and deviation limit ----
     checked = [_clip_and_check_deviation(p, hard_capacity_mw, max_deviation_fraction) for p in llm_predictions]
@@ -164,14 +188,15 @@ def validate_predictions(
                 note if existing_note == "no adjustment needed" else f"{existing_note}; {note}"
             )
 
-    # ---- Check 4: risk-averse 3-block bell-curve smoothing filter ----
-    # Centers the schedule inside the +-15% allowed band, preventing 15-minute jitter
+    # ---- Check 4: risk-averse 3-block moving-average / Gaussian anti-jitter filter ----
+    # Centers the schedule inside the +-15% allowed band, preventing 15-minute sawtooth spikes / drops
     if len(checked) >= 3:
-        raw_vals = [p["validated_mw"] for p in checked]
-        for i in range(1, len(checked) - 1):
-            if raw_vals[i] > 0.1 or raw_vals[i - 1] > 0.1 or raw_vals[i + 1] > 0.1:
-                smoothed_val = (0.20 * raw_vals[i - 1]) + (0.60 * raw_vals[i]) + (0.20 * raw_vals[i + 1])
-                checked[i]["validated_mw"] = round(max(0.0, min(hard_capacity_mw, smoothed_val)), 3)
+        for _ in range(2):
+            raw_vals = [p["validated_mw"] for p in checked]
+            for i in range(1, len(checked) - 1):
+                if raw_vals[i] > 0.05 or raw_vals[i - 1] > 0.05 or raw_vals[i + 1] > 0.05:
+                    smoothed_val = (0.25 * raw_vals[i - 1]) + (0.50 * raw_vals[i]) + (0.25 * raw_vals[i + 1])
+                    checked[i]["validated_mw"] = round(max(0.0, min(hard_capacity_mw, smoothed_val)), 3)
 
     return checked
 
