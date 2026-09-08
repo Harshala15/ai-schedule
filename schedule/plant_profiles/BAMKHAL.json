@@ -1,0 +1,12 @@
+{
+  "plant_name": "BAMKHAL",
+  "latitude": 21.93,
+  "longitude": 75.67111111,
+  "dc_capacity_kw": 6070,
+  "maximum_feed_in_ac_kw": 5000,
+  "tracker_type": "None",
+  "orientation_deg_from_south": 0,
+  "tilt_deg": 20,
+  "eeg_id": "BAMKHAL",
+  "ppa_rate_inr_per_kwh": 0.0
+}

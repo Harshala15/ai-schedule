@@ -1,6 +1,6 @@
-"""premium_stream3.py
+﻿"""premium_stream3.py
 
-Open-Meteo Professional (€99/mo) Full-Feature Commercial Weather Engine:
+Open-Meteo Professional (â‚¬99/mo) Full-Feature Commercial Weather Engine:
 Implements all 7 advanced commercial capabilities:
 
 1. 5-Agency Multi-NWP Global Consensus (ECMWF Europe, DWD Germany, NOAA USA, JMA Japan, CMC Canada).
@@ -285,3 +285,4 @@ def fetch_premium_stream3_weather(
         "stream3_minutely_15": min15_map,
         "models_used": models_5agency,
     }
+

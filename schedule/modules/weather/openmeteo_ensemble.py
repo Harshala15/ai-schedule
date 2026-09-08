@@ -1,4 +1,4 @@
-"""Open-Meteo Multi-Model Super-Ensemble Weather Module with 3-Day Calibration & Live SCADA Feedback.
+﻿"""Open-Meteo Multi-Model Super-Ensemble Weather Module with 3-Day Calibration & Live SCADA Feedback.
 
 Features:
 1. Multi-Model Super-Ensemble: Blends ECMWF 51-member ensemble (25 km) + German DWD ICON (7 km).
@@ -887,21 +887,21 @@ def fetch_openmeteo_ensemble_calibrated_summary(
     summary_lines = [
         f"ECMWF+ICON Super-Ensemble ({member_count_label}{bias_desc}) forecast for next revision horizon:",
         f"- Window: {first['time']} to {last['time']}",
-        f"- Global tilted irradiance: start={first['global_tilted_irradiance_instant'] or 0.0:.2f} W/m², "
-        f"end={last['global_tilted_irradiance_instant'] or 0.0:.2f} W/m², trend={trend_label}, "
-        f"avg={avg_gti:.1f} W/m²",
+        f"- Global tilted irradiance: start={first['global_tilted_irradiance_instant'] or 0.0:.2f} W/mÂ², "
+        f"end={last['global_tilted_irradiance_instant'] or 0.0:.2f} W/mÂ², trend={trend_label}, "
+        f"avg={avg_gti:.1f} W/mÂ²",
         f"- Cloud cover low: avg={avg_cloud:.1f}%",
         f"- Precipitation max={max_precip:.2f} mm",
-        f"- Temperature: start={first['temperature_2m'] or 0.0:.2f}°C, end={last['temperature_2m'] or 0.0:.2f}°C",
+        f"- Temperature: start={first['temperature_2m'] or 0.0:.2f}Â°C, end={last['temperature_2m'] or 0.0:.2f}Â°C",
     ]
 
     prompt_lines = [summary_lines[0], *summary_lines[1:], "Hourly weather rows:"]
     for r in matching_rows:
         prompt_lines.append(
             f"- {r['hour_label']}: "
-            f"irradiance={r['global_tilted_irradiance_instant'] or 0.0:.2f} W/m², "
-            f"temp={r['temperature_2m'] or 0.0:.2f}°C, "
-            f"surface_temp={r['surface_temperature'] or 0.0:.2f}°C, "
+            f"irradiance={r['global_tilted_irradiance_instant'] or 0.0:.2f} W/mÂ², "
+            f"temp={r['temperature_2m'] or 0.0:.2f}Â°C, "
+            f"surface_temp={r['surface_temperature'] or 0.0:.2f}Â°C, "
             f"precip={r['precipitation'] or 0.0:.2f} mm, "
             f"cloud_low={r['cloud_cover_low'] or 0.0:.2f}%"
         )
@@ -1005,3 +1005,4 @@ def interpolate_15min_clearsky_index(
         results.append(max(0.0, float(interpolated_gti)))
 
     return results
+

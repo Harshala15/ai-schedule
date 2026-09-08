@@ -1,0 +1,11 @@
+boto3
+botocore
+numpy
+opencv-python-headless
+pandas
+pvlib
+openmeteo-requests
+requests-cache
+retry-requests
+requests
+google-genai

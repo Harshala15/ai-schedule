@@ -1,4 +1,4 @@
-"""Scheduler job runner for the Bhupalpally forecast Lambda."""
+﻿"""Scheduler job runner for the Bhupalpally forecast Lambda."""
 
 from __future__ import annotations
 
@@ -120,11 +120,10 @@ def _pick_latest_capture_bundle(
         matching_videos.sort(key=lambda pair: (pair[0], _video_preference(pair[1]), pair[1].size, pair[1].key))
         selected_video = matching_videos[-1][1]
 
-    meter_day_prefix = f"{meter_prefix.rstrip('/')}/{date_str}/meter_data"
-    meter_objects = _list_capture_objects(bucket, meter_day_prefix)
+    meter_objects = shared_schedule_utils.list_meter_objects_for_day(storage, bucket, meter_prefix, date_str)
     if not meter_objects:
         print(
-            f"  [WARN] No meter file found under {meter_day_prefix}/; "
+            f"  [WARN] No meter file found under metered_data or meter_data for {meter_prefix.rstrip('/')}/{date_str}/; "
             "continuing without intraday actuals."
         )
         meter_objects = _list_capture_objects(bucket, meter_prefix)
@@ -585,8 +584,10 @@ def run_schedule_job(
     if not snapshot_source.exists():
         raise FileNotFoundError(f"Expected schedule output was not produced: {snapshot_source}")
 
-    snapshot_csv = generated_root / f"{target_date}_{target_time.replace(':', '-')}_schedule.csv"
-    snapshot_metadata = generated_root / f"{target_date}_{target_time.replace(':', '-')}_metadata.json"
+    snapshot_block = ((target_dt.hour * 60 + target_dt.minute) // config.BLOCK_MINUTES) + 1
+    snapshot_stamp = f"{target_date.replace('-', '')}t{target_dt.strftime('%H%M%S')}"
+    snapshot_csv = generated_root / f"schedule_from_{snapshot_block}_{snapshot_stamp}.csv"
+    snapshot_metadata = generated_root / f"{snapshot_csv.name}.meta.json"
     latest_csv = generated_root / f"{target_date}_latest_schedule.csv"
     current_final_csv = generated_root / _current_final_schedule_name(target_date)
     penalty_csv = generated_root / _penalty_schedule_name(target_date)
@@ -644,3 +645,5 @@ def run_schedule_job(
         state_sync.push_state_to_s3(bucket=bucket)
 
     return metadata
+
+

@@ -1,0 +1,14 @@
+FROM public.ecr.aws/lambda/python:3.12
+
+WORKDIR ${LAMBDA_TASK_ROOT}
+
+COPY requirements.lambda.txt ./requirements.lambda.txt
+RUN pip install --no-cache-dir -r requirements.lambda.txt
+
+COPY . ./
+
+ENV SIMOUR_STORAGE_ROOT=/tmp/intellis_ai_scheduler
+ENV INTELLIS_IDEMPOTENCY_ENABLED=true
+ENV S3_OUTPUT_PREFIX=generated/vedanjay_ai_intellis
+
+CMD ["intellis_ai_lambda.lambda_handler"]

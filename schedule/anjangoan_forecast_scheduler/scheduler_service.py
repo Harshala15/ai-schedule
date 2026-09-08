@@ -19,7 +19,7 @@ from modules.storage import state_sync
 from modules import plant_performance_utils as shared_performance_utils
 from modules import pvlib_utils as shared_pvlib_utils
 from modules import schedule_utils as shared_schedule_utils
-from osepl_forecast_scheduler import ecmwf_weather, settings, storage
+from anjangoan_forecast_scheduler import ecmwf_weather, settings, storage
 
 
 @dataclass(frozen=True)
@@ -313,7 +313,7 @@ def _clip_meter_to_cutoff(source_csv: Path, destination_csv: Path, cutoff_dt: dt
             getattr(daily_feedback, "TIMESTAMP_COLUMN", "Time"),
             *timestamp_candidates,
             *getattr(daily_feedback, "RAW_METER_TIMESTAMP_COLUMNS", ()),
-            "TIME", "Time", "Timestamp", "TimeStamp", "DateTime", "Datetime", "Start (Asia/Calcutta)", "Start (Asia/Kolkata)", "Start"
+            "TIME", "Time", "Timestamp", "TimeStamp", "DateTime", "Datetime", "block_start", "block_end", "Block Start", "Block End", "Start (Asia/Calcutta)", "Start (Asia/Kolkata)", "Start"
         )))
         timestamp_column = daily_feedback._pick_first_existing_column(  # type: ignore[attr-defined]
             fieldnames,
@@ -543,7 +543,7 @@ def run_schedule_job(
     schedule_prefix: str,
     event: dict | None = None,
 ) -> dict:
-    config.load_plant_profile(getattr(settings, "PLANT_NAME", "OSEPL"))
+    config.load_plant_profile(getattr(settings, "PLANT_NAME", "ANJANGOAN"))
     target_date, target_time, target_dt = _parse_target_datetime(event)
     selection = _pick_latest_capture_bundle(bucket, capture_prefix, meter_prefix, target_dt)
 
@@ -656,5 +656,8 @@ def run_schedule_job(
         state_sync.push_state_to_s3(bucket=bucket)
 
     return metadata
+
+
+
 
 

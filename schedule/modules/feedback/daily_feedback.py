@@ -1,4 +1,4 @@
-"""
+﻿"""
 daily_feedback.py
 
 Run this manually at the end of each day, once your plant's actual
@@ -94,6 +94,80 @@ PLANT_ACTUAL_METER_COLUMNS = {
             "Power (MW)",
         ),
     },
+    "ANJANGOAN": {
+        "timestamp": ("block_start", "block_end", "Block Start", "Block End", "TimeStamp", "Timestamp"),
+        "power": ("metered_mw", "Metered MW", "MW", "Active Power (MW)", "Active Power (kW)"),
+    },
+    "ANJANGAON": {
+        "timestamp": ("block_start", "block_end", "Block Start", "Block End", "TimeStamp", "Timestamp"),
+        "power": ("metered_mw", "Metered MW", "MW", "Active Power (MW)", "Active Power (kW)"),
+    },
+    "BAMKHAL": {
+        "timestamp": ("block_end", "block_start", "Block End", "Block Start", "TimeStamp", "Timestamp"),
+        "power": (
+            "metered_mw",
+            "MW",
+            "Solar_Meter_Active_Power(KW)",
+            "Active Power (MW)",
+            "Active Power (kW)",
+            "Active Power-Avg MFM-OUT (KW)",
+        ),
+    },
+    "BALAKWADA": {
+        "timestamp": ("block_end", "block_start", "Block End", "Block Start", "TimeStamp", "Timestamp"),
+        "power": (
+            "metered_mw",
+            "MW",
+            "Solar_Meter_Active_Power(KW)",
+            "Active Power (MW)",
+            "Active Power (kW)",
+            "Active Power-Avg MFM-OUT (KW)",
+        ),
+    },
+    "ANDAD": {
+        "timestamp": ("block_end", "block_start", "Block End", "Block Start", "TimeStamp", "Timestamp"),
+        "power": (
+            "metered_mw",
+            "MW",
+            "Solar_Meter_Active_Power(KW)",
+            "Active Power (MW)",
+            "Active Power (kW)",
+            "Active Power-Avg MFM-OUT (KW)",
+        ),
+    },
+    "SAWDA": {
+        "timestamp": ("block_end", "block_start", "Block End", "Block Start", "TimeStamp", "Timestamp"),
+        "power": (
+            "metered_mw",
+            "MW",
+            "Solar_Meter_Active_Power(KW)",
+            "Active Power (MW)",
+            "Active Power (kW)",
+            "Active Power-Avg MFM-OUT (KW)",
+        ),
+    },
+    "GUGARIYAKHEDI": {
+        "timestamp": ("block_end", "timestamp", "TimeStamp", "datetime", "date_time"),
+        "power": ("metered_mw", "Solar_Meter_Active_Power(KW)", "Metered MW", "MW"),
+    },
+    "NANDGAON": {
+        "timestamp": ("block_end", "timestamp", "TimeStamp", "datetime", "date_time"),
+        "power": ("metered_mw", "Solar_Meter_Active_Power(KW)", "Metered MW", "MW"),
+    },
+    "GSNP": {
+        "timestamp": ("datetime", "block_end", "timestamp", "TimeStamp", "date_time"),
+        "power": ("TVM Active Power", "metered_mw", "Metered MW", "MW"),
+    },
+    "CME": {
+        "timestamp": ("block_end", "block_start", "Block End", "Block Start", "TimeStamp", "Timestamp", "DateTime", "Datetime", "TIME", "Time"),
+        "power": (
+            "metered_mw",
+            "MW",
+            "Solar_Meter_Active_Power(KW)",
+            "Active Power (MW)",
+            "Active Power (kW)",
+        ),
+    },
 }
 
 
@@ -132,7 +206,8 @@ def _power_value_to_mw(raw_value, power_column_name: str) -> float | None:
     value = _as_float(raw_value)
     if value is None:
         return None
-    if "kw" in power_column_name.lower() and "(mw)" not in power_column_name.lower():
+    normalized_power_col = _normalize_header_name(power_column_name).lower()
+    if ("kw" in normalized_power_col and "(mw)" not in normalized_power_col) or normalized_power_col == "tvm active power":
         return max(0.0, value) / 1000.0
     return max(0.0, value)
 
@@ -1649,13 +1724,17 @@ def _load_intraday_rows(actuals_csv_path, reference_time: datetime.datetime) -> 
     """Return today's meter rows up to reference_time as [(ts, mw), ...]."""
     with open(actuals_csv_path, "r", newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
+        plant = (config.PLANT_NAME or "").strip().upper()
+        column_profile = PLANT_ACTUAL_METER_COLUMNS.get(plant, {})
+        timestamp_candidates = column_profile.get("timestamp", RAW_METER_TIMESTAMP_COLUMNS)
+        power_candidates = column_profile.get("power", RAW_METER_POWER_COLUMNS)
         timestamp_column = _pick_first_existing_column(
             reader.fieldnames,
-            RAW_METER_TIMESTAMP_COLUMNS,
+            timestamp_candidates,
         )
         power_column = _pick_first_existing_column(
             reader.fieldnames,
-            RAW_METER_POWER_COLUMNS,
+            power_candidates,
         )
         if timestamp_column is None or power_column is None:
             return []
@@ -1680,13 +1759,17 @@ def _load_intraday_meter_rows(actuals_csv_path, reference_time: datetime.datetim
     """Return today's meter rows up to reference_time with raw sensor fields preserved."""
     with open(actuals_csv_path, "r", newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
+        plant = (config.PLANT_NAME or "").strip().upper()
+        column_profile = PLANT_ACTUAL_METER_COLUMNS.get(plant, {})
+        timestamp_candidates = column_profile.get("timestamp", RAW_METER_TIMESTAMP_COLUMNS)
+        power_candidates = column_profile.get("power", RAW_METER_POWER_COLUMNS)
         timestamp_column = _pick_first_existing_column(
             reader.fieldnames,
-            RAW_METER_TIMESTAMP_COLUMNS,
+            timestamp_candidates,
         )
         power_column = _pick_first_existing_column(
             reader.fieldnames,
-            RAW_METER_POWER_COLUMNS,
+            power_candidates,
         )
         ghi_column = _pick_first_existing_column(
             reader.fieldnames,
@@ -2550,3 +2633,10 @@ if __name__ == "__main__":
         print("Usage: python daily_feedback.py <path_to_actual_meter_csv>")
         sys.exit(1)
     run_daily_feedback(sys.argv[1])
+
+
+
+
+
+
+

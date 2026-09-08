@@ -168,6 +168,41 @@ _PLANT_FALLBACKS = {
         "dc_capacity_mw": 7.63,
         "max_feed_in_mw": 7.5,
     },
+    "BAMKHAL": {
+        "latitude": 21.93,
+        "longitude": 75.67111111,
+        "capacity_mw": 5.0,
+        "dc_capacity_mw": 6.07,
+        "max_feed_in_mw": 5.0,
+    },
+    "BALAKWADA": {
+        "latitude": 22.00583333,
+        "longitude": 75.52333333,
+        "capacity_mw": 7.5,
+        "dc_capacity_mw": 7.6,
+        "max_feed_in_mw": 7.5,
+    },
+    "ANDAD": {
+        "latitude": 21.95972222,
+        "longitude": 75.80583333,
+        "capacity_mw": 7.5,
+        "dc_capacity_mw": 8.54,
+        "max_feed_in_mw": 7.5,
+    },
+    "SAWDA": {
+        "latitude": 21.02138889,
+        "longitude": 75.60027778,
+        "capacity_mw": 7.5,
+        "dc_capacity_mw": 8.54,
+        "max_feed_in_mw": 7.5,
+    },
+    "CME": {
+        "latitude": 18.597833,
+        "longitude": 73.858361,
+        "capacity_mw": 5.0,
+        "dc_capacity_mw": 5.0,
+        "max_feed_in_mw": 5.0,
+    },
 }
 _fallback = _PLANT_FALLBACKS.get(_DEFAULT_PLANT_NAME.upper(), _PLANT_FALLBACKS["SIRMOUR"])
 _DEFAULT_PLANT_PROFILE_PATH = Path(
@@ -390,4 +425,5 @@ for _dir in (SCREENSHOT_DIR, VIDEO_DIR, PREDICTIONS_DIR, FEATURES_LOG_DIR, MODEL
     _dir.mkdir(parents=True, exist_ok=True)
 
 MODEL_PATH = MODELS_DIR / "generation_model.pkl"
+
 
