@@ -49,7 +49,8 @@ def build_pvlib_block_summary(
         if azimuth_deg is not None
         else 180.0 + float(getattr(config, "PLANT_ORIENTATION_FROM_SOUTH_DEG", 0.0))
     )
-    capacity_mw = float(capacity_mw if capacity_mw is not None else getattr(config, "PLANT_CAPACITY_MW", 0.0))
+    ac_capacity_mw = float(capacity_mw if capacity_mw is not None else getattr(config, "PLANT_CAPACITY_MW", 0.0))
+    dc_capacity_mw = float(getattr(config, "PLANT_DC_CAPACITY_MW", ac_capacity_mw))
     performance_ratio = float(
         performance_ratio if performance_ratio is not None else getattr(config, "PERFORMANCE_RATIO", 0.78)
     )
@@ -76,13 +77,13 @@ def build_pvlib_block_summary(
     )
 
     poa_global = poa["poa_global"].fillna(0.0).clip(lower=0.0)
-    estimated_mw = (poa_global / 1000.0) * capacity_mw * performance_ratio
+    estimated_mw = ((poa_global / 1000.0) * dc_capacity_mw * performance_ratio).clip(lower=0.0, upper=ac_capacity_mw)
 
     lines = [
         (
             "pvlib physics summary "
             f"(lat={latitude}, lon={longitude}, tilt={tilt_deg} deg, azimuth={azimuth_deg} deg, "
-            f"capacity={capacity_mw} MW, PR={performance_ratio}):"
+            f"capacity={ac_capacity_mw} MW AC / {dc_capacity_mw} MW DC, PR={performance_ratio}):"
         )
     ]
 

@@ -1,0 +1,27 @@
+﻿FROM kothagudem-forecast-scheduler:latest
+
+WORKDIR /var/task
+
+COPY .env \
+     config.py \
+     daily_feedback.py \
+     feature_builder.py \
+     image_feature_extraction.py \
+     llm_predictor.py \
+     physics_anchor.py \
+     prediction_store.py \
+     run_pipeline.py \
+     similarity_retrieval.py \
+     state_sync.py \
+     time_features.py \
+     validator.py \
+     video_motion_features.py \
+     /var/task/
+
+COPY modules/ /var/task/modules/
+COPY plant_profiles/ /var/task/plant_profiles/
+COPY osepl_forecast_scheduler/ /var/task/osepl_forecast_scheduler/
+COPY bhupalpally_forecast_scheduler/ /var/task/bhupalpally_forecast_scheduler/
+COPY kasipet_forecast_scheduler/ /var/task/kasipet_forecast_scheduler/
+COPY simour_forecast_scheduler/ /var/task/simour_forecast_scheduler/
+COPY kothagudem_forecast_scheduler/ /var/task/kothagudem_forecast_scheduler/

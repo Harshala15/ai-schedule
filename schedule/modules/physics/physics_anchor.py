@@ -33,17 +33,22 @@ import math
 import config
 
 
-def calculate_anchor_mw(feature_row: dict, capacity_mw: float = config.PLANT_CAPACITY_MW,
-                         performance_ratio: float = config.PERFORMANCE_RATIO,
+def calculate_anchor_mw(feature_row: dict, capacity_mw: float | None = None,
+                         performance_ratio: float | None = None,
                          correction_factor: float = 1.0) -> float:
     """
     Main entry point: computes the physics-based anchor generation (MW)
     for one forecast block's feature row.
     """
+    ac_capacity_mw = float(capacity_mw if capacity_mw is not None else getattr(config, "PLANT_CAPACITY_MW", 10.0))
+    dc_capacity_mw = float(getattr(config, "PLANT_DC_CAPACITY_MW", ac_capacity_mw))
+    if performance_ratio is None:
+        performance_ratio = getattr(config, "PERFORMANCE_RATIO", 0.78)
+
     elevation = feature_row.get("solar_elevation_deg", 0.0)
     # 1. Inverter Cut-in Threshold: Physical inverters require minimum string voltage
-    # and turn off when sun is below 7.5 degrees (eliminating pre-dawn & post-dusk creep).
-    if elevation < 7.5:
+    # and turn off when sun is below 3.0 degrees (eliminating night-time creep while capturing dawn/dusk).
+    if elevation < 3.0:
         return 0.0
 
     # 2. Clear-sky proxy: smooth natural bell curve scaling with solar zenith
@@ -64,13 +69,11 @@ def calculate_anchor_mw(feature_row: dict, capacity_mw: float = config.PLANT_CAP
     clearness_factor = max(0.20, 1.0 - (0.75 * avg_cloud_fraction))
 
     # 4. Safe Risk-Optimized Performance Ratio & Temperature Derating
-    # During monsoon (June-September), scales curve to naturally peak at ~3.55 MW without flat plateaus
-    # During dry/winter (October-May), scales curve to peak at ~4.15 MW.
     month = feature_row.get("month", 9)
-    if isinstance(month, (int, float)) and int(month) in (6, 7, 8, 9):
-        effective_pr = max(0.68, min(0.705, performance_ratio or 0.695))
+    if isinstance(month, (int, float)) and int(month) in (6, 7, 8, 9) and avg_cloud_fraction > 0.35:
+        effective_pr = max(0.68, min(0.74, performance_ratio or 0.72))
     else:
-        effective_pr = max(0.74, min(0.81, performance_ratio or 0.78))
+        effective_pr = max(0.74, min(0.82, performance_ratio or 0.78))
 
     # Cell temperature derate: PV modules lose ~0.4% efficiency per deg C above 25C
     temp_amb = feature_row.get("temp_air_c", feature_row.get("temperature_2m", 30.0))
@@ -78,7 +81,7 @@ def calculate_anchor_mw(feature_row: dict, capacity_mw: float = config.PLANT_CAP
     t_cell = temp_amb + ((45.0 - 20.0) / 800.0) * poa_proxy
     temp_derate = max(0.88, min(1.02, 1.0 - 0.0038 * (t_cell - 25.0)))
 
-    # 5. Physics generation computation (dynamic curved solar arch)
-    generation_mw = capacity_mw * clear_sky_index * clearness_factor * effective_pr * temp_derate * correction_factor
-    generation_mw = max(0.0, min(capacity_mw, generation_mw))
-    return round(generation_mw, 3)
+    # 5. Physics generation computation (dynamic curved solar arch scaled to DC capacity and clipped at AC feed-in)
+    generation_mw = dc_capacity_mw * clear_sky_index * clearness_factor * effective_pr * temp_derate * correction_factor
+    generation_mw = max(0.0, min(ac_capacity_mw, generation_mw))
+    return round(generation_mw, 3)

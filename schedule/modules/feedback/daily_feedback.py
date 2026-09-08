@@ -75,6 +75,99 @@ PLANT_ACTUAL_METER_COLUMNS = {
             "Active Power-Avg MFM-OUT (kW)",
         ),
     },
+    "KOTHAGUDEM": {
+        "timestamp": ("Timestamp", "TimeStamp"),
+        "power": (
+            "Active Power-Avg MFM-OUT (KW)",
+            "Active Power (kW)",
+            "Active Power (MW)",
+            "Active Power-Avg MFM-OUT (kW)",
+        ),
+    },
+    "OSEPL": {
+        "timestamp": ("TIME", "Time", "Timestamp", "TimeStamp", "DateTime", "Datetime"),
+        "power": (
+            "MW",
+            "Active Power (MW)",
+            "Active Power (kW)",
+            "Active Power-Avg MFM-OUT (KW)",
+            "Power (MW)",
+        ),
+    },
+    "ANJANGOAN": {
+        "timestamp": ("block_start", "block_end", "Block Start", "Block End", "TimeStamp", "Timestamp"),
+        "power": ("metered_mw", "Metered MW", "MW", "Active Power (MW)", "Active Power (kW)"),
+    },
+    "ANJANGAON": {
+        "timestamp": ("block_start", "block_end", "Block Start", "Block End", "TimeStamp", "Timestamp"),
+        "power": ("metered_mw", "Metered MW", "MW", "Active Power (MW)", "Active Power (kW)"),
+    },
+    "BAMKHAL": {
+        "timestamp": ("block_end", "block_start", "Block End", "Block Start", "TimeStamp", "Timestamp"),
+        "power": (
+            "metered_mw",
+            "MW",
+            "Solar_Meter_Active_Power(KW)",
+            "Active Power (MW)",
+            "Active Power (kW)",
+            "Active Power-Avg MFM-OUT (KW)",
+        ),
+    },
+    "BALAKWADA": {
+        "timestamp": ("block_end", "block_start", "Block End", "Block Start", "TimeStamp", "Timestamp"),
+        "power": (
+            "metered_mw",
+            "MW",
+            "Solar_Meter_Active_Power(KW)",
+            "Active Power (MW)",
+            "Active Power (kW)",
+            "Active Power-Avg MFM-OUT (KW)",
+        ),
+    },
+    "ANDAD": {
+        "timestamp": ("block_end", "block_start", "Block End", "Block Start", "TimeStamp", "Timestamp"),
+        "power": (
+            "metered_mw",
+            "MW",
+            "Solar_Meter_Active_Power(KW)",
+            "Active Power (MW)",
+            "Active Power (kW)",
+            "Active Power-Avg MFM-OUT (KW)",
+        ),
+    },
+    "SAWDA": {
+        "timestamp": ("block_end", "block_start", "Block End", "Block Start", "TimeStamp", "Timestamp"),
+        "power": (
+            "metered_mw",
+            "MW",
+            "Solar_Meter_Active_Power(KW)",
+            "Active Power (MW)",
+            "Active Power (kW)",
+            "Active Power-Avg MFM-OUT (KW)",
+        ),
+    },
+    "GUGARIYAKHEDI": {
+        "timestamp": ("block_end", "timestamp", "TimeStamp", "datetime", "date_time"),
+        "power": ("metered_mw", "Solar_Meter_Active_Power(KW)", "Metered MW", "MW"),
+    },
+    "NANDGAON": {
+        "timestamp": ("block_end", "timestamp", "TimeStamp", "datetime", "date_time"),
+        "power": ("metered_mw", "Solar_Meter_Active_Power(KW)", "Metered MW", "MW"),
+    },
+    "GSNP": {
+        "timestamp": ("datetime", "block_end", "timestamp", "TimeStamp", "date_time"),
+        "power": ("TVM Active Power", "metered_mw", "Metered MW", "MW"),
+    },
+    "CME": {
+        "timestamp": ("block_end", "block_start", "Block End", "Block Start", "TimeStamp", "Timestamp", "DateTime", "Datetime", "TIME", "Time"),
+        "power": (
+            "metered_mw",
+            "MW",
+            "Solar_Meter_Active_Power(KW)",
+            "Active Power (MW)",
+            "Active Power (kW)",
+        ),
+    },
 }
 
 
@@ -113,7 +206,8 @@ def _power_value_to_mw(raw_value, power_column_name: str) -> float | None:
     value = _as_float(raw_value)
     if value is None:
         return None
-    if "kw" in power_column_name.lower() and "(mw)" not in power_column_name.lower():
+    normalized_power_col = _normalize_header_name(power_column_name).lower()
+    if ("kw" in normalized_power_col and "(mw)" not in normalized_power_col) or normalized_power_col == "tvm active power":
         return max(0.0, value) / 1000.0
     return max(0.0, value)
 
@@ -130,7 +224,10 @@ def _load_actual_readings(actual_csv_path: str) -> dict:
     timestamp_candidates = column_profile.get("timestamp", RAW_METER_TIMESTAMP_COLUMNS)
     power_candidates = column_profile.get("power", RAW_METER_POWER_COLUMNS)
     with open(actual_csv_path, "r", newline="", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
+        sample = f.read(2048)
+        delim = ";" if (";" in sample and sample.count(";") > sample.count(",")) else ","
+        f.seek(0)
+        reader = csv.DictReader(f, delimiter=delim)
         timestamp_column = _pick_first_existing_column(
             reader.fieldnames,
             tuple(dict.fromkeys((TIMESTAMP_COLUMN, *timestamp_candidates, "DateTime", "Datetime", "Start (Asia/Calcutta)", "Start (Asia/Kolkata)", "Start"))),
@@ -830,11 +927,14 @@ def sync_historic_case_actuals() -> int:
     return updated_count
 
 
-# Timestamp formats accepted from a company export, tried in this order.
-# Real exports have shown up in more than one of these -- e.g. after
-# someone opens the CSV in Excel and saves it, which silently reorders
-# the date (DD-MM-YYYY instead of YYYY-MM-DD) and can drop the seconds.
-_TIMESTAMP_FORMATS = ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%d-%m-%Y %H:%M:%S", "%d-%m-%Y %H:%M")
+_TIMESTAMP_FORMATS = (
+    "%Y-%m-%d %H:%M:%S",
+    "%Y-%m-%d %H:%M",
+    "%d-%m-%Y %H:%M:%S",
+    "%d-%m-%Y %H:%M",
+    "%Y-%m-%dT%H:%M:%S",
+    "%Y-%m-%dT%H:%M:%S.%f",
+)
 
 
 def _normalize_timestamp(raw_ts: str) -> str:
@@ -842,12 +942,28 @@ def _normalize_timestamp(raw_ts: str) -> str:
     returns it re-formatted as "%Y-%m-%d %H:%M:%S" (the format the rest of
     the pipeline expects) -- or None if raw_ts matches none of them."""
     raw_ts = (raw_ts or "").strip()
+    if "T" in raw_ts and "." in raw_ts:
+        # e.g. 2026-09-04T00:00:02.000 -> 2026-09-04 00:00:02
+        try:
+            head, dot, frac = raw_ts.partition(".")
+            clean_ts = head.replace("T", " ")
+            return datetime.datetime.strptime(clean_ts, "%Y-%m-%d %H:%M:%S").strftime("%Y-%m-%d %H:%M:%S")
+        except Exception:
+            pass
+    elif "T" in raw_ts:
+        raw_ts_space = raw_ts.replace("T", " ")
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+            try:
+                return datetime.datetime.strptime(raw_ts_space, fmt).strftime("%Y-%m-%d %H:%M:%S")
+            except ValueError:
+                pass
     for fmt in _TIMESTAMP_FORMATS:
         try:
             return datetime.datetime.strptime(raw_ts, fmt).strftime("%Y-%m-%d %H:%M:%S")
         except ValueError:
             continue
     return None
+
 
 
 def _merge_meter_csv_into_store(csv_path: Path) -> set:
@@ -1608,13 +1724,17 @@ def _load_intraday_rows(actuals_csv_path, reference_time: datetime.datetime) -> 
     """Return today's meter rows up to reference_time as [(ts, mw), ...]."""
     with open(actuals_csv_path, "r", newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
+        plant = (config.PLANT_NAME or "").strip().upper()
+        column_profile = PLANT_ACTUAL_METER_COLUMNS.get(plant, {})
+        timestamp_candidates = column_profile.get("timestamp", RAW_METER_TIMESTAMP_COLUMNS)
+        power_candidates = column_profile.get("power", RAW_METER_POWER_COLUMNS)
         timestamp_column = _pick_first_existing_column(
             reader.fieldnames,
-            RAW_METER_TIMESTAMP_COLUMNS,
+            timestamp_candidates,
         )
         power_column = _pick_first_existing_column(
             reader.fieldnames,
-            RAW_METER_POWER_COLUMNS,
+            power_candidates,
         )
         if timestamp_column is None or power_column is None:
             return []
@@ -1639,13 +1759,17 @@ def _load_intraday_meter_rows(actuals_csv_path, reference_time: datetime.datetim
     """Return today's meter rows up to reference_time with raw sensor fields preserved."""
     with open(actuals_csv_path, "r", newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
+        plant = (config.PLANT_NAME or "").strip().upper()
+        column_profile = PLANT_ACTUAL_METER_COLUMNS.get(plant, {})
+        timestamp_candidates = column_profile.get("timestamp", RAW_METER_TIMESTAMP_COLUMNS)
+        power_candidates = column_profile.get("power", RAW_METER_POWER_COLUMNS)
         timestamp_column = _pick_first_existing_column(
             reader.fieldnames,
-            RAW_METER_TIMESTAMP_COLUMNS,
+            timestamp_candidates,
         )
         power_column = _pick_first_existing_column(
             reader.fieldnames,
-            RAW_METER_POWER_COLUMNS,
+            power_candidates,
         )
         ghi_column = _pick_first_existing_column(
             reader.fieldnames,
@@ -1782,8 +1906,16 @@ def summarize_intraday_state(actuals_csv_path, reference_time: datetime.datetime
     choppy = avg_abs_step > CHOPPY_AVG_STEP_MW
     fluctuation_flag = choppy or abs(recent_delta_mw) >= config.PLANT_CAPACITY_MW * 0.12
 
+    latest_elevation = time_features.compute_time_features(reference_time)["solar_elevation_deg"]
+    is_dawn = latest_elevation < 20.0
+
     if ratio_for_state is None:
         regime = "insufficient live data"
+        live_residual_factor = 1.0
+    elif is_dawn and not (recent_ghi_values and max(recent_ghi_values) < 30.0 and ratio_for_state < 0.20):
+        # DAWN EXEMPTION RULE: Solar elevation < 20 deg (before 07:30 AM) exhibits low inverter wake-up ratios.
+        # Default to clear sunrise / morning ramp with 1.0 residual factor unless thick storm/overcast is confirmed.
+        regime = "clear sunrise / morning ramp"
         live_residual_factor = 1.0
     else:
         if choppy and ratio_for_state < 0.55:
@@ -2501,3 +2633,9 @@ if __name__ == "__main__":
         print("Usage: python daily_feedback.py <path_to_actual_meter_csv>")
         sys.exit(1)
     run_daily_feedback(sys.argv[1])
+
+
+
+
+
+

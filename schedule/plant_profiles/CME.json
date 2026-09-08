@@ -1,0 +1,12 @@
+{
+  "plant_name": "CME",
+  "latitude": 18.597833,
+  "longitude": 73.858361,
+  "dc_capacity_kw": 5000,
+  "maximum_feed_in_ac_kw": 5000,
+  "tracker_type": "None",
+  "orientation_deg_from_south": 0,
+  "tilt_deg": 20,
+  "eeg_id": "CME",
+  "ppa_rate_inr_per_kwh": 0.0
+}

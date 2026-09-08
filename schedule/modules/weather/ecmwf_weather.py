@@ -8,12 +8,21 @@ from dataclasses import dataclass
 from pathlib import Path
 import tempfile
 from typing import Any
+import os
 from urllib.parse import urlencode
 from urllib.request import urlopen, Request
 from zoneinfo import ZoneInfo
 
 
-URL = "https://api.open-meteo.com/v1/forecast"
+import config
+
+def _get_forecast_url() -> str:
+    key = getattr(config, "OPENMETEO_API_KEY", "") or os.getenv("OPENMETEO_API_KEY", "").strip()
+    if key:
+        return "https://customer-api.open-meteo.com/v1/forecast"
+    return "https://api.open-meteo.com/v1/forecast"
+
+URL = _get_forecast_url()
 MINUTELY_15_VARIABLES = [
     "global_tilted_irradiance_instant",
     "shortwave_radiation_instant",
@@ -102,7 +111,7 @@ def _request_payload(latitude: float, longitude: float, start_date: str, end_dat
         }
     except Exception:
         # Lightweight REST fallback for 15-min solar API
-        query = urlencode({
+        params = {
             "latitude": latitude,
             "longitude": longitude,
             "minutely_15": ",".join(MINUTELY_15_VARIABLES),
@@ -112,8 +121,12 @@ def _request_payload(latitude: float, longitude: float, start_date: str, end_dat
             "azimuth": azimuth,
             "start_date": start_date,
             "end_date": end_date,
-        })
-        req = urllib.request.Request(f"{URL}?{query}", headers={"User-Agent": "Mozilla/5.0"})
+        }
+        api_key = getattr(config, "OPENMETEO_API_KEY", "") or os.getenv("OPENMETEO_API_KEY", "").strip()
+        if api_key:
+            params["apikey"] = api_key
+        query = urlencode(params)
+        req = Request(f"{_get_forecast_url()}?{query}", headers={"User-Agent": "Mozilla/5.0"})
         with urlopen(req, timeout=30) as handle:
             payload = json.loads(handle.read().decode("utf-8"))
         min15_data = payload.get("minutely_15", payload.get("hourly", {}))
