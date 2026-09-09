@@ -56,9 +56,14 @@ def _parse_predictions(csv_path):
     return out
 
 
-def _parse_actual(csv_path, timestamp_column, generation_column):
-    """Returns {datetime: actual_mw} from the plant's real meter export."""
+def _parse_actual(csv_path, timestamp_column, generation_column, impute_missing_with_solar: bool = True):
+    """
+    Returns ({datetime: actual_mw}, {datetime: bool is_imputed}) from the plant's meter export.
+    If a block has NA or missing power, it is dynamically imputed from solar radiation
+    (on-site pyranometer POA/GHI or satellite solar radiation GTI).
+    """
     out = {}
+    imputed_flags = {}
     with open(csv_path, "r", newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         if timestamp_column not in reader.fieldnames or generation_column not in reader.fieldnames:
@@ -68,24 +73,89 @@ def _parse_actual(csv_path, timestamp_column, generation_column):
                 f"in accuracy_tracker.py to match your actual file."
             )
         for row in reader:
-            try:
-                dt = datetime.datetime.strptime(row[timestamp_column], "%Y-%m-%d %H:%M")
-                mw = float(row[generation_column])
-                out[dt] = mw
-            except (ValueError, KeyError):
+            raw_ts = (row.get(timestamp_column) or "").strip()
+            dt = None
+            for fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%d %H:%M:%S", "%d-%m-%Y %H:%M", "%d/%m/%Y %H:%M"):
+                try:
+                    dt = datetime.datetime.strptime(raw_ts, fmt)
+                    break
+                except ValueError:
+                    continue
+            if dt is None:
                 continue
-    return out
+
+            raw_gen = (row.get(generation_column) or "").strip()
+            mw = None
+            if raw_gen and raw_gen.upper() not in ("NA", "NAN", "NULL", "-", "--"):
+                try:
+                    mw = float(raw_gen)
+                except ValueError:
+                    mw = None
+
+            if mw is not None:
+                out[dt] = max(0.0, mw)
+                imputed_flags[dt] = False
+            elif impute_missing_with_solar:
+                # Active power is NA / missing: impute from solar radiation
+                try:
+                    from modules.weather import satellite_virtual_meter
+                    poa_val = None
+                    for c in ("POA (W/m2)", "POA", "Plane of Array (W/m2)"):
+                        if c in row and row[c]:
+                            try:
+                                poa_val = float(row[c])
+                                break
+                            except ValueError:
+                                pass
+                    ghi_val = None
+                    for c in ("GHI (W/m2)", "GHI_W (W/m2)", "GHI_W", "GHI"):
+                        if c in row and row[c]:
+                            try:
+                                ghi_val = float(row[c])
+                                break
+                            except ValueError:
+                                pass
+                    amb_temp = None
+                    for c in ("AMB TEMP", "Ambient Temperature (C)", "Ambient Temp"):
+                        if c in row and row[c]:
+                            try:
+                                amb_temp = float(row[c])
+                                break
+                            except ValueError:
+                                pass
+                    mod_temp = None
+                    for c in ("MOD TEMP", "Module Temperature (C)", "Module Temp"):
+                        if c in row and row[c]:
+                            try:
+                                mod_temp = float(row[c])
+                                break
+                            except ValueError:
+                                pass
+                    imputed_mw, _ = satellite_virtual_meter.impute_missing_generation_from_radiation(
+                        timestamp=dt,
+                        ground_poa=poa_val,
+                        ground_ghi=ghi_val,
+                        ambient_temp=amb_temp,
+                        module_temp=mod_temp,
+                    )
+                    out[dt] = imputed_mw
+                    imputed_flags[dt] = True
+                except Exception:
+                    continue
+
+    return out, imputed_flags
 
 
 def compute_accuracy(predictions_csv, actual_csv,
                       timestamp_column=DEFAULT_TIMESTAMP_COLUMN,
-                      generation_column=DEFAULT_GENERATION_COLUMN):
+                      generation_column=DEFAULT_GENERATION_COLUMN,
+                      impute_missing_with_solar: bool = True):
     """
     Returns a dict: {mae, rmse, mape, matched_points, report_path}
     Also writes a plain-text report to accuracy_reports/.
     """
     predicted = _parse_predictions(Path(predictions_csv))
-    actual = _parse_actual(Path(actual_csv), timestamp_column, generation_column)
+    actual, imputed_flags = _parse_actual(Path(actual_csv), timestamp_column, generation_column, impute_missing_with_solar=impute_missing_with_solar)
 
     matched = []
     for dt, pred_mw in predicted.items():
@@ -111,24 +181,34 @@ def compute_accuracy(predictions_csv, actual_csv,
     ]
     mape = sum(pct_errors) / len(pct_errors) if pct_errors else float("nan")
 
+    imputed_count = sum(1 for dt, _, _ in matched if imputed_flags.get(dt))
+
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
     report_path = config.ACCURACY_REPORTS_DIR / f"accuracy_report_{timestamp}.txt"
+    report_path.parent.mkdir(parents=True, exist_ok=True)
     with open(report_path, "w", encoding="utf-8") as f:
         f.write(f"Accuracy report -- {config.PLANT_NAME}\n")
         f.write(f"Matched points: {len(matched)}\n")
+        if imputed_count > 0:
+            f.write(f"Points imputed from solar radiation: {imputed_count}/{len(matched)}\n")
         f.write(f"MAE:  {mae:.4f} MW\n")
         f.write(f"RMSE: {rmse:.4f} MW\n")
         f.write(f"MAPE: {mape:.2f} %\n\n")
-        f.write("Time                 Predicted(MW)  Actual(MW)  Error(MW)\n")
+        f.write("Time                 Predicted(MW)  Actual(MW)  Error(MW)  Source\n")
         for dt, pred, act in sorted(matched):
-            f.write(f"{dt}  {pred:>12.3f}  {act:>10.3f}  {pred - act:>9.3f}\n")
+            src_tag = "Imputed (Solar)" if imputed_flags.get(dt) else "Meter SCADA"
+            f.write(f"{dt}  {pred:>12.3f}  {act:>10.3f}  {pred - act:>9.3f}  {src_tag}\n")
 
-    print(f"Matched {len(matched)} points | MAE={mae:.3f} MW | RMSE={rmse:.3f} MW | MAPE={mape:.2f}%")
+    info_str = f"Matched {len(matched)} points | MAE={mae:.3f} MW | RMSE={rmse:.3f} MW | MAPE={mape:.2f}%"
+    if imputed_count > 0:
+        info_str += f" | ({imputed_count} blocks imputed from solar radiation)"
+    print(info_str)
     print(f"Full report saved to: {report_path.resolve()}")
 
     return {
         "mae": mae, "rmse": rmse, "mape": mape,
         "matched_points": len(matched), "report_path": report_path,
+        "imputed_blocks": imputed_count,
     }
 
 

@@ -1,4 +1,4 @@
-﻿"""Shared scheduler helpers used by plant-specific Lambda wrappers."""
+"""Shared scheduler helpers used by plant-specific Lambda wrappers."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ def _capture_times_for_site() -> list[str]:
     return list(getattr(config, "CAPTURE_TIMES", []) or [])
 
 
-def _nearest_configured_capture_time(now: dt.datetime, max_drift_minutes: int = 20) -> str:
+def _nearest_configured_capture_time(now: dt.datetime, max_drift_minutes: int = 10) -> str:
     """Snap automatic EventBridge runs to configured revision times."""
     capture_times = _capture_times_for_site()
     now_minutes = now.hour * 60 + now.minute

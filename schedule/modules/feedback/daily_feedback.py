@@ -251,6 +251,28 @@ def _load_actual_readings(actual_csv_path: str) -> dict:
             time_label = normalized[:16]
             mw = _power_value_to_mw(row.get(power_column), power_column)
             if mw is None:
+                # Active power is NA / missing: impute from solar radiation
+                try:
+                    from modules.weather import satellite_virtual_meter
+                    ts_dt = datetime.datetime.strptime(normalized, "%Y-%m-%d %H:%M:%S")
+                    poa_col = _pick_first_existing_column(reader.fieldnames, ("POA (W/m2)", "POA", "Plane of Array (W/m2)"))
+                    ghi_col = _pick_first_existing_column(reader.fieldnames, ("GHI (W/m2)", "GHI_W (W/m2)", "GHI_W", "GHI"))
+                    amb_col = _pick_first_existing_column(reader.fieldnames, ("AMB TEMP", "Ambient Temperature (C)", "Ambient Temp"))
+                    mod_col = _pick_first_existing_column(reader.fieldnames, ("MOD TEMP", "Module Temperature (C)", "Module Temp"))
+                    poa_val = _as_float(row.get(poa_col)) if poa_col else None
+                    ghi_val = _as_float(row.get(ghi_col)) if ghi_col else None
+                    amb_temp = _as_float(row.get(amb_col)) if amb_col else None
+                    mod_temp = _as_float(row.get(mod_col)) if mod_col else None
+                    mw, _ = satellite_virtual_meter.impute_missing_generation_from_radiation(
+                        timestamp=ts_dt,
+                        ground_poa=poa_val,
+                        ground_ghi=ghi_val,
+                        ambient_temp=amb_temp,
+                        module_temp=mod_temp,
+                    )
+                except Exception:
+                    mw = None
+            if mw is None:
                 continue
             readings[time_label] = mw
     return readings
@@ -1020,10 +1042,36 @@ def _merge_meter_csv_into_store(csv_path: Path) -> set:
 
     touched_dates = set()
     skipped_rows = 0
+    imputed_rows = 0
     for row in new_rows:
         timestamp = _normalize_timestamp(row.get(timestamp_column))
+        if timestamp is None:
+            skipped_rows += 1
+            continue
+
         kw = _as_float(row.get(power_column))
-        if timestamp is None or kw is None:
+        if kw is None:
+            # Active power is NA / missing: impute from solar radiation
+            try:
+                from modules.weather import satellite_virtual_meter
+                ts_dt = datetime.datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S")
+                poa_val = _as_float(row.get("POA (W/m2)") or row.get("POA"))
+                ghi_val = _as_float(row.get("GHI (W/m2)") or row.get("GHI"))
+                amb_temp = _as_float(row.get("AMB TEMP") or row.get("Ambient Temperature (C)"))
+                mod_temp = _as_float(row.get("MOD TEMP") or row.get("Module Temperature (C)"))
+                imputed_mw, _ = satellite_virtual_meter.impute_missing_generation_from_radiation(
+                    timestamp=ts_dt,
+                    ground_poa=poa_val,
+                    ground_ghi=ghi_val,
+                    ambient_temp=amb_temp,
+                    module_temp=mod_temp,
+                )
+                kw = imputed_mw * 1000.0
+                imputed_rows += 1
+            except Exception:
+                kw = None
+
+        if kw is None:
             skipped_rows += 1
             continue
 
@@ -1036,9 +1084,10 @@ def _merge_meter_csv_into_store(csv_path: Path) -> set:
         existing_by_time[timestamp] = row
         touched_dates.add(timestamp[:10])
 
+    if imputed_rows:
+        print(f"  [INFO] {csv_path.name}: imputed {imputed_rows} missing/NA block(s) from solar radiation.")
     if skipped_rows:
-        print(f"  [INFO] {csv_path.name}: skipped {skipped_rows} row(s) with a blank/unparseable "
-              f"timestamp or power value.")
+        print(f"  [INFO] {csv_path.name}: skipped {skipped_rows} row(s) with a blank/unparseable timestamp or power value.")
 
     sorted_times = sorted(
         existing_by_time.keys(),
@@ -1809,17 +1858,46 @@ def _load_intraday_meter_rows(actuals_csv_path, reference_time: datetime.datetim
             ts = datetime.datetime.strptime(normalized, "%Y-%m-%d %H:%M:%S")
             if ts > reference_time:
                 continue
+            mw = _power_value_to_mw(row.get(power_column), power_column)
+            poa_val = _as_float(row.get(poa_column)) if poa_column else None
+            ghi_val = _as_float(row.get(ghi_column)) if ghi_column else None
+            wind_speed = _as_float(row.get(wind_speed_column)) if wind_speed_column else None
+            wind_dir = _as_float(row.get(wind_direction_column)) if wind_direction_column else None
+            amb_temp = _as_float(row.get(ambient_temp_column)) if ambient_temp_column else None
+            mod_temp = _as_float(row.get(module_temp_column)) if module_temp_column else None
+            humidity = _as_float(row.get(humidity_column)) if humidity_column else None
+
+            is_imputed = False
+            impute_source = "meter"
+            if mw is None:
+                # Active Power is NA / missing: impute from solar radiation
+                try:
+                    from modules.weather import satellite_virtual_meter
+                    mw, impute_source = satellite_virtual_meter.impute_missing_generation_from_radiation(
+                        timestamp=ts,
+                        ground_poa=poa_val,
+                        ground_ghi=ghi_val,
+                        ambient_temp=amb_temp,
+                        module_temp=mod_temp,
+                    )
+                    is_imputed = True
+                except Exception as exc:
+                    print(f"  [WARN] Failed to impute missing meter block at {ts} from solar radiation: {exc}")
+                    continue
+
             rows.append(
                 {
                     "timestamp": ts,
-                    "active_power_mw": _power_value_to_mw(row.get(power_column), power_column) or 0.0,
-                    "poa": _as_float(row.get(poa_column)) if poa_column else None,
-                    "ghi": _as_float(row.get(ghi_column)) if ghi_column else None,
-                    "wind_speed": _as_float(row.get(wind_speed_column)) if wind_speed_column else None,
-                    "wind_direction": _as_float(row.get(wind_direction_column)) if wind_direction_column else None,
-                    "ambient_temp": _as_float(row.get(ambient_temp_column)) if ambient_temp_column else None,
-                    "module_temp": _as_float(row.get(module_temp_column)) if module_temp_column else None,
-                    "humidity": _as_float(row.get(humidity_column)) if humidity_column else None,
+                    "active_power_mw": mw,
+                    "poa": poa_val,
+                    "ghi": ghi_val,
+                    "wind_speed": wind_speed,
+                    "wind_direction": wind_dir,
+                    "ambient_temp": amb_temp,
+                    "module_temp": mod_temp,
+                    "humidity": humidity,
+                    "is_imputed": is_imputed,
+                    "impute_source": impute_source,
                 }
             )
 
@@ -1940,12 +2018,16 @@ def summarize_intraday_state(actuals_csv_path, reference_time: datetime.datetime
     morning_ratio_avg = sum(morning_ratios) / len(morning_ratios) if morning_ratios else None
     clearness_trend = "strengthening" if (recent_ratio and morning_ratio_avg and recent_ratio > morning_ratio_avg + 0.05) else ("weakening" if (recent_ratio and morning_ratio_avg and recent_ratio < morning_ratio_avg - 0.05) else "steady")
 
+    imputed_count = sum(1 for r in rows if r.get("is_imputed"))
+    imputed_sources = sorted(list({r.get("impute_source") for r in rows if r.get("is_imputed") and r.get("impute_source")}))
+    imputation_note = f", imputed_blocks={imputed_count}/{len(rows)} (via {', '.join(imputed_sources)})" if imputed_count > 0 else ""
+
     summary = (
         f"Live same-day state up to {latest_ts.strftime('%Y-%m-%d %H:%M')}: "
         f"latest={latest_mw:.3f} MW, today_peak={today_max_mw:.3f} MW, recent_avg={recent_avg_mw:.3f} MW, "
         f"trend={trend_label}, clearness_trend={clearness_trend}, regime={regime}, "
         f"avg_step={avg_abs_step:.3f} MW, fluctuation_flag={fluctuation_flag}, "
-        f"live_residual_factor={live_residual_factor:.3f}."
+        f"live_residual_factor={live_residual_factor:.3f}{imputation_note}."
     )
     sensor_bits = []
     if recent_ghi_values:
@@ -1981,6 +2063,9 @@ def summarize_intraday_state(actuals_csv_path, reference_time: datetime.datetime
         "recent_clear_sky_ratio": round(recent_ratio, 3) if recent_ratio is not None else None,
         "regime": regime,
         "live_residual_factor": round(live_residual_factor, 3),
+        "imputed_blocks_count": imputed_count,
+        "total_blocks_count": len(rows),
+        "imputed_sources": imputed_sources,
         "summary": summary,
         "recent_ghi_avg": round(sum(recent_ghi_values) / len(recent_ghi_values), 1) if recent_ghi_values else None,
         "recent_poa_avg": round(sum(recent_poa_values) / len(recent_poa_values), 1) if recent_poa_values else None,
@@ -2273,9 +2358,10 @@ def format_intraday_actuals_for_prompt(actuals_csv_path, reference_time: datetim
         f"(most recent readings, do not treat anything after this time as known):"
     ]
     lines += [
-        "- {ts}: power={mw:.3f} MW, GHI={ghi}, POA={poa}, wind_dir={wind_dir}".format(
+        "- {ts}: power={mw:.3f} MW{imputed_tag}, GHI={ghi}, POA={poa}, wind_dir={wind_dir}".format(
             ts=item["timestamp"].strftime("%H:%M"),
             mw=item["active_power_mw"],
+            imputed_tag=f" [imputed from {item.get('impute_source', 'solar radiation')}]" if item.get("is_imputed") else "",
             ghi=_format_sensor_value(item.get("ghi"), "W/m2"),
             poa=_format_sensor_value(item.get("poa"), "W/m2"),
             wind_dir=_format_sensor_value(item.get("wind_direction"), "deg"),

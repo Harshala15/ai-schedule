@@ -103,12 +103,35 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
         if intraday_actuals_path
         else None
     )
-    intraday_state_text = daily_feedback.format_intraday_state_for_prompt(intraday_state) if intraday_state else ""
+
+    if not intraday_state or intraday_state.get("regime") == "insufficient live data":
+        try:
+            from modules.weather import satellite_virtual_meter
+            intraday_state = satellite_virtual_meter.build_satellite_virtual_intraday_state(
+                reference_time,
+                latitude=config.PLANT_LAT,
+                longitude=config.PLANT_LON,
+                tilt=getattr(config, "PLANT_TILT_DEG", 20.0),
+                azimuth=getattr(config, "PLANT_ORIENTATION_DEG_FROM_SOUTH", 0.0),
+            )
+            print(
+                f"  [FALLBACK] Physical SCADA meter unavailable at {reference_time.strftime('%H:%M')}; "
+                f"activated Satellite Solar Radiation Virtual Meter "
+                f"(P_virtual={intraday_state['latest_mw']:.3f} MW, "
+                f"factor={intraday_state['live_residual_factor']:.3f}, "
+                f"GTI={intraday_state.get('satellite_gti', 0.0):.1f} W/m2)."
+            )
+        except Exception as sat_exc:
+            print(f"  [WARN] Satellite virtual meter fallback failed: {sat_exc}")
+
+    intraday_state_text = intraday_state.get("summary", "") if intraday_state else ""
     if stepwise_live_only and not intraday_actuals_text and intraday_actuals_path:
         intraday_actuals_text = daily_feedback.format_intraday_actuals_for_prompt(
             intraday_actuals_path,
             reference_time,
         )
+    if not intraday_actuals_text and intraday_state and intraday_state.get("is_virtual_meter"):
+        intraday_actuals_text = intraday_state.get("summary", "")
 
     if not weather_text:
         try:
@@ -387,6 +410,11 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
             p["llm_mw"] = step2
             p["step2_confidence"] = p.get("confidence", "")
             p["step2_reasoning"] = p.get("reasoning", "")
+            if intraday_state:
+                p["live_residual_factor"] = round(float(intraday_state.get("live_residual_factor", 1.0)), 3)
+                p["regime_label"] = intraday_state.get("regime", "")
+                p["fluctuation_flag"] = intraday_state.get("fluctuation_flag", False)
+                p["regime_summary"] = intraday_state.get("summary", "")
     else:
         llm_predictions = llm_predictor.predict_with_llm(
             live_anchor_predictions, current_feature_row, retrieved_cases_text, context_text, intraday_actuals_text,
@@ -604,6 +632,7 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
             "Top Retrieved Case": top_case_summary,
             "Context Summary": context_summary,
             "Live State Summary": p.get("regime_summary", intraday_state_text),
+            "Telemetry Source": intraday_state.get("telemetry_source", "PHYSICAL_SCADA") if intraday_state else "DEFAULT_PHYSICS",
             "Weather Summary": weather_text,
             "Feature Snapshot": _compact_feature_snapshot(feature_row),
         })
