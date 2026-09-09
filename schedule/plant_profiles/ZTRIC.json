@@ -1,0 +1,12 @@
+{
+  "plant_name": "ZTRIC",
+  "latitude": 18.557968,
+  "longitude": 76.859083,
+  "dc_capacity_kw": 23027,
+  "maximum_feed_in_ac_kw": 18630,
+  "tilt_deg": 16,
+  "orientation_deg_from_south": 0,
+  "tracker_type": "None",
+  "availability_planned_pct": 100,
+  "performance_ratio": 0.78
+}

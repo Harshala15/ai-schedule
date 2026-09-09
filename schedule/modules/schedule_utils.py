@@ -200,14 +200,22 @@ def merge_latest_schedule(snapshot_csv: Path, latest_csv: Path) -> tuple[int, in
 
 def freeze_from_datetime(target_date: str, target_time: str, block_minutes: int | None = None) -> dt.datetime:
     freeze_lag_minutes_by_plant = {
+        "SIRMOUR": 90,
+        "ANJANGOAN": 90,
+        "ANDAD": 90,
+        "BALAKWADA": 90,
+        "BAMKHAL": 90,
+        "CHANDAWASA": 90,
+        "GSNP": 90,
+        "GUGARIYAKHEDI": 90,
+        "NANDGAON": 90,
+        "SAWDA": 90,
         "BHUPALPALLY": 45,
         "KASIPET": 45,
-        "SIRMOUR": 90,
-        "BAMKHAL": 45,
-        "BALAKWADA": 45,
-        "ANDAD": 45,
-        "SAWDA": 45,
+        "KOTHAGUDEM": 45,
         "CME": 45,
+        "OSEPL": 45,
+        "ZTRIC": 45,
     }
     freeze_lag_minutes = freeze_lag_minutes_by_plant.get(config.PLANT_NAME.upper(), 45)
     return freeze_from_datetime_with_lag(
@@ -252,15 +260,23 @@ def write_current_final_schedule(
 
     if freeze_lag_minutes is None:
         freeze_lag_minutes = {
-            "BHUPALPALLY": 45,
-            "KASIPET": 45,
-            "SIRMOUR": 90,
-            "BAMKHAL": 45,
-            "BALAKWADA": 45,
-            "ANDAD": 45,
-            "SAWDA": 45,
-            "CME": 45,
-        }.get(config.PLANT_NAME.upper(), 45)
+        "SIRMOUR": 90,
+        "ANJANGOAN": 90,
+        "ANDAD": 90,
+        "BALAKWADA": 90,
+        "BAMKHAL": 90,
+        "CHANDAWASA": 90,
+        "GSNP": 90,
+        "GUGARIYAKHEDI": 90,
+        "NANDGAON": 90,
+        "SAWDA": 90,
+        "BHUPALPALLY": 45,
+        "KASIPET": 45,
+        "KOTHAGUDEM": 45,
+        "CME": 45,
+        "OSEPL": 45,
+        "ZTRIC": 45,
+    }.get(config.PLANT_NAME.upper(), 45)
     freeze_from = freeze_from_datetime_with_lag(
         target_date,
         target_time,
@@ -654,6 +670,8 @@ def download_recent_meter_history_files(
         downloaded.append(local_path)
 
     return downloaded
+
+
 
 
 

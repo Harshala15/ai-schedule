@@ -32,6 +32,7 @@ SITE_PACKAGES = {
     "GUGARIYAKHEDI": "bhupalpally_forecast_scheduler",
     "NANDGAON": "bhupalpally_forecast_scheduler",
     "GSNP": "bhupalpally_forecast_scheduler",
+    "ZTRIC": "ztric_forecast_scheduler",
 }
 
 SERVICE_MODULES = {
@@ -49,6 +50,7 @@ SERVICE_MODULES = {
     "GUGARIYAKHEDI": "bhupalpally_forecast_scheduler.scheduler_service",
     "NANDGAON": "bhupalpally_forecast_scheduler.scheduler_service",
     "GSNP": "bhupalpally_forecast_scheduler.scheduler_service",
+    "ZTRIC": "ztric_forecast_scheduler.scheduler_service",
 }
 
 def _pick(name: str, default: str = "") -> str:
@@ -120,12 +122,18 @@ def lambda_handler(event, context):
         raise RuntimeError("S3_BUCKET environment variable is required.")
 
     raw_owner = _pick("S3_RAW_OWNER", getattr(settings, "DEFAULT_S3_RAW_OWNER", "vedanjay"))
-    default_raw_prefix = f"raw/{raw_owner}/{site_id}"
+    if site_id == "ZTRIC":
+        default_raw_prefix = f"raw/{raw_owner}/multiple_generator/ZTRIC"
+    else:
+        default_raw_prefix = f"raw/{raw_owner}/{site_id}"
     capture_prefix = _event_value(event, "capture_prefix") or _pick("S3_CAPTURE_PREFIX", default_raw_prefix)
     meter_prefix = _event_value(event, "meter_prefix") or _pick("S3_METER_PREFIX", default_raw_prefix)
 
     output_root = _event_value(event, "output_prefix") or _pick("S3_OUTPUT_PREFIX", "generated/vedanjay_ai_intellis")
-    default_schedule_prefix = f"{output_root.rstrip('/')}/{site_id}/outputs"
+    if site_id == "ZTRIC":
+        default_schedule_prefix = f"{output_root.rstrip('/')}/multiple_generator/ZTRIC/outputs"
+    else:
+        default_schedule_prefix = f"{output_root.rstrip('/')}/{site_id}/outputs"
     schedule_prefix = _event_value(event, "schedule_prefix") or _pick("S3_SCHEDULE_PREFIX", default_schedule_prefix)
 
     target_date, target_time, _ = schedule_utils.parse_target_datetime(event)
@@ -195,8 +203,3 @@ def lambda_handler(event, context):
                 "failed_at_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
             })
         raise
-
-
-
-
-

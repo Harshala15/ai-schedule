@@ -203,6 +203,13 @@ _PLANT_FALLBACKS = {
         "dc_capacity_mw": 5.0,
         "max_feed_in_mw": 5.0,
     },
+    "ZTRIC": {
+        "latitude": 18.557968,
+        "longitude": 76.859083,
+        "capacity_mw": 18.63,
+        "dc_capacity_mw": 23.027,
+        "max_feed_in_mw": 18.63,
+    },
 }
 _fallback = _PLANT_FALLBACKS.get(_DEFAULT_PLANT_NAME.upper(), _PLANT_FALLBACKS["SIRMOUR"])
 _DEFAULT_PLANT_PROFILE_PATH = Path(
@@ -425,4 +432,3 @@ for _dir in (SCREENSHOT_DIR, VIDEO_DIR, PREDICTIONS_DIR, FEATURES_LOG_DIR, MODEL
     _dir.mkdir(parents=True, exist_ok=True)
 
 MODEL_PATH = MODELS_DIR / "generation_model.pkl"
-
