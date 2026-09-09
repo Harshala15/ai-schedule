@@ -91,3 +91,11 @@ ecmwf_weather/
 scratch/
 schedule/scratch/
 **/ensemble_cache/
+
+# Local Lambda validation artifacts
+schedule/*-current-final.csv
+schedule/*_latest_schedule.csv
+schedule/*-intellis-response*.json
+schedule/*-intellis-test*.json
+schedule/*-intellis-target*.json
+schedule/_scheduler_work/
