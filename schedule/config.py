@@ -1,4 +1,4 @@
-﻿"""
+"""
 config.py
 
 Single source of truth for plant details, file paths, and pipeline
@@ -351,7 +351,13 @@ BLOCK_MINUTES = 15
 # the schedule-generation evaluation workflow, which reconstructs the
 # day's schedule using exactly the forecast captured at each of these
 # times (see backtest_schedule.py).
-CAPTURE_TIMES = ["05:15", "06:45", "08:15", "09:45", "11:15", "12:45", "14:15", "15:45"]
+CAPTURE_TIMES = [
+    "05:00", "05:30", "06:00", "06:30", "07:00", "07:30",
+    "08:00", "08:30", "09:00", "09:30", "10:00", "10:30",
+    "11:00", "11:30", "12:00", "12:30", "13:00", "13:30",
+    "14:00", "14:30", "15:00", "15:30", "16:00", "16:30",
+    "17:00", "17:30", "18:00",
+]
 
 # ---- Paths ----
 STORAGE_STATE_PATH = _storage_path("windy_login.json")

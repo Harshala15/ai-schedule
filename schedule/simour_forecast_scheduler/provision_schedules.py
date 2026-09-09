@@ -8,10 +8,23 @@ import os
 import boto3
 from botocore.exceptions import ClientError
 
+import config
 from simour_forecast_scheduler import settings
 
 
-CAPTURE_TIMES = ("05:15", "06:45", "08:15", "09:45", "11:15", "12:45", "14:15", "15:45")
+CAPTURE_TIMES = tuple(
+    getattr(
+        config,
+        "CAPTURE_TIMES",
+        (
+            "05:00", "05:30", "06:00", "06:30", "07:00", "07:30",
+            "08:00", "08:30", "09:00", "09:30", "10:00", "10:30",
+            "11:00", "11:30", "12:00", "12:30", "13:00", "13:30",
+            "14:00", "14:30", "15:00", "15:30", "16:00", "16:30",
+            "17:00", "17:30", "18:00",
+        ),
+    )
+)
 
 
 def _require_env(name: str) -> str:

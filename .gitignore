@@ -1,4 +1,4 @@
-# Python
+﻿# Python
 __pycache__/
 *.py[cod]
 *.pyo
@@ -86,3 +86,8 @@ schedule/latest_*.json
 schedule/SIRMOUR_*.csv
 schedule/ecmwf_weather/
 ecmwf_weather/
+
+# Scratch and weather cache
+scratch/
+schedule/scratch/
+**/ensemble_cache/
