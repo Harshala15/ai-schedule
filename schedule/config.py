@@ -432,3 +432,5 @@ for _dir in (SCREENSHOT_DIR, VIDEO_DIR, PREDICTIONS_DIR, FEATURES_LOG_DIR, MODEL
     _dir.mkdir(parents=True, exist_ok=True)
 
 MODEL_PATH = MODELS_DIR / "generation_model.pkl"
+
+

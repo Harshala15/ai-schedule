@@ -62,6 +62,27 @@ windy-*-test.json
 windy_videos/
 schedule/*-env.json
 
-schedule/env.json
-
 schedule/bhpl-env-update.json
+
+# Ephemeral backtest & test outputs
+*.stackdump
+*_work/
+schedule/meter_data/
+schedule/meter_history/
+schedule/state/
+schedule/generated/
+schedule/feedback_analysis/
+schedule/pvlib_summary/
+schedule/plant_performance/
+schedule/*_2026*.csv
+schedule/kothagudem_tmp.csv
+schedule/*-response.json
+schedule/*-test.json
+schedule/*-target.json
+schedule/live_*.csv
+schedule/live_*.json
+schedule/latest_*.csv
+schedule/latest_*.json
+schedule/SIRMOUR_*.csv
+schedule/ecmwf_weather/
+ecmwf_weather/

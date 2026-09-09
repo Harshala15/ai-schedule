@@ -647,4 +647,3 @@ def run_schedule_job(
     return metadata
 
 
-
