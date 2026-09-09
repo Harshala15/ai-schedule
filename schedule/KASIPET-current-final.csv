@@ -1,0 +1,54 @@
+Block,Time Interval (15 minute interval),Step 1 Meter Base Forecast MW,Step 2 Weather Adjustment MW,LLM Reasoning
+25,2026-09-09 06:00 - 06:15,0,0,Solar elevation is below 3 degrees and generation is strictly zero.
+26,2026-09-09 06:15 - 06:30,0,0,Solar elevation is just above 3 degrees; diffuse dawn output is limited despite rising weather irradiance.
+27,2026-09-09 06:30 - 06:45,0,0,"Dawn exemption applies with rising irradiance, but low sun angle limits output to small diffuse generation."
+28,2026-09-09 06:45 - 07:00,0.877,0.82,"ECMWF irradiance supports the morning ramp, with a conservative haze and rain-cell attenuation."
+29,2026-09-09 07:00 - 07:15,1.546,1.45,"Rising irradiance supports near-clear morning production, reduced modestly for dust haze and precipitation risk."
+30,2026-09-09 07:15 - 07:30,2.291,2.0,"The morning curve remains monotonic, with convective-storm indications requiring attenuation below the clear-sky trajectory."
+31,2026-09-09 07:30 - 07:45,2.74,1.737,"Post-dawn generation increases smoothly toward the clear-sky trajectory, with weather streams and convective risk keeping output attenuated."
+32,2026-09-09 07:45 - 08:00,3.452,2.228,"ECMWF tilted irradiance is rising, but rain-cell indications and haze warrant a lower envelope rather than a clear-sky recovery."
+33,2026-09-09 08:00 - 08:15,3.66,2.388,Stable morning ramp is retained while the weather-adjusted value remains below clear sky due to elevated CAPE and rainfall probability.
+34,2026-09-09 08:15 - 08:30,4.278,2.819,The forecast maintains a continuous attenuated ascent using the ensemble-supported irradiance curve and live generation momentum.
+35,2026-09-09 08:30 - 08:45,4.88,3.249,"Weather irradiance continues increasing, but the spread between deterministic and ensemble streams supports conservative cloud and rain attenuation."
+36,2026-09-09 08:45 - 09:00,5.461,3.68,Smooth ascent follows the improving irradiance trajectory while preserving a lower envelope for convective cloud effects and AOD losses.
+37,2026-09-09 09:00 - 09:15,5.841,5.472,ECMWF-derived irradiance implies moderate attenuation relative to the PVLib base; forecast is anchored to the observed morning ramp and kept below the clear-sky value.
+38,2026-09-09 09:15 - 09:30,6.354,5.86,"Weather irradiance reaches the reduced-irradiance threshold but remains below clear sky, so thermal and atmospheric attenuation are retained in the blended forecast."
+39,2026-09-09 09:30 - 09:45,6.834,6.247,"The consensus weather curve is about 91% of clear-sky POA; rising SCADA momentum supports continued growth, with a conservative deduction for CAPE and rain-cell risk."
+40,2026-09-09 09:45 - 10:00,7.281,6.642,Stable but attenuated irradiance supports a smooth increase toward the late-morning peak; the forecast remains below the PVLib clear-sky trajectory.
+41,2026-09-09 10:00 - 10:15,7.69,7.022,"Weather irradiance remains approximately 91% of clear sky with positive short-term drift, so generation rises smoothly while retaining haze, temperature, and convective attenuation."
+42,2026-09-09 10:15 - 10:30,8.061,7.326,The weather-adjusted trajectory remains below clear sky and follows the live ramp; no historical uplift is applied under the weak-cloudy regime.
+43,2026-09-09 10:30 - 10:45,10.454,6.998,"Conservative weather adjustment follows the approximately 600 W/m2 ensemble trajectory rather than the higher consensus stream, with smooth SCADA-led recovery."
+44,2026-09-09 10:45 - 11:00,10.81,7.15,The clear-sky rise is limited by rain-cell and cloud uncertainty; live generation momentum is blended without applying any historical bias uplift.
+45,2026-09-09 11:00 - 11:15,11.112,7.311,"ECMWF ensemble irradiance supports a moderate output increase, while high CAPE and rain risk require a conservative thermally derated envelope."
+46,2026-09-09 11:15 - 11:30,11.357,7.254,The attenuated weather curve softens near the convective window; live SCADA momentum maintains a smooth approach toward the midday apex.
+47,2026-09-09 11:30 - 11:45,11.544,7.188,"Forecast stays below clear sky using the conservative ensemble signal and thermal derating, avoiding a sharp recovery or artificial noon uplift."
+48,2026-09-09 11:45 - 12:00,11.672,7.131,"Convective rain-cell risk and divergent irradiance streams cap the apex; live momentum is blended to preserve a smooth, conservative peak."
+49,2026-09-09 12:00 - 12:15,10.996,6.049,"Rain-cell risk, high CAPE, and forecast irradiance near 500 to 630 W/m2 require conservative attenuation with thermal derating."
+50,2026-09-09 12:15 - 12:30,11.004,5.899,"The lowest weather stream persists through the noon window, so the forecast remains below the clear-sky trajectory and avoids an artificial recovery."
+51,2026-09-09 12:30 - 12:45,10.956,5.987,"A modest irradiance recovery is permitted, but the multi-stream spread and convective regime prevent a return toward clear-sky output."
+52,2026-09-09 12:45 - 13:00,10.852,6.12,Weather guidance improves gradually while live SCADA remains attenuated; the result is a smooth conservative rise before afternoon decay.
+53,2026-09-09 13:00 - 13:15,10.694,6.165,"Clearing in the lower weather stream is offset by the persistent rain-cell and haze regime, keeping generation well below the clear-sky estimate."
+54,2026-09-09 13:15 - 13:30,10.48,6.076,The forecast follows the attenuated afternoon irradiance curve with module-temperature derating and no positive historical bias.
+55,2026-09-09 13:30 - 13:45,8.059,4.276,ECMWF and ensemble irradiance remain well below clear sky with convective instability. A smooth conservative plateau is retained instead of assuming a cloud-deck break.
+56,2026-09-09 13:45 - 14:00,7.807,2.506,Weather irradiance continues to decline and cloud transmissivity weakens. The forecast remains bounded by the sustained-overcast 1.25x live SCADA rule.
+57,2026-09-09 14:00 - 14:15,7.515,2.506,The convective window remains active with rain forecast and irradiance below 600 W/m2. No clear-sky recovery is assumed while the live overcast regime persists.
+58,2026-09-09 14:15 - 14:30,7.185,2.45,"After the sustained-overcast window, the forecast begins a gradual decline consistent with falling solar geometry and continued weather attenuation. Recovery is not extended beyond the live-cloud envelope."
+59,2026-09-09 14:30 - 14:45,6.817,2.345,"ECMWF irradiance and ensemble values remain substantially below clear sky, while cloud drift stabilizes. The output follows a smooth conservative decline."
+60,2026-09-09 14:45 - 15:00,6.416,2.205,Weather irradiance continues its afternoon reduction with residual convective risk. The forecast tracks the attenuated curve without historical bias uplift.
+61,2026-09-09 15:00 - 15:15,5.982,2.87,Rain-cell risk and ensemble spread require a smooth conservative envelope rather than recovery toward the clear-sky baseline.
+62,2026-09-09 15:15 - 15:30,5.518,2.625,Declining tilted irradiance and persistent cloud-risk signals maintain substantial attenuation with no historical uplift.
+63,2026-09-09 15:30 - 15:45,5.027,2.345,The lower weather stream and live residual factor indicate continued subdued production through the convective window.
+64,2026-09-09 15:45 - 16:00,4.513,2.1,"Smooth afternoon decline is retained, with output capped by attenuated irradiance and recent weak SCADA performance."
+65,2026-09-09 16:00 - 16:15,3.979,1.855,Weather irradiance falls across all streams; the forecast remains below clear-sky physics to avoid assuming rapid cloud clearance.
+66,2026-09-09 16:15 - 16:30,3.429,1.575,"Reduced afternoon irradiance and persistent rain-cell uncertainty produce a conservative, continuously decaying output."
+67,2026-09-09 16:30 - 16:45,2.871,1.787,"Weather irradiance remains attenuated under elevated CAPE and rain-cell conditions, so output is held near the lower continuous weather envelope."
+68,2026-09-09 16:45 - 17:00,2.309,1.388,"The forecast tracks the declining ECMWF irradiance trajectory with haze and convective attenuation, while preserving a smooth afternoon decay."
+69,2026-09-09 17:00 - 17:15,1.756,1.011,Reduced solar elevation and persistent rain-cell risk support the attenuated weather curve rather than a clear-sky recovery.
+70,2026-09-09 17:15 - 17:30,1.224,0.733,Generation follows the declining tilted-irradiance forecast with conservative adjustment for the continuing convective window.
+71,2026-09-09 17:30 - 17:45,0.736,0.479,Late-afternoon geometry and reduced forecast irradiance constrain output; the value is smoothly continued from the preceding attenuated blocks.
+72,2026-09-09 17:45 - 18:00,0.332,0.244,"Low solar elevation leaves limited diffuse production, and the weather streams converge toward very low irradiance."
+73,2026-09-09 18:00 - 18:15,0.072,0.072,Solar elevation is near the minimum production range and the conservative weather envelope is effectively zero.
+74,2026-09-09 18:15 - 18:30,0.001,0.001,"Solar elevation is below 3 degrees, requiring strictly zero generation."
+75,2026-09-09 18:30 - 18:45,0.0,0.0,Post-dusk condition with negative solar elevation requires strictly zero generation.
+76,2026-09-09 18:45 - 19:00,0.0,0.0,Post-dusk condition with zero clear-sky and weather irradiance.
+77,2026-09-09 19:00 - 19:15,0,0,Post-dusk condition; no solar generation expected.

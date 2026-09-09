@@ -1,0 +1,57 @@
+Block,Time Interval (15 minute interval),Step 1 Meter Base Forecast MW,Step 2 Weather Adjustment MW,LLM Reasoning
+22,2026-09-09 05:15 - 05:30,0,0,Solar elevation is below 3 degrees and both clear-sky and ECMWF irradiance are zero; generation is strictly zero.
+23,2026-09-09 05:30 - 05:45,0,0,"Pre-dawn conditions persist with zero clear-sky and weather irradiance, so generation remains zero."
+24,2026-09-09 05:45 - 06:00,0,0,Solar elevation remains below the generation threshold and ECMWF irradiance is zero.
+25,2026-09-09 06:00 - 06:15,0,0,Clear-sky POA and ECMWF irradiance remain zero before sunrise.
+26,2026-09-09 06:15 - 06:30,0,0,"Solar elevation is below 3 degrees, requiring strictly zero generation."
+27,2026-09-09 06:30 - 06:45,0,0,"Solar elevation is just above 3 degrees, but ECMWF irradiance is only 22.5 W/m2, below the diffuse dawn threshold for nonzero output."
+28,2026-09-09 06:45 - 07:00,0.176,0.18,Low-angle dawn output is limited to small diffuse generation; rising ECMWF irradiance supports approximately 0.18 MW.
+29,2026-09-09 07:00 - 07:15,0.444,0.44,"Clear, rising weather supports the PVLib morning ramp without applying an artificial uplift above the clear-sky trajectory."
+30,2026-09-09 07:15 - 07:30,0.784,0.78,"ECMWF irradiance is rising under zero cloud cover, so the forecast follows the smooth clear-sky ascent."
+31,2026-09-09 07:30 - 07:45,1.164,1.164,The dawn exemption ends as solar elevation approaches 20 degrees; rising ECMWF irradiance and zero cloud cover support continued clear-sky growth.
+32,2026-09-09 07:45 - 08:00,1.565,1.56,"Clear-sky PVLib output is closely supported by rising ECMWF tilted irradiance and zero cloud cover, with a smooth morning ramp."
+33,2026-09-09 08:00 - 08:15,1.975,1.97,"Weather remains clear and irradiance continues rising, so the weather-adjusted forecast tracks the PVLib trajectory without uplift beyond physics."
+34,2026-09-09 08:15 - 08:30,2.386,2.38,Zero cloud cover and increasing ECMWF tilted irradiance support the modeled clear-sky ascent; no historical bias is applied.
+35,2026-09-09 08:30 - 08:45,2.792,2.79,"The forecast follows the smooth PVLib morning curve, with ECMWF irradiance rising and no precipitation or cloud attenuation."
+36,2026-09-09 08:45 - 09:00,3.188,3.18,Clear weather supports near-clear-sky output; the small adjustment maintains conservative alignment with ECMWF irradiance.
+37,2026-09-09 09:00 - 09:15,2.5,2.311,"Clear-sky geometry and rising ECMWF irradiance support a monotonic increase, with a modest downward adjustment for the unresolved SCADA lag."
+38,2026-09-09 09:15 - 09:30,2.757,2.575,Weather irradiance continues rising without cloud attenuation; output tracks the clear-sky trajectory below the physics ceiling due to conservative live-state anchoring.
+39,2026-09-09 09:30 - 09:45,3.0,2.81,"The smooth morning ramp follows increasing solar elevation and ECMWF tilted irradiance, without applying any positive historical bias."
+40,2026-09-09 09:45 - 10:00,3.228,3.014,Zero cloud cover and rising irradiance support continued generation growth; the adjustment remains slightly below clear sky to manage live telemetry uncertainty.
+41,2026-09-09 10:00 - 10:15,3.44,3.193,"ECMWF irradiance remains rising and conditions are clear, so the forecast preserves a smooth ascent while staying conservative relative to the clear-sky estimate."
+42,2026-09-09 10:15 - 10:30,3.636,3.351,The weather curve supports increasing output toward midday; no cloud uplift is applied and the value remains below the PVLib clear-sky baseline.
+43,2026-09-09 10:30 - 10:45,3.812,2.807,ECMWF irradiance reaches the reduced-irradiance threshold; forecast remains conservatively capped below clear sky given absent live generation.
+44,2026-09-09 10:45 - 11:00,3.969,2.926,"Weather adjustment follows ECMWF tilted irradiance, with no positive historical bias applied and conservative treatment of the zero SCADA signal."
+45,2026-09-09 11:00 - 11:15,4.106,3.031,"The rising weather curve supports gradual output recovery, but the forecast remains below PVLib clear sky because same-day SCADA remains unavailable at zero."
+46,2026-09-09 11:15 - 11:30,4.221,3.129,ECMWF irradiance adjustment produces a smooth ascent without uplift beyond weather support or live-grounded evidence.
+47,2026-09-09 11:30 - 11:45,4.315,3.206,Forecast tracks the increasing tilted irradiance while remaining conservative due to the persistent zero-generation SCADA state.
+48,2026-09-09 11:45 - 12:00,4.387,3.262,Midday output is weather-capped below clear sky and avoids any historical bias uplift under the unresolved live-meter condition.
+49,2026-09-09 12:00 - 12:15,4.436,4.162,"PVLib apex trajectory is 6.337 MW, but zero same-day SCADA generation requires a conservative zero forecast rather than a weather-only recovery."
+50,2026-09-09 12:15 - 12:30,4.462,4.462,"Clear-sky output reaches 6.375 MW, while the observed plant response remains 0.00 MW; weather adjustment is capped by live SCADA evidence."
+51,2026-09-09 12:30 - 12:45,4.467,4.467,"Midday clear-sky apex is 6.381 MW, but sustained zero SCADA output through the overcast-risk window supports no positive adjustment."
+52,2026-09-09 12:45 - 13:00,4.447,4.447,"The clear-sky curve begins declining, but live generation has not recovered; conservative lower-bound dispatch remains 0.00 MW."
+53,2026-09-09 13:00 - 13:15,4.406,4.406,"ECMWF irradiance peaks near this block, yet same-day SCADA remains at zero, so NWP cannot override the persistent live signal."
+54,2026-09-09 13:15 - 13:30,4.341,4.341,"Clear-sky physics declines to 6.202 MW, but no live ramp is present; the forecast remains zero to avoid DSM exposure."
+55,2026-09-09 13:30 - 13:45,4.255,4.255,The clear-sky baseline is rejected for dispatch because plant output remains below the sustained-overcast threshold at high solar elevation.
+56,2026-09-09 13:45 - 14:00,4.146,4.146,"Despite ECMWF tilted irradiance near 708 W/m2 and zero cloud cover, same-day SCADA provides no evidence of ramping; the conservative lower bound is retained."
+57,2026-09-09 14:00 - 14:15,4.017,4.017,The plant has remained at zero through the overcast enforcement interval. Weather-adjusted output is capped by the absent live generation signal.
+58,2026-09-09 14:15 - 14:30,3.866,3.866,"No live SCADA recovery or positive momentum is available after the sustained low-generation period, so the forecast avoids an unsupported rapid return to clear-sky output."
+59,2026-09-09 14:30 - 14:45,3.696,3.696,"The PVLib trajectory declines gradually, but ground telemetry remains the controlling signal. Forecast generation stays at the conservative observed lower bound."
+60,2026-09-09 14:45 - 15:00,3.508,3.508,"ECMWF irradiance falls below 600 W/m2, reinforcing the need to avoid clear-sky recovery assumptions while live generation remains zero."
+61,2026-09-09 15:00 - 15:15,3.3,3.3,Live generation remains the most direct same-day attenuation signal; forecast remains at zero rather than recovering to the weather curve.
+62,2026-09-09 15:15 - 15:30,3.077,3.077,Gate-lagged forecast continues the stable zero-generation regime because no SCADA recovery is observed.
+63,2026-09-09 15:30 - 15:45,2.838,2.838,"The diurnal clear-sky decline is noted, but live plant output remains unavailable at 0 MW, preventing a weather-based uplift."
+64,2026-09-09 15:45 - 16:00,2.586,2.586,Conservative dispatch follows the established zero SCADA regime rather than assuming rapid recovery from clear ECMWF conditions.
+65,2026-09-09 16:00 - 16:15,2.321,2.321,"Clear-sky output is declining, but the absence of any same-day generation keeps the adjusted forecast at zero."
+66,2026-09-09 16:15 - 16:30,2.046,2.046,No live ramp or recovery is available to support a positive adjustment; the forecast remains conservatively zero.
+67,2026-09-09 16:30 - 16:45,1.764,1.764,"The weather trajectory supports declining solar potential, but persistent zero SCADA output remains the controlling signal."
+68,2026-09-09 16:45 - 17:00,1.477,1.477,No positive historical or weather bias is applied while the plant's same-day generation remains at 0 MW.
+69,2026-09-09 17:00 - 17:15,1.189,1.189,"Late-afternoon clear-sky potential is low, and persistent zero SCADA output supports a zero dispatch forecast."
+70,2026-09-09 17:15 - 17:30,1.16,1.267,"The estimate follows the falling solar angle and 185.2 W/m2 weather irradiance, with no evidence of overcast disruption."
+71,2026-09-09 17:30 - 17:45,0.81,0.933,ECMWF irradiance remains 140.1 W/m2 with only 10% cloud cover; the forecast preserves a smooth duskward decline anchored to the live trend.
+72,2026-09-09 17:45 - 18:00,0.491,0.597,"The low-sun forecast follows 99.2 W/m2 ECMWF irradiance and the supplied afternoon meter trajectory, with no cloud penalty applied."
+73,2026-09-09 18:00 - 18:15,0.225,0.117,Solar elevation is near the diffuse-output range; the estimate is conservatively reduced despite 64.8 W/m2 modeled irradiance as the live meter base approaches zero.
+74,2026-09-09 18:15 - 18:30,0.052,0.09,"Solar elevation remains above 3 degrees and ECMWF irradiance is 35.1 W/m2, so a small diffuse dawn/dusk output is retained rather than forcing zero."
+75,2026-09-09 18:30 - 18:45,0.001,0.001,"Solar elevation is below 3 degrees and modeled irradiance is negligible, enforcing the strict post-dusk zero-generation rule."
+76,2026-09-09 18:45 - 19:00,0.0,0.0,The sun is below the horizon and ECMWF irradiance is zero; generation remains strictly zero.
+77,2026-09-09 19:00 - 19:15,0,0,Post-dusk conditions and zero forecast irradiance require zero generation.
