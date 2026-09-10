@@ -1,4 +1,4 @@
-﻿"""premium_stream3.py
+"""premium_stream3.py
 
 Open-Meteo Professional (â‚¬99/mo) Full-Feature Commercial Weather Engine:
 Implements all 7 advanced commercial capabilities:
@@ -31,11 +31,12 @@ def fetch_premium_stream3_weather(
     hours_ahead: int = 4,
     *,
     tilt: float = 5.0,
-    azimuth: float = 180.0,
+    azimuth: float = 0.0,
     plant_name: str = config.PLANT_NAME,
 ) -> dict[str, Any]:
     """Fetches the comprehensive full-feature Stream 3 commercial forecast."""
     reference_time = reference_time or dt.datetime.now()
+    effective_azimuth = config.to_openmeteo_azimuth(azimuth)
     api_key = getattr(config, "OPENMETEO_API_KEY", "") or os.getenv("OPENMETEO_API_KEY", "").strip()
 
     base_url = "https://customer-api.open-meteo.com/v1/forecast" if api_key else "https://api.open-meteo.com/v1/forecast"
@@ -67,13 +68,16 @@ def fetch_premium_stream3_weather(
         "latitude": latitude,
         "longitude": longitude,
         "hourly": [
+            "global_tilted_irradiance",
             "shortwave_radiation",
             "direct_normal_irradiance",
             "diffuse_radiation",
             "temperature_2m",
-            "surface_temperature",
             "wind_speed_10m",
             "cloud_cover",
+            "cloud_cover_low",
+            "cloud_cover_mid",
+            "cloud_cover_high",
             "precipitation",
             "cape",
             "uv_index",
@@ -83,19 +87,23 @@ def fetch_premium_stream3_weather(
             "dew_point_2m",
         ],
         "minutely_15": [
-            "sunshine_duration",
-            "shortwave_radiation_instant",
-            "direct_normal_irradiance_instant",
-            "diffuse_radiation_instant",
+            "global_tilted_irradiance",
             "global_tilted_irradiance_instant",
+            "direct_normal_irradiance",
+            "diffuse_radiation",
+            "shortwave_radiation",
+            "sunshine_duration",
             "temperature_2m",
-            "wind_gusts_10m",
+            "wind_speed_10m",
+            "cloud_cover",
             "cloud_cover_low",
+            "cloud_cover_mid",
+            "cloud_cover_high",
             "is_day",
         ],
         "models": "best_match",
         "tilt": tilt,
-        "azimuth": azimuth,
+        "azimuth": effective_azimuth,
         "timezone": "Asia/Kolkata",
         "forecast_days": 2,
     }
@@ -153,10 +161,13 @@ def fetch_premium_stream3_weather(
 
     dnis = hourly_adv.get("direct_normal_irradiance", [])
     dhis = hourly_adv.get("diffuse_radiation", [])
+    gtis = hourly_adv.get("global_tilted_irradiance", [])
     temps = hourly_adv.get("temperature_2m", [])
-    surf_temps = hourly_adv.get("surface_temperature", [])
     winds = hourly_adv.get("wind_speed_10m", [])
     clouds = hourly_adv.get("cloud_cover", [])
+    clouds_low = hourly_adv.get("cloud_cover_low", [])
+    clouds_mid = hourly_adv.get("cloud_cover_mid", [])
+    clouds_high = hourly_adv.get("cloud_cover_high", [])
     precips = hourly_adv.get("precipitation", [])
     capes = hourly_adv.get("cape", [])
     uvs = hourly_adv.get("uv_index", [])
@@ -194,6 +205,11 @@ def fetch_premium_stream3_weather(
         temp_amb = temps[i] if i < len(temps) and temps[i] is not None else 28.0
         wind_spd = winds[i] if i < len(winds) and winds[i] is not None else 2.5
         cloud_pct = clouds[i] if i < len(clouds) and clouds[i] is not None else 0.0
+        c_low = float(clouds_low[i]) if i < len(clouds_low) and clouds_low[i] is not None else (float(clouds[i]) if i < len(clouds) and clouds[i] is not None else 0.0)
+        c_mid = float(clouds_mid[i]) if i < len(clouds_mid) and clouds_mid[i] is not None else 0.0
+        c_high = float(clouds_high[i]) if i < len(clouds_high) and clouds_high[i] is not None else 0.0
+        eff_cloud_pct = round(min(100.0, c_low * 1.0 + c_mid * 0.70 + c_high * 0.15), 1)
+
         precip_mm = precips[i] if i < len(precips) and precips[i] is not None else 0.0
         cape_val = capes[i] if i < len(capes) and capes[i] is not None else 0.0
         uv_val = uvs[i] if i < len(uvs) and uvs[i] is not None else 0.0
@@ -205,7 +221,7 @@ def fetch_premium_stream3_weather(
         if uv_clear_val > 0.1:
             cloud_transmissivity = min(1.0, max(0.05, round(uv_val / uv_clear_val, 3)))
         else:
-            cloud_transmissivity = 1.0 if cloud_pct < 20 else max(0.10, 1.0 - (cloud_pct / 100.0))
+            cloud_transmissivity = 1.0 if eff_cloud_pct < 20 else max(0.10, 1.0 - (eff_cloud_pct / 100.0))
 
         # Sunshine Fraction per Hour (0.0 to 1.0)
         sunshine_fraction = min(1.0, max(0.0, round(sunshine_sec / 3600.0, 3))) if sunshine_sec > 0 else 0.0
@@ -222,8 +238,18 @@ def fetch_premium_stream3_weather(
         # Water vapor absorption correction (-2% to -4% under high humidity/VPD)
         moisture_factor = 0.97 if vpd_val < 0.8 and temp_amb > 28.0 else 1.0
 
-        # Convert GHI to GTI on Array Tilt with AOD + Moisture
-        gti_unadjusted = (agency_mean_ghi / max(0.85, cos_tilt))
+        # Physical Transposition GTI with 5-Agency Consensus Scaling
+        if i < len(gtis) and gtis[i] is not None:
+            gti_native = float(gtis[i])
+            ecmwf_sw = float(sw_ecmwf[i]) if i < len(sw_ecmwf) and sw_ecmwf[i] is not None else 0.0
+            if agency_mean_ghi > 20.0 and ecmwf_sw > 20.0:
+                consensus_scale = max(0.70, min(1.30, agency_mean_ghi / ecmwf_sw))
+            else:
+                consensus_scale = 1.0
+            gti_unadjusted = gti_native * consensus_scale
+        else:
+            gti_unadjusted = (agency_mean_ghi / max(0.85, cos_tilt))
+
         gti_om_premium = round(gti_unadjusted * hour_aod_factor * moisture_factor, 1)
 
         # Sandia Photovoltaic Module Cell Temperature Model:

@@ -29,3 +29,6 @@ PLANT_LON = config.PLANT_LON
 BLOCK_MINUTES = config.BLOCK_MINUTES
 LAYERS = config.LAYERS
 ENABLE_S3_STATE_SYNC = _env_bool("ENABLE_S3_STATE_SYNC", False)
+ECMWF_TILT_DEGREES = int(round(getattr(config, "PLANT_TILT_DEG", 20.0)))
+ECMWF_AZIMUTH_DEGREES = int(round(config.to_openmeteo_azimuth(getattr(config, "PLANT_ORIENTATION_FROM_SOUTH_DEG", 0.0))))
+

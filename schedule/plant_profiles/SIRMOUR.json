@@ -8,5 +8,6 @@
   "orientation_deg_from_south": 0,
   "tilt_deg": 20,
   "eeg_id": "SIRMOUR",
-  "ppa_rate_inr_per_kwh": 2.94
+  "ppa_rate_inr_per_kwh": 2.94,
+  "penalty_regulation": "Madhya Pradesh"
 }

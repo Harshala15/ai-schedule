@@ -1,4 +1,4 @@
-﻿"""
+"""
 llm_predictor.py
 
 The ONLY module in this pipeline that calls an LLM. Its job is narrow
@@ -306,10 +306,11 @@ Base forecast blocks:
 {blocks_text}
 
 CRITICAL RULES FOR GRID ACCURACY & PENALTY MINIMIZATION:
-1. Asymmetric CERC/DSM Loss Function:
-   - Under-forecasting by 5-10% carries ZERO penalty under grid regulations.
-   - Over-forecasting by >15% into passing cloud dips triggers severe financial deviation penalties (up to Rs. 331/block).
-   - Therefore, during overcast, monsoon, or volatile cloud regimes, always favor the conservative lower bound of the envelope.
+1. Two-Sided Penalty Band Mandate (+-15% of Available Capacity):
+   - Under Telangana (TSERC) and CERC regulations, deviations within +-15% of plant capacity carry ZERO penalty.
+   - BOTH Over-forecasting (>+15%) and Under-forecasting (<-15%) trigger severe financial deviation penalties (at plant PPA rate, e.g. Rs. 5.65/kWh in Telangana).
+   - DO NOT excessively haircut generation into severe under-forecasting (<-15%). Maintain schedules within the safe +-15% corridor.
+   - During clear sky ground conditions, never cut below Step 1 Base. During overcast or rain, attenuate smoothly without over-slashing.
 2. Physical Ramp & Monotonic Geometry (NO SAWTOOTH / JITTER):
    - Morning (06:30 - 11:30): Must be strictly non-decreasing, matching the rising solar trajectory.
    - Midday Apex (11:45 - 12:30): Smooth parabolic apex without artificial flat tabletop clipping.
@@ -581,11 +582,13 @@ Generate the {plant_name} forecast in ONE JSON response. Plant AC Capacity is {c
 CRITICAL FORECAST RULES:
 1. Two-Step Physics & Weather Grounding (No artificial historical bias uplifts):
    - Step 1 (PVLib Base): Astronomical clear-sky trajectory anchored to current live SCADA meter readings (last 1-2 hours).
-   - Step 2 (Weather Adjustment MW): Adjust Step 1 using ECMWF global tilted irradiance, cloud cover %, and live SCADA momentum.
-   - Live SCADA Momentum: If live SCADA generation shows the plant is ramping strongly under clear ground conditions, blend 70% Live SCADA Ground Ramp with 30% ECMWF Weather to avoid morning lag from stale weather models.
+   - Step 2 (Weather Adjustment MW): Adjust Step 1 using ECMWF global tilted irradiance, direct/diffuse ratio, cloud cover %, and live SCADA momentum.
+   - DIRECTIONAL DSM ERROR GUARDRAIL: When ground SCADA / pyranometer confirms clear ground conditions (live POA >= 80% of clear sky or recent clear sky ratio >= 0.85), Step 2 MUST NOT be adjusted downward below Step 1 Base! If actual is ramping strongly above Step 1 Base, Step 2 adjustment must be POSITIVE or ZERO (+MW), NEVER negative (-MW). Downward adjustments are strictly prohibited unless verified cloud attenuation (ground POA dropping below clear-sky levels or confirmed thick overcast > 60%) is present.
+   - Live SCADA Momentum & MOS: If live SCADA generation shows the plant is ramping strongly under clear ground conditions, blend 75% Live SCADA Ground Ramp with 25% Weather Model to eliminate morning lag. If REAL-TIME GROUND SENSOR CALIBRATION (MOS) indicates ground irradiance is outperforming weather models, scale forward weather expectations upward to track ground truth.
 2. Weather & Overcast Enforcement:
-   - When ECMWF weather shows cloud cover (>50%) or reduced irradiance (<600 W/mÂ²), follow the attenuated weather irradiance curve.
-   - DAWN EXEMPTION RULE: When solar elevation is < 20.0 deg (before 07:30 AM), low generation (< 2 MW) is normal due to inverter wake-up and low sun angles. DO NOT treat dawn low generation as heavy overcast! If ECMWF weather shows clear/rising irradiance (> 100 W/mÂ²), follow the rising morning ramp toward full clear-sky capacity for forward blocks (07:30 - 11:00).
+   - When ECMWF weather shows cloud cover (>50%) or reduced irradiance (<600 W/m²), follow the attenuated weather irradiance curve.
+   - REAL CLOUD ATTENUATION: If ground SCADA / pyranometer indicates a cloud drop (POA or power dropping > 25% below clear sky), scale down the immediate forward blocks (next 2-4 blocks) proportionally to match observed ground attenuation.
+   - DAWN EXEMPTION RULE: When solar elevation is < 20.0 deg (before 07:30 AM), low generation (< 2 MW) is normal due to inverter wake-up and low sun angles. DO NOT treat dawn low generation as heavy overcast! If ECMWF weather shows clear/rising irradiance (> 100 W/m²), follow the rising morning ramp toward full clear-sky capacity for forward blocks (07:30 - 11:00).
    - SUSTAINED OVERCAST RULE: If ground SCADA shows low generation (< 35% of clear sky) between 10:30 and 14:00 (solar elevation >= 45 deg), DO NOT assume rapid recovery to clear sky based solely on NWP weather models. Overcast cloud decks in monsoon regimes persist for 2-4 hours. Step 2 Weather Adjustment MUST NOT exceed 1.25x the live SCADA generation during overcast regimes.
    - NEVER apply positive historical bias to inflate forecasts during cloudy, monsoon, or overcast conditions.
    - Favor the conservative lower bound during overcast conditions to avoid DSM penalties.

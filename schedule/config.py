@@ -90,7 +90,7 @@ def _read_env_path(name: str, default: Path) -> Path:
 
 def _load_json_profile(path: Path) -> dict:
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        return json.loads(path.read_text(encoding="utf-8-sig"))
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
 
@@ -132,6 +132,11 @@ _PLANT_FALLBACKS = {
         "capacity_mw": 5.1,
         "dc_capacity_mw": 5.48,
         "max_feed_in_mw": 5.1,
+        "tilt_deg": 20.0,
+        "orientation_deg_from_south": 0.0,
+        "ppa_rate_inr_per_kwh": 2.94,
+        "penalty_regulation": "Madhya Pradesh",
+        "eeg_id": "SIRMOUR",
     },
     "KASIPET": {
         "latitude": 19.03943918,
@@ -139,6 +144,11 @@ _PLANT_FALLBACKS = {
         "capacity_mw": 15.0,
         "dc_capacity_mw": 16.5,
         "max_feed_in_mw": 15.0,
+        "tilt_deg": 20.0,
+        "orientation_deg_from_south": 0.0,
+        "ppa_rate_inr_per_kwh": 5.65,
+        "penalty_regulation": "Telangana",
+        "eeg_id": "Singareni Collieries Company Limited-Kasipet Mines",
     },
     "BHUPALPALLY": {
         "latitude": 18.447931,
@@ -146,6 +156,11 @@ _PLANT_FALLBACKS = {
         "capacity_mw": 10.0,
         "dc_capacity_mw": 11.005,
         "max_feed_in_mw": 10.0,
+        "tilt_deg": 5.0,
+        "orientation_deg_from_south": 0.0,
+        "ppa_rate_inr_per_kwh": 5.65,
+        "penalty_regulation": "Telangana",
+        "eeg_id": "Singareni Collieries Company Limited-Chelpur",
     },
     "KOTHAGUDEM": {
         "latitude": 17.52500925,
@@ -153,6 +168,23 @@ _PLANT_FALLBACKS = {
         "capacity_mw": 37.0,
         "dc_capacity_mw": 40.0,
         "max_feed_in_mw": 37.0,
+        "tilt_deg": 20.0,
+        "orientation_deg_from_south": 0.0,
+        "ppa_rate_inr_per_kwh": 5.65,
+        "penalty_regulation": "Telangana",
+        "eeg_id": "Singareni Collieries Company Limited-Sitarampatnam",
+    },
+    "MANDAMARRI": {
+        "latitude": 18.98,
+        "longitude": 79.48,
+        "capacity_mw": 28.0,
+        "dc_capacity_mw": 30.0,
+        "max_feed_in_mw": 28.0,
+        "tilt_deg": 20.0,
+        "orientation_deg_from_south": 0.0,
+        "ppa_rate_inr_per_kwh": 5.65,
+        "penalty_regulation": "Telangana",
+        "eeg_id": "Singareni Collieries Company Limited-Mandamarri",
     },
     "OSEPL": {
         "latitude": 17.9068,
@@ -160,13 +192,35 @@ _PLANT_FALLBACKS = {
         "capacity_mw": 20.0,
         "dc_capacity_mw": 26.0,
         "max_feed_in_mw": 20.0,
+        "tilt_deg": 14.0,
+        "orientation_deg_from_south": 0.0,
+        "ppa_rate_inr_per_kwh": 9.27,
+        "penalty_regulation": "Maharashtra INTER",
+        "eeg_id": "OSEPL",
     },
     "ANJANGOAN": {
-        "latitude": 21.97583333,
-        "longitude": 75.96833333,
+        "latitude": 21.975833,
+        "longitude": 75.968333,
         "capacity_mw": 7.5,
         "dc_capacity_mw": 7.63,
         "max_feed_in_mw": 7.5,
+        "tilt_deg": 30.0,
+        "orientation_deg_from_south": 0.0,
+        "ppa_rate_inr_per_kwh": 2.94,
+        "penalty_regulation": "Madhya Pradesh",
+        "eeg_id": "ANJANGAON",
+    },
+    "ANJANGAON": {
+        "latitude": 21.975833,
+        "longitude": 75.968333,
+        "capacity_mw": 7.5,
+        "dc_capacity_mw": 7.63,
+        "max_feed_in_mw": 7.5,
+        "tilt_deg": 30.0,
+        "orientation_deg_from_south": 0.0,
+        "ppa_rate_inr_per_kwh": 2.94,
+        "penalty_regulation": "Madhya Pradesh",
+        "eeg_id": "ANJANGAON",
     },
     "BAMKHAL": {
         "latitude": 21.93,
@@ -174,34 +228,107 @@ _PLANT_FALLBACKS = {
         "capacity_mw": 5.0,
         "dc_capacity_mw": 6.07,
         "max_feed_in_mw": 5.0,
+        "tilt_deg": 30.0,
+        "orientation_deg_from_south": 0.0,
+        "ppa_rate_inr_per_kwh": 2.94,
+        "penalty_regulation": "Madhya Pradesh",
+        "eeg_id": "BAMKHAL",
     },
     "BALAKWADA": {
-        "latitude": 22.00583333,
-        "longitude": 75.52333333,
+        "latitude": 22.005833,
+        "longitude": 75.523333,
         "capacity_mw": 7.5,
         "dc_capacity_mw": 7.6,
         "max_feed_in_mw": 7.5,
+        "tilt_deg": 30.0,
+        "orientation_deg_from_south": 0.0,
+        "ppa_rate_inr_per_kwh": 2.94,
+        "penalty_regulation": "Madhya Pradesh",
+        "eeg_id": "BALAKWADA",
     },
     "ANDAD": {
-        "latitude": 21.95972222,
-        "longitude": 75.80583333,
+        "latitude": 21.959722,
+        "longitude": 75.805833,
         "capacity_mw": 7.5,
         "dc_capacity_mw": 8.54,
         "max_feed_in_mw": 7.5,
+        "tilt_deg": 30.0,
+        "orientation_deg_from_south": 0.0,
+        "ppa_rate_inr_per_kwh": 2.94,
+        "penalty_regulation": "Madhya Pradesh",
+        "eeg_id": "ANDAD",
     },
     "SAWDA": {
-        "latitude": 21.02138889,
-        "longitude": 75.60027778,
+        "latitude": 22.02683333,
+        "longitude": 75.62697222,
         "capacity_mw": 7.5,
         "dc_capacity_mw": 8.54,
         "max_feed_in_mw": 7.5,
+        "tilt_deg": 30.0,
+        "orientation_deg_from_south": 0.0,
+        "ppa_rate_inr_per_kwh": 2.94,
+        "penalty_regulation": "Madhya Pradesh",
+        "eeg_id": "SAWDA",
+    },
+    "GUGARIYAKHEDI": {
+        "latitude": 21.83944444,
+        "longitude": 75.71888889,
+        "capacity_mw": 7.5,
+        "dc_capacity_mw": 8.152,
+        "max_feed_in_mw": 7.5,
+        "tilt_deg": 30.0,
+        "orientation_deg_from_south": 0.0,
+        "ppa_rate_inr_per_kwh": 2.94,
+        "penalty_regulation": "Madhya Pradesh",
+        "eeg_id": "GUGARIYAKHEDI",
+    },
+    "NANDGAON": {
+        "latitude": 21.88222222,
+        "longitude": 75.48027778,
+        "capacity_mw": 7.5,
+        "dc_capacity_mw": 7.89,
+        "max_feed_in_mw": 7.5,
+        "tilt_deg": 30.0,
+        "orientation_deg_from_south": 0.0,
+        "ppa_rate_inr_per_kwh": 2.94,
+        "penalty_regulation": "Madhya Pradesh",
+        "eeg_id": "NANDGAON",
     },
     "CME": {
-        "latitude": 18.597833,
-        "longitude": 73.858361,
+        "latitude": 18.598528,
+        "longitude": 73.857808,
         "capacity_mw": 5.0,
-        "dc_capacity_mw": 5.0,
+        "dc_capacity_mw": 5.52,
         "max_feed_in_mw": 5.0,
+        "tilt_deg": 20.0,
+        "orientation_deg_from_south": -7.0,
+        "ppa_rate_inr_per_kwh": 0.0,
+        "penalty_regulation": "Maharashtra",
+        "eeg_id": "CME",
+    },
+    "GSNP": {
+        "latitude": 24.077752,
+        "longitude": 75.337636,
+        "capacity_mw": 20.0,
+        "dc_capacity_mw": 23.6016,
+        "max_feed_in_mw": 20.0,
+        "tilt_deg": 15.0,
+        "orientation_deg_from_south": 8.0,
+        "ppa_rate_inr_per_kwh": 6.97,
+        "penalty_regulation": "Madhya Pradesh",
+        "eeg_id": "GSPPL",
+    },
+    "GSPPL": {
+        "latitude": 24.077752,
+        "longitude": 75.337636,
+        "capacity_mw": 20.0,
+        "dc_capacity_mw": 23.6016,
+        "max_feed_in_mw": 20.0,
+        "tilt_deg": 15.0,
+        "orientation_deg_from_south": 8.0,
+        "ppa_rate_inr_per_kwh": 6.97,
+        "penalty_regulation": "Madhya Pradesh",
+        "eeg_id": "GSPPL",
     },
     "ZTRIC": {
         "latitude": 18.557968,
@@ -270,6 +397,38 @@ PLANT_ORIENTATION_FROM_SOUTH_DEG = _read_profile_float_setting(
     "orientation_deg_from_south",
     0.0,
 )
+PLANT_ORIENTATION_DEG_FROM_SOUTH = PLANT_ORIENTATION_FROM_SOUTH_DEG
+
+
+def to_openmeteo_azimuth(raw_azimuth: float | None = None) -> float:
+    """
+    Convert a plant panel azimuth to the Open-Meteo API convention.
+
+    Open-Meteo Convention:
+      0° = South, -90° = East, +90° = West, ±180° = North.
+
+    PVLib / Compass Convention:
+      180° = South, 90° = East, 270° = West, 0° = North.
+
+    Plant Profile Convention:
+      orientation_deg_from_south: 0.0 = True South.
+    """
+    if raw_azimuth is None:
+        raw_azimuth = PLANT_ORIENTATION_FROM_SOUTH_DEG
+    try:
+        val = float(raw_azimuth)
+    except (TypeError, ValueError):
+        val = 0.0
+
+    # If value is in compass/PVLib scale (> 90 deg, e.g. 180 for South):
+    if abs(val) > 90.0:
+        om = val - 180.0
+        while om > 180.0:
+            om -= 360.0
+        while om < -180.0:
+            om += 360.0
+        return round(om, 2)
+    return round(val, 2)
 PLANT_TRACKER_TYPE = _read_profile_setting("PLANT_TRACKER_TYPE", "tracker_type", "None")
 PLANT_AVAILABILITY_PLANNED_PCT = _read_profile_float_setting(
     "PLANT_AVAILABILITY_PLANNED_PCT",
@@ -283,6 +442,7 @@ PLANT_PPA_RATE_INR_PER_KWH = _read_profile_float_setting(
 )
 PLANT_EEG_ID = _read_profile_setting("PLANT_EEG_ID", "eeg_id", "")
 PLANT_KEY = _read_profile_setting("PLANT_KEY", "plant_key", "")
+PLANT_PENALTY_REGULATION = _read_profile_setting("PLANT_PENALTY_REGULATION", "penalty_regulation", "CERC")
 
 PERFORMANCE_RATIO = _read_profile_float_setting("PERFORMANCE_RATIO", "performance_ratio", 0.78)
 
@@ -290,10 +450,10 @@ PERFORMANCE_RATIO = _read_profile_float_setting("PERFORMANCE_RATIO", "performanc
 def load_plant_profile(plant_name: str | None = None) -> dict:
     """Authoritatively load and bind plant profile parameters into config globals."""
     global PLANT_NAME, PLANT_LAT, PLANT_LON, PLANT_CAPACITY_MW, PLANT_DC_CAPACITY_MW
-    global PLANT_MAX_FEED_IN_MW, PLANT_TILT_DEG, PLANT_ORIENTATION_FROM_SOUTH_DEG
+    global PLANT_MAX_FEED_IN_MW, PLANT_TILT_DEG, PLANT_ORIENTATION_FROM_SOUTH_DEG, PLANT_ORIENTATION_DEG_FROM_SOUTH
     global PLANT_TRACKER_TYPE, PLANT_AVAILABILITY_PLANNED_PCT, PLANT_PPA_RATE_INR_PER_KWH
     global PLANT_EEG_ID, PLANT_KEY, PERFORMANCE_RATIO, PLANT_PROFILE, PLANT_PROFILE_PATH
-    global PREDICTION_CONTEXT_PATH
+    global PREDICTION_CONTEXT_PATH, PLANT_PENALTY_REGULATION
 
     name = (plant_name or PLANT_NAME or "SIRMOUR").strip().upper()
     profile_path = Path(__file__).resolve().with_name("plant_profiles") / f"{name}.json"
@@ -309,13 +469,15 @@ def load_plant_profile(plant_name: str | None = None) -> dict:
     PLANT_CAPACITY_MW = _profile_float(profile, "maximum_feed_in_ac_kw", fallback["capacity_mw"] * 1000.0) / 1000.0
     PLANT_DC_CAPACITY_MW = _profile_float(profile, "dc_capacity_kw", fallback["dc_capacity_mw"] * 1000.0) / 1000.0
     PLANT_MAX_FEED_IN_MW = _profile_float(profile, "maximum_feed_in_ac_kw", fallback["max_feed_in_mw"] * 1000.0) / 1000.0
-    PLANT_TILT_DEG = _profile_float(profile, "tilt_deg", 20.0)
-    PLANT_ORIENTATION_FROM_SOUTH_DEG = _profile_float(profile, "orientation_deg_from_south", 0.0)
-    PLANT_TRACKER_TYPE = _profile_str(profile, "tracker_type", "None")
+    PLANT_TILT_DEG = _profile_float(profile, "tilt_deg", fallback.get("tilt_deg", 20.0))
+    PLANT_ORIENTATION_FROM_SOUTH_DEG = _profile_float(profile, "orientation_deg_from_south", fallback.get("orientation_deg_from_south", 0.0))
+    PLANT_ORIENTATION_DEG_FROM_SOUTH = PLANT_ORIENTATION_FROM_SOUTH_DEG
+    PLANT_TRACKER_TYPE = _profile_str(profile, "tracker_type", fallback.get("tracker_type", "None"))
     PLANT_AVAILABILITY_PLANNED_PCT = _profile_float(profile, "availability_planned_pct", 100.0)
-    PLANT_PPA_RATE_INR_PER_KWH = _profile_float(profile, "ppa_rate_inr_per_kwh", 0.0)
-    PLANT_EEG_ID = _profile_str(profile, "eeg_id", "")
+    PLANT_PPA_RATE_INR_PER_KWH = _profile_float(profile, "ppa_rate_inr_per_kwh", fallback.get("ppa_rate_inr_per_kwh", 0.0))
+    PLANT_EEG_ID = _profile_str(profile, "eeg_id", fallback.get("eeg_id", ""))
     PLANT_KEY = _profile_str(profile, "plant_key", "")
+    PLANT_PENALTY_REGULATION = _profile_str(profile, "penalty_regulation", fallback.get("penalty_regulation", "CERC"))
     PERFORMANCE_RATIO = _profile_float(profile, "performance_ratio", 0.78)
     PREDICTION_CONTEXT_PATH = _storage_path("prediction_context", f"{name}_context.json")
 

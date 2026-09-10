@@ -1,12 +1,14 @@
 {
   "plant_name": "SAWDA",
-  "latitude": 21.02138889,
-  "longitude": 75.60027778,
+  "latitude": 22.02683333,
+  "longitude": 75.62697222,
   "dc_capacity_kw": 8540,
   "maximum_feed_in_ac_kw": 7500,
   "tracker_type": "None",
   "orientation_deg_from_south": 0,
-  "tilt_deg": 20,
+  "tilt_deg": 30,
+  "number_of_panels": 14671,
   "eeg_id": "SAWDA",
-  "ppa_rate_inr_per_kwh": 0.0
+  "ppa_rate_inr_per_kwh": 2.94,
+  "penalty_regulation": "Madhya Pradesh"
 }

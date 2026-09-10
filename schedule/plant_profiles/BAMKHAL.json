@@ -6,7 +6,8 @@
   "maximum_feed_in_ac_kw": 5000,
   "tracker_type": "None",
   "orientation_deg_from_south": 0,
-  "tilt_deg": 20,
+  "tilt_deg": 30,
   "eeg_id": "BAMKHAL",
-  "ppa_rate_inr_per_kwh": 0.0
+  "ppa_rate_inr_per_kwh": 2.94,
+  "penalty_regulation": "Madhya Pradesh"
 }

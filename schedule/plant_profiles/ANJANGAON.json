@@ -1,5 +1,5 @@
 {
-  "plant_name": "ANJANGOAN",
+  "plant_name": "ANJANGAON",
   "latitude": 21.975833,
   "longitude": 75.968333,
   "dc_capacity_kw": 7630,
@@ -8,7 +8,7 @@
   "orientation_deg_from_south": 0,
   "tilt_deg": 30,
   "eeg_id": "ANJANGAON",
-  "plant_key": "ANJANGOAN",
+  "plant_key": "ANJANGAON",
   "ppa_rate_inr_per_kwh": 2.94,
   "penalty_regulation": "Madhya Pradesh",
   "performance_ratio": 0.78

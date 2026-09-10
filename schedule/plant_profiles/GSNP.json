@@ -1,12 +1,13 @@
 {
-  "plant_name": "GSNP",
+  "plant_name": "GSPPL",
   "latitude": 24.077752,
   "longitude": 75.337636,
-  "dc_capacity_kw": 20000,
+  "dc_capacity_kw": 23601.6,
   "maximum_feed_in_ac_kw": 20000,
   "tracker_type": "None",
-  "orientation_deg_from_south": 0,
-  "tilt_deg": 20,
-  "eeg_id": "GSNP",
-  "ppa_rate_inr_per_kwh": 0.0
+  "orientation_deg_from_south": 8,
+  "tilt_deg": 15,
+  "eeg_id": "GSPPL",
+  "ppa_rate_inr_per_kwh": 6.97,
+  "penalty_regulation": "Madhya Pradesh"
 }

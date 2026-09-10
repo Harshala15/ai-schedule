@@ -41,8 +41,9 @@ def fetch_dual_stream_weather_fusion(
 ) -> dict[str, Any]:
     """Fetches 3 explicit standalone weather streams and formats them for LLM 3-stream arbitration."""
     reference_time = reference_time or dt.datetime.now()
-    effective_tilt = float(tilt if tilt is not None else getattr(config, "PLANT_TILT_DEG", 20.0))
-    effective_azimuth = float(azimuth if azimuth is not None else getattr(config, "PLANT_ORIENTATION_DEG_FROM_SOUTH", 180.0))
+    effective_tilt = tilt if tilt is not None else getattr(config, "PLANT_TILT_DEG", 15.0)
+    raw_az = azimuth if azimuth is not None else getattr(config, "PLANT_ORIENTATION_FROM_SOUTH_DEG", getattr(config, "PLANT_ORIENTATION_DEG_FROM_SOUTH", 0.0))
+    effective_azimuth = config.to_openmeteo_azimuth(raw_az)
 
     api_key = getattr(config, "OPENMETEO_API_KEY", "") or os.getenv("OPENMETEO_API_KEY", "").strip()
     is_commercial = bool(api_key)
@@ -102,26 +103,37 @@ def fetch_dual_stream_weather_fusion(
     bm_by_hour: dict[str, dict[str, Any]] = {}
     for r in bm_rows:
         t_label = r.time.strftime("%H:%M") if hasattr(r, "time") else r.get("hour_label") or r.get("time", "")[-5:]
-        gti = r.global_tilted_irradiance_instant if hasattr(r, "global_tilted_irradiance_instant") else r.get("global_tilted_irradiance_instant")
-        temp = r.temperature_2m if hasattr(r, "temperature_2m") else r.get("temperature_2m")
-        precip = r.precipitation if hasattr(r, "precipitation") else r.get("precipitation", 0.0)
-        cloud = r.cloud_cover_low if hasattr(r, "cloud_cover_low") else r.get("cloud_cover_low", 0.0)
+        gti = getattr(r, "global_tilted_irradiance_instant", None) if hasattr(r, "global_tilted_irradiance_instant") else r.get("global_tilted_irradiance_instant")
+        temp = getattr(r, "temperature_2m", None) if hasattr(r, "temperature_2m") else r.get("temperature_2m")
+        precip = getattr(r, "precipitation", None) if hasattr(r, "precipitation") else r.get("precipitation", 0.0)
+        cloud = getattr(r, "effective_cloud_cover", None) if hasattr(r, "effective_cloud_cover") else None
+        if cloud is None:
+            cloud = getattr(r, "cloud_cover_low", None) if hasattr(r, "cloud_cover_low") else r.get("cloud_cover_low", 0.0)
+        t_cell = getattr(r, "temp_cell_sandia_c", None) if hasattr(r, "temp_cell_sandia_c") else r.get("temp_cell_sandia_c")
+        derate = getattr(r, "temp_derate_factor", None) if hasattr(r, "temp_derate_factor") else r.get("temp_derate_factor")
         bm_by_hour[t_label] = {
             "gti": gti or 0.0,
             "temp": temp or 25.0,
             "precip": precip or 0.0,
             "cloud": cloud or 0.0,
+            "temp_cell": t_cell,
+            "derate": derate,
         }
 
     # Map Stream 2 (Super-Ensemble) by hour
     ens_by_hour: dict[str, dict[str, Any]] = {}
     for r in ens_rows:
         t_label = r.get("hour_label") or r.get("time", "")[-5:]
+        cloud = r.get("effective_cloud_cover")
+        if cloud is None:
+            cloud = r.get("cloud_cover_low") or 0.0
         ens_by_hour[t_label] = {
-            "gti": r.get("global_tilted_irradiance_instant") or 0.0,
+            "gti": r.get("global_tilted_irradiance_instant") or r.get("global_tilted_irradiance") or 0.0,
             "temp": r.get("temperature_2m") or 25.0,
             "precip": r.get("precipitation") or 0.0,
-            "cloud": r.get("cloud_cover_low") or 0.0,
+            "cloud": cloud,
+            "temp_cell": r.get("temp_cell_sandia_c"),
+            "derate": r.get("temp_derate_factor"),
         }
 
     def _get_hourly_interpolated(hourly_map: dict[str, dict[str, Any]], t_label: str) -> dict[str, Any]:
@@ -194,27 +206,37 @@ def fetch_dual_stream_weather_fusion(
 
         drift_w = p.get("drift_w_m2", 0.0)
         drift_lbl = p.get("drift_label", "Stable")
-        cell_t = p.get("temp_cell_sandia_c", temp_avg + 10.0)
-        temp_derate = p.get("temp_derate_multiplier", 0.95)
+        cell_t = p.get("temp_cell_sandia_c", b.get("temp_cell") or round(temp_avg + 10.0, 1))
+        temp_derate = p.get("temp_derate_multiplier", b.get("derate") or 0.95)
         cape_val = int(p.get("cape_j_kg", 0))
         trans_val = p.get("cloud_transmissivity", 1.0)
         sun_sec = p.get("sunshine_seconds", 3600)
 
         delta_spread = abs(gti_stream1 - gti_stream2)
 
-        # Baseline consensus target
-        if precip_max >= 0.15 or (cape_val >= 1500 and drift_w < -30.0):
+        # Robust consensus target:
+        is_cloudy_or_rain = (precip_max >= 0.15) or (cloud_avg >= 40.0) or (trans_val < 0.80)
+        is_convective_storm = (cape_val >= 1500 and (drift_w < -30.0 or cloud_avg >= 40.0 or precip_max >= 0.10))
+
+        if is_cloudy_or_rain or is_convective_storm:
             gti_fused = min(gti_stream1, gti_stream2, gti_stream3)
-            regime = "RAIN DAMPENED (P40 Guardrail)"
-            conf = "Convective Storm Threat" if cape_val >= 1500 else "Rain Cell Detected"
+            regime = "RAIN / CLOUD DAMPENED (P40 Guardrail)"
+            conf = "Convective Storm Threat" if is_convective_storm else "Cloud / Rain Attenuation"
         elif delta_spread <= 60.0:
             gti_fused = round(((gti_stream1 + gti_stream2 + gti_stream3) / 3.0), 1)
             regime = "HIGH AGREEMENT"
             conf = "High Confidence"
         elif delta_spread > 120.0 or drift_w < -50.0:
-            gti_fused = round(min(gti_stream1, gti_stream2, gti_stream3) * 0.95, 1)
-            regime = "HIGH DIVERGENCE (CERC Penalty Shield Active)"
-            conf = "Cloud Momentum Shift" if drift_w < -50.0 else "Cloud Uncertainty"
+            if cloud_avg >= 35.0 or drift_w < -50.0:
+                gti_fused = round(min(gti_stream1, gti_stream2, gti_stream3) * 0.95, 1)
+                regime = "HIGH DIVERGENCE (Cloud Penalty Shield)"
+                conf = "Cloud Momentum Shift" if drift_w < -50.0 else "Cloud Uncertainty"
+            else:
+                # Clear sky divergence between models (e.g. transposition or aerosol differences)
+                sorted_gtis = sorted([gti_stream1, gti_stream2, gti_stream3])
+                gti_fused = round(sorted_gtis[1], 1)  # Robust median
+                regime = "MODERATE SPREAD (Clear-Sky Robust Median)"
+                conf = "Clear Sky Transposition Spread"
         else:
             gti_fused = round((0.4 * gti_stream1 + 0.3 * gti_stream2 + 0.3 * gti_stream3), 1)
             regime = "MODERATE SPREAD"
