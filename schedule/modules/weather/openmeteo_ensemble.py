@@ -1,4 +1,4 @@
-﻿"""Open-Meteo Multi-Model Super-Ensemble Weather Module with 3-Day Calibration & Live SCADA Feedback.
+"""Open-Meteo Multi-Model Super-Ensemble Weather Module with 3-Day Calibration & Live SCADA Feedback.
 
 Features:
 1. Multi-Model Super-Ensemble: Blends ECMWF 51-member ensemble (25 km) + German DWD ICON (7 km).
@@ -46,9 +46,11 @@ WEATHER_COLUMNS = [
     "shortwave_radiation_instant",
     "direct_normal_irradiance",
     "temperature_2m",
-    "surface_temperature",
+    "wind_speed_10m",
     "cloud_cover",
     "cloud_cover_low",
+    "cloud_cover_mid",
+    "cloud_cover_high",
     "precipitation",
 ]
 
@@ -231,7 +233,7 @@ def _raw_ensemble_request(
     timezone: str = "Asia/Kolkata",
     model: str = DEFAULT_ENSEMBLE_MODEL,
     tilt: float = 20.0,
-    azimuth: float = 180.0,
+    azimuth: float = 0.0,
     url: str = DEFAULT_ENSEMBLE_URL,
     temporal_resolution: str = "hourly",
     timeout_seconds: int = 35,
@@ -240,6 +242,7 @@ def _raw_ensemble_request(
     retries: int = 3,
     backoff_factor: float = 0.5,
 ) -> dict[str, Any]:
+    effective_azimuth = config.to_openmeteo_azimuth(azimuth)
     key = _cache_key(
         latitude=latitude,
         longitude=longitude,
@@ -247,7 +250,7 @@ def _raw_ensemble_request(
         timezone=timezone,
         model=model,
         tilt=tilt,
-        azimuth=azimuth,
+        azimuth=effective_azimuth,
         url=url,
         temporal_resolution=temporal_resolution,
     )
@@ -264,7 +267,11 @@ def _raw_ensemble_request(
         "shortwave_radiation",
         "direct_normal_irradiance",
         "temperature_2m",
+        "wind_speed_10m",
         "cloud_cover",
+        "cloud_cover_low",
+        "cloud_cover_mid",
+        "cloud_cover_high",
         "precipitation",
     ]
 
@@ -275,7 +282,7 @@ def _raw_ensemble_request(
         "models": model,
         "timezone": timezone,
         "tilt": f"{tilt:.1f}",
-        "azimuth": f"{azimuth:.1f}",
+        "azimuth": f"{effective_azimuth:.1f}",
         "start_date": run_date,
         "end_date": run_date,
     }
@@ -476,7 +483,7 @@ def select_best_recent_ensemble_members(
     selection_days: int = 3,
     timezone: str = "Asia/Kolkata",
     tilt: float = 20.0,
-    azimuth: float = 180.0,
+    azimuth: float = 0.0,
     cache_dir: Path | None = None,
 ) -> tuple[list[str], dict[str, float], dict[str, Any]]:
     target_date = dt.date.fromisoformat(target_date_str)
@@ -764,7 +771,7 @@ def fetch_openmeteo_ensemble_calibrated_summary(
     *,
     timezone: str = "Asia/Kolkata",
     tilt: float = 20.0,
-    azimuth: float = 180.0,
+    azimuth: float = 0.0,
     plant_name: str = config.PLANT_NAME,
     top_k: int = 15,
     is_volatile: bool = False,
@@ -820,8 +827,10 @@ def fetch_openmeteo_ensemble_calibrated_summary(
     time_strings = calibrated_data.get("time", [])
     gti_series = calibrated_data.get("global_tilted_irradiance_instant") or calibrated_data.get("shortwave_radiation") or []
     temp_series = calibrated_data.get("temperature_2m", [])
-    surf_temp_series = calibrated_data.get("surface_temperature", [])
+    wind_series = calibrated_data.get("wind_speed_10m", [])
     cloud_low_series = calibrated_data.get("cloud_cover_low") or calibrated_data.get("cloud_cover") or []
+    cloud_mid_series = calibrated_data.get("cloud_cover_mid") or []
+    cloud_high_series = calibrated_data.get("cloud_cover_high") or []
     precip_series = calibrated_data.get("precipitation", [])
 
     start_window = ref_dt
@@ -849,9 +858,21 @@ def fetch_openmeteo_ensemble_calibrated_summary(
             adjusted_gti = round(raw_gti * effective_factor, 2)
 
         temp_val = temp_series[i] if i < len(temp_series) else None
-        surf_temp_val = surf_temp_series[i] if i < len(surf_temp_series) else None
-        cloud_low_val = cloud_low_series[i] if i < len(cloud_low_series) else None
+        wind_val = wind_series[i] if i < len(wind_series) else 2.5
+        cloud_low_val = cloud_low_series[i] if i < len(cloud_low_series) else 0.0
+        cloud_mid_val = cloud_mid_series[i] if i < len(cloud_mid_series) else 0.0
+        cloud_high_val = cloud_high_series[i] if i < len(cloud_high_series) else 0.0
         precip_val = precip_series[i] if i < len(precip_series) else None
+
+        # Sandia PV cell temperature calculation with wind cooling
+        gti_for_cell = adjusted_gti or 0.0
+        ambient_t = temp_val if temp_val is not None else 25.0
+        wind_spd = wind_val if (wind_val is not None and wind_val >= 0.0) else 2.5
+        cell_temp = round(ambient_t + gti_for_cell * math.exp(-3.56 - 0.075 * wind_spd), 1)
+        derate_factor = round(1.0 - 0.0038 * max(0.0, cell_temp - 25.0), 3)
+
+        # Optical tiered cloud cover (cirrus discount)
+        eff_cloud = round(min(100.0, (cloud_low_val or 0.0) * 1.0 + (cloud_mid_val or 0.0) * 0.70 + (cloud_high_val or 0.0) * 0.15), 1)
 
         matching_rows.append({
             "time": row_dt.strftime("%Y-%m-%d %H:%M"),
@@ -859,8 +880,14 @@ def fetch_openmeteo_ensemble_calibrated_summary(
             "global_tilted_irradiance_instant": adjusted_gti,
             "raw_ensemble_gti": raw_gti,
             "temperature_2m": temp_val,
-            "surface_temperature": surf_temp_val,
+            "wind_speed_10m": wind_val,
+            "temp_cell_sandia_c": cell_temp,
+            "temp_derate_factor": derate_factor,
+            "surface_temperature": cell_temp,
             "cloud_cover_low": cloud_low_val,
+            "cloud_cover_mid": cloud_mid_val,
+            "cloud_cover_high": cloud_high_val,
+            "effective_cloud_cover": eff_cloud,
             "precipitation": precip_val,
         })
 
@@ -876,7 +903,9 @@ def fetch_openmeteo_ensemble_calibrated_summary(
     first = matching_rows[0]
     last = matching_rows[-1]
     avg_gti = sum((r["global_tilted_irradiance_instant"] or 0.0) for r in matching_rows) / len(matching_rows)
-    avg_cloud = sum((r["cloud_cover_low"] or 0.0) for r in matching_rows) / len(matching_rows)
+    avg_cloud = sum((r.get("effective_cloud_cover") or r.get("cloud_cover_low") or 0.0) for r in matching_rows) / len(matching_rows)
+    avg_t_cell = sum((r.get("temp_cell_sandia_c") or 25.0) for r in matching_rows) / len(matching_rows)
+    avg_derate = sum((r.get("temp_derate_factor") or 1.0) for r in matching_rows) / len(matching_rows)
     max_precip = max((r["precipitation"] or 0.0) for r in matching_rows)
 
     trend_delta = (last["global_tilted_irradiance_instant"] or 0.0) - (first["global_tilted_irradiance_instant"] or 0.0)
@@ -887,23 +916,25 @@ def fetch_openmeteo_ensemble_calibrated_summary(
     summary_lines = [
         f"ECMWF+ICON Super-Ensemble ({member_count_label}{bias_desc}) forecast for next revision horizon:",
         f"- Window: {first['time']} to {last['time']}",
-        f"- Global tilted irradiance: start={first['global_tilted_irradiance_instant'] or 0.0:.2f} W/mÂ², "
-        f"end={last['global_tilted_irradiance_instant'] or 0.0:.2f} W/mÂ², trend={trend_label}, "
-        f"avg={avg_gti:.1f} W/mÂ²",
-        f"- Cloud cover low: avg={avg_cloud:.1f}%",
+        f"- Global tilted irradiance: start={first['global_tilted_irradiance_instant'] or 0.0:.2f} W/m², "
+        f"end={last['global_tilted_irradiance_instant'] or 0.0:.2f} W/m², trend={trend_label}, "
+        f"avg={avg_gti:.1f} W/m²",
+        f"- Effective cloud cover: avg={avg_cloud:.1f}% (low/mid/high weighted)",
+        f"- Sandia PV cell temperature: avg={avg_t_cell:.1f}°C (derate={avg_derate:.3f})",
         f"- Precipitation max={max_precip:.2f} mm",
-        f"- Temperature: start={first['temperature_2m'] or 0.0:.2f}Â°C, end={last['temperature_2m'] or 0.0:.2f}Â°C",
+        f"- Ambient temperature: start={first['temperature_2m'] or 0.0:.2f}°C, end={last['temperature_2m'] or 0.0:.2f}°C",
     ]
 
     prompt_lines = [summary_lines[0], *summary_lines[1:], "Hourly weather rows:"]
     for r in matching_rows:
         prompt_lines.append(
             f"- {r['hour_label']}: "
-            f"irradiance={r['global_tilted_irradiance_instant'] or 0.0:.2f} W/mÂ², "
-            f"temp={r['temperature_2m'] or 0.0:.2f}Â°C, "
-            f"surface_temp={r['surface_temperature'] or 0.0:.2f}Â°C, "
-            f"precip={r['precipitation'] or 0.0:.2f} mm, "
-            f"cloud_low={r['cloud_cover_low'] or 0.0:.2f}%"
+            f"irradiance={r['global_tilted_irradiance_instant'] or 0.0:.1f} W/m², "
+            f"temp={r['temperature_2m'] or 0.0:.1f}°C, "
+            f"T_cell={r.get('temp_cell_sandia_c', 0.0):.1f}°C (Derate={r.get('temp_derate_factor', 1.0):.3f}), "
+            f"wind={r.get('wind_speed_10m', 0.0) or 0.0:.1f} m/s, "
+            f"eff_cloud={r.get('effective_cloud_cover', 0.0):.1f}%, "
+            f"precip={r['precipitation'] or 0.0:.2f} mm"
         )
 
     summary_result = {

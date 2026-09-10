@@ -17,7 +17,7 @@ IST = ZoneInfo("Asia/Kolkata")
 
 def _capture_times_for_site() -> list[str]:
     site = (getattr(config, "PLANT_NAME", "") or "").strip().upper()
-    if site in {"BHUPALPALLY", "KASIPET", "KOTHAGUDEM", "BAMKHAL", "BALAKWADA", "ANDAD", "SAWDA", "CME"}:
+    if site in {"BHUPALPALLY", "KASIPET", "KOTHAGUDEM", "MANDAMARRI", "BALAKWADA", "ANDAD", "SAWDA", "CME", "ANJANGAON", "ANJANGOAN", "BAMKHAL", "GUGARIYAKHEDI", "NANDGAON", "OSEPL", "GSNP", "GSPPL"}:
         return ["06:00", "06:45", "08:15", "09:45", "11:15", "12:45", "14:15", "15:45"]
     return list(getattr(config, "CAPTURE_TIMES", []) or [])
 
@@ -111,12 +111,21 @@ def _meter_filename_hints(plant_name: str | None = None) -> list[str]:
     hints = {
         "BHUPALPALLY": ["bhupalpally"],
         "KASIPET": ["kasipet"],
+        "KOTHAGUDEM": ["kothagudem"],
+        "MANDAMARRI": ["mandamarri"],
         "SIRMOUR": ["sirmour", "solar_inv", "solarinv"],
         "BAMKHAL": ["bamkhal"],
         "BALAKWADA": ["balakwada"],
         "ANDAD": ["andad"],
         "SAWDA": ["sawda"],
+        "ANJANGAON": ["anjangaon", "anjangoan"],
+        "ANJANGOAN": ["anjangaon", "anjangoan"],
+        "GUGARIYAKHEDI": ["gugariyakhedi"],
+        "NANDGAON": ["nandgaon"],
         "CME": ["cme"],
+        "OSEPL": ["osepl"],
+        "GSNP": ["gsnp", "gsppl"],
+        "GSPPL": ["gsnp", "gsppl"],
     }
     return hints.get(plant, [plant.lower()] if plant else [])
 
@@ -202,6 +211,7 @@ def freeze_from_datetime(target_date: str, target_time: str, block_minutes: int 
     freeze_lag_minutes_by_plant = {
         "SIRMOUR": 90,
         "ANJANGOAN": 90,
+        "ANJANGAON": 90,
         "ANDAD": 90,
         "BALAKWADA": 90,
         "BAMKHAL": 90,
@@ -213,6 +223,7 @@ def freeze_from_datetime(target_date: str, target_time: str, block_minutes: int 
         "BHUPALPALLY": 45,
         "KASIPET": 45,
         "KOTHAGUDEM": 45,
+        "MANDAMARRI": 45,
         "CME": 45,
         "OSEPL": 45,
         "ZTRIC": 45,
@@ -262,6 +273,7 @@ def write_current_final_schedule(
         freeze_lag_minutes = {
         "SIRMOUR": 90,
         "ANJANGOAN": 90,
+        "ANJANGAON": 90,
         "ANDAD": 90,
         "BALAKWADA": 90,
         "BAMKHAL": 90,
@@ -273,6 +285,7 @@ def write_current_final_schedule(
         "BHUPALPALLY": 45,
         "KASIPET": 45,
         "KOTHAGUDEM": 45,
+        "MANDAMARRI": 45,
         "CME": 45,
         "OSEPL": 45,
         "ZTRIC": 45,
@@ -622,7 +635,7 @@ def write_full_block_schedule_from_llm_schedule(
         writer.writeheader()
         for block in range(1, total_blocks + 1):
             val = schedule_by_block.get(block, 0.0)
-            if block < 28 or block >= 74:
+            if block < 24 or block >= 75:
                 val = 0.0
             writer.writerow({
                 "block": block,

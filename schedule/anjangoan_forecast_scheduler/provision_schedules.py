@@ -1,0 +1,87 @@
+"""Create or update the daily EventBridge Scheduler rules for ANJANGOAN."""
+
+from __future__ import annotations
+
+import json
+import os
+
+import boto3
+from botocore.exceptions import ClientError
+
+import config
+from anjangoan_forecast_scheduler import settings
+
+
+CAPTURE_TIMES = tuple(
+    getattr(
+        config,
+        "CAPTURE_TIMES",
+        (
+            "05:00", "05:30", "06:00", "06:30", "07:00", "07:30",
+            "08:00", "08:30", "09:00", "09:30", "10:00", "10:30",
+            "11:00", "11:30", "12:00", "12:30", "13:00", "13:30",
+            "14:00", "14:30", "15:00", "15:30", "16:00", "16:30",
+            "17:00", "17:30", "18:00",
+        ),
+    )
+)
+
+
+def _require_env(name: str) -> str:
+    value = os.getenv(name, "").strip()
+    if not value:
+        raise RuntimeError(f"{name} environment variable is required.")
+    return value
+
+
+def _schedule_name(time_str: str) -> str:
+    return f"anjangoan-forecast-{time_str.replace(':', '')}"
+
+
+def _cron_expression(time_str: str) -> str:
+    hour, minute = time_str.split(":")
+    return f"cron({int(minute)} {int(hour)} * * ? *)"
+
+
+def upsert_schedules() -> list[dict]:
+    lambda_arn = _require_env("ANJANGOAN_FORECAST_LAMBDA_ARN")
+    role_arn = _require_env("ANJANGOAN_EVENTBRIDGE_INVOKE_ROLE_ARN")
+    region = os.getenv("AWS_REGION", "ap-south-1").strip() or "ap-south-1"
+    client = boto3.client("scheduler", region_name=region)
+
+    results = []
+    for time_str in CAPTURE_TIMES:
+        payload = json.dumps({"target_time": time_str, "site_id": "ANJANGOAN"})
+        name = _schedule_name(time_str)
+        kwargs = dict(
+            Name=name,
+            ScheduleExpression=_cron_expression(time_str),
+            ScheduleExpressionTimezone=settings.DEFAULT_TIMEZONE,
+            FlexibleTimeWindow={"Mode": "OFF"},
+            Target={
+                "Arn": lambda_arn,
+                "RoleArn": role_arn,
+                "Input": payload,
+            },
+            State="ENABLED",
+            Description=f"ANJANGOAN forecast run for {time_str}",
+        )
+        try:
+            client.create_schedule(**kwargs)
+        except ClientError as exc:
+            error_code = exc.response.get("Error", {}).get("Code", "")
+            if error_code not in {"ConflictException", "ResourceAlreadyExistsException"}:
+                raise
+            client.update_schedule(**kwargs)
+        results.append({"name": name, "target_time": time_str, "schedule_expression": _cron_expression(time_str)})
+    return results
+
+
+def main():
+    results = upsert_schedules()
+    for row in results:
+        print(row)
+
+
+if __name__ == "__main__":
+    main()

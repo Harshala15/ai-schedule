@@ -1,4 +1,4 @@
-﻿"""
+"""
 run_pipeline.py
 
 Pipeline entry point for the hybrid architecture:
@@ -96,7 +96,7 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
         summary. Used as Step 3 in the stepwise prompt.
     """
     reference_time = reference_time or datetime.datetime.now()
-    stepwise_live_plants = {"BHUPALPALLY", "KASIPET", "SIRMOUR", "KOTHAGUDEM", "OSEPL", "ANJANGOAN", "BAMKHAL", "BALAKWADA", "ANDAD", "SAWDA", "CME", "GUGARIYAKHEDI", "NANDGAON", "GSNP"}
+    stepwise_live_plants = {"BHUPALPALLY", "KASIPET", "SIRMOUR", "KOTHAGUDEM", "MANDAMARRI", "OSEPL", "ANJANGOAN", "ANJANGAON", "BAMKHAL", "BALAKWADA", "ANDAD", "SAWDA", "CME", "GUGARIYAKHEDI", "NANDGAON", "GSNP"}
     stepwise_live_only = config.PLANT_NAME.upper() in stepwise_live_plants
     intraday_state = (
         daily_feedback.summarize_intraday_state(intraday_actuals_path, reference_time)
@@ -139,18 +139,35 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
             from modules.weather import weather_fusion
             is_volatile = bool(intraday_state and intraday_state.get("fluctuation_flag"))
             forecast_hours = max(1, int(math.ceil((num_blocks or config.NUM_FORECAST_BLOCKS) * config.BLOCK_MINUTES / 60.0)))
+            raw_az = getattr(config, "PLANT_ORIENTATION_FROM_SOUTH_DEG", getattr(config, "PLANT_ORIENTATION_DEG_FROM_SOUTH", 0.0))
             w_report = weather_fusion.fetch_dual_stream_weather_fusion(
                 latitude=config.PLANT_LAT,
                 longitude=config.PLANT_LON,
                 reference_time=reference_time,
                 hours_ahead=forecast_hours,
                 tilt=getattr(config, "PLANT_TILT_DEG", 20.0),
-                azimuth=getattr(config, "PLANT_ORIENTATION_DEG_FROM_SOUTH", 180.0),
+                azimuth=config.to_openmeteo_azimuth(raw_az),
                 plant_name=config.PLANT_NAME,
                 is_volatile=is_volatile,
             )
             weather_text = w_report.get("prompt_text", "")
             fused_weather_rows = w_report.get("fused_rows", [])
+            fused_weather_map = {r.get("hour_label"): r for r in fused_weather_rows if isinstance(r, dict) and r.get("hour_label")}
+
+            # Real-Time Ground Sensor MOS Calibration
+            recent_poa = intraday_state.get("recent_poa_avg") if intraday_state else None
+            if recent_poa and fused_weather_rows:
+                curr_hour_lbl = reference_time.strftime("%H:%M")
+                curr_row = fused_weather_map.get(curr_hour_lbl) or fused_weather_rows[0]
+                model_gti = curr_row.get("gti_fused") or curr_row.get("gti_stream1", 0.0)
+                if model_gti and model_gti > 50.0:
+                    mos_ratio = round(recent_poa / model_gti, 3)
+                    mos_note = f"\n- REAL-TIME GROUND SENSOR CALIBRATION (MOS): Live Ground POA={recent_poa:.1f} W/m2 vs Model GTI={model_gti:.1f} W/m2 (Ratio={mos_ratio:.2f})."
+                    if mos_ratio > 1.08:
+                        mos_note += f" Ground irradiance is outperforming weather models by {(mos_ratio - 1.0) * 100:.1f}%. Suppress negative adjustments and maintain clear-sky ramp."
+                    elif mos_ratio < 0.85:
+                        mos_note += f" Ground clouds are thicker than weather models by {(1.0 - mos_ratio) * 100:.1f}%. Apply ground cloud attenuation factor {mos_ratio:.2f} to forward blocks."
+                    weather_text += mos_note
         except Exception as w_exc:
             print(f"  [WARN] Auto-fetching dual-stream weather fusion failed: {w_exc}")
     fused_weather_map = {r.get("hour_label"): r for r in fused_weather_rows if isinstance(r, dict) and r.get("hour_label")}

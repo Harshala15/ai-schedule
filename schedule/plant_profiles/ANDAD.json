@@ -1,12 +1,13 @@
 {
   "plant_name": "ANDAD",
-  "latitude": 21.95972222,
-  "longitude": 75.80583333,
+  "latitude": 21.959722,
+  "longitude": 75.805833,
   "dc_capacity_kw": 8540,
   "maximum_feed_in_ac_kw": 7500,
   "tracker_type": "None",
   "orientation_deg_from_south": 0,
-  "tilt_deg": 20,
+  "tilt_deg": 30,
   "eeg_id": "ANDAD",
-  "ppa_rate_inr_per_kwh": 0.0
+  "ppa_rate_inr_per_kwh": 2.94,
+  "penalty_regulation": "Madhya Pradesh"
 }

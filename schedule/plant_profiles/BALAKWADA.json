@@ -1,12 +1,13 @@
 {
   "plant_name": "BALAKWADA",
-  "latitude": 22.00583333,
-  "longitude": 75.52333333,
+  "latitude": 22.005833,
+  "longitude": 75.523333,
   "dc_capacity_kw": 7600,
   "maximum_feed_in_ac_kw": 7500,
   "tracker_type": "None",
   "orientation_deg_from_south": 0,
-  "tilt_deg": 20,
+  "tilt_deg": 30,
   "eeg_id": "BALAKWADA",
-  "ppa_rate_inr_per_kwh": 0.0
+  "ppa_rate_inr_per_kwh": 2.94,
+  "penalty_regulation": "Madhya Pradesh"
 }
