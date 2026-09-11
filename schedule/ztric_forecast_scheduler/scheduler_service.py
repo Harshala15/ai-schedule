@@ -471,14 +471,16 @@ def _build_rows(
             asset_id = asset["asset_id"]
             asset_capacity = float(asset["capacity_ac_mw"])
             value = min(max(float(asset_schedules.get(asset_id, {}).get(block, 0.0)), 0.0), asset_capacity)
-            row[asset_id] = _round_capacity_safe(value, decimals)
-            buyer_totals[asset["buyer_id"]] = buyer_totals.get(asset["buyer_id"], 0.0) + value
+            rounded_value = _round_capacity_safe(value, decimals)
+            row[asset_id] = rounded_value
+            buyer_totals[asset["buyer_id"]] = buyer_totals.get(asset["buyer_id"], 0.0) + rounded_value
 
         capped_buyer_total = 0.0
         for buyer_id in buyer_ids:
             capped = min(max(buyer_totals.get(buyer_id, 0.0), 0.0), buyer_capacity.get(buyer_id, 0.0))
-            row[buyer_id] = _round_capacity_safe(capped, decimals)
-            capped_buyer_total += capped
+            rounded_buyer_total = _round_capacity_safe(capped, decimals)
+            row[buyer_id] = rounded_buyer_total
+            capped_buyer_total += rounded_buyer_total
         row["total_ai_schedule_mw"] = _round_capacity_safe(min(capped_buyer_total, total_capacity), decimals)
         rows.append(row)
     return fieldnames, rows
@@ -568,6 +570,7 @@ def run_schedule_job(
     storage.upload_json(bucket, metadata["latest_metadata_key"], metadata)
     storage.upload_json(bucket, metadata["summary_key"], summary)
     return metadata
+
 
 
 
