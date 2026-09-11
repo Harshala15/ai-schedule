@@ -326,9 +326,9 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
             # morning ground haze burns off rapidly.
             # We dynamically accelerate the blend towards full clear-sky physical potential to protect T+4 frozen gate-closure blocks.
             # CRITICAL SAFEGUARD: If live ground clearness is low (< 0.50) at midday (elev >= 45 deg), DO NOT force ramp_floor upward!
-            if nwp_clearness >= 0.70 and (live_clearness >= 0.60 or ref_elev < 20.0):
+            if (nwp_clearness >= 0.65 or cloud_pct <= 25.0) and (live_clearness >= 0.60 or ref_elev < 20.0):
                 morning_hour_progress = max(0.0, (block_time.hour - 7) + (block_time.minute / 60.0))
-                ramp_floor = min(1.0, 0.75 + (0.25 * min(1.0, morning_hour_progress / 3.0)))
+                ramp_floor = min(1.0, 0.80 + (0.20 * min(1.0, morning_hour_progress / 3.0)))
                 live_residual_factor = max(ramp_floor, effective_clearness)
             else:
                 live_residual_factor = effective_clearness
@@ -463,8 +463,10 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
 
             # 1. CLEAR-SKY REGIME GUARDRAIL (e.g. Sirmour Rule):
             # When ground telemetry confirms clear sky (is_clear_ground or live_clearness >= 0.85),
+            # OR during pre-dawn / sunrise when morning forecasts confirm clear sky (cloud <= 25% or NWP clearness >= 0.70),
             # strictly prohibit negative weather cuts below Step 1 Base.
-            if is_clear_ground or live_clearness >= 0.85 or (current_solar_elev < 20.0 and live_clearness >= 0.70):
+            is_predawn_clear = (current_solar_elev < 20.0 and (b_feat.get("cloud_cover", 0.0) <= 25.0 or b_feat.get("nwp_clearness", 0.0) >= 0.70))
+            if is_clear_ground or live_clearness >= 0.85 or (current_solar_elev < 20.0 and live_clearness >= 0.70) or is_predawn_clear:
                 if step2 < step1_mw:
                     step2 = step1_mw
                     p["reasoning"] = (p.get("reasoning", "") + f" [AI Regime: CLEAR SKY - Rejected negative cut; preserved Step 1 base {step1_mw} MW]").strip()

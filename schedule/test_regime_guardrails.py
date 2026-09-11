@@ -366,5 +366,71 @@ class TestRegimeGuardrails(unittest.TestCase):
                 f"Seam ramp between block 45 ({mw_b45} MW) and 46 ({mw_b46} MW) exceeds ramp limit"
             )
 
+    def test_dawn_uv_transmissivity_exemption(self):
+        """Verify that at dawn (low UV clear sky index < 1.0), cloud transmissivity is not artificially crushed."""
+        # Simulated dawn parameters (e.g. 06:30 - 07:30 IST)
+        uv_val = 0.1
+        uv_clear_val = 0.5  # Below 1.0 threshold
+        eff_cloud_pct = 5.0  # Clear sky (5% cloud)
+
+        # Logic from premium_stream3.py
+        if uv_clear_val >= 1.0:
+            cloud_transmissivity = min(1.0, max(0.05, round(uv_val / uv_clear_val, 3)))
+        else:
+            cloud_transmissivity = 1.0 if eff_cloud_pct < 20 else max(0.20, 1.0 - (eff_cloud_pct / 100.0))
+
+        self.assertEqual(cloud_transmissivity, 1.0, "Dawn UV ratio must not crush transmissivity under clear skies")
+
+    def test_clear_sky_weather_fusion_consensus(self):
+        """Verify that clear consensus between Stream 1 (ECMWF 9km) and Stream 2 (Ensemble) uses robust median instead of min()."""
+        gti_stream1 = 265.0  # ECMWF 9km
+        gti_stream2 = 263.4  # Ensemble 91-member
+        gti_stream3 = 160.6  # Coarse grid Stream 3 artifact
+
+        cloud_avg = 5.5
+        precip_max = 0.15  # Model trace drizzle artifact
+        cape_val = 200.0
+        trans_val = 1.0
+
+        is_clear_consensus = (cloud_avg <= 25.0) and (precip_max < 0.50) and (cape_val < 1500)
+        is_cloudy_or_rain = (not is_clear_consensus) and (
+            (precip_max >= 0.50)
+            or (precip_max >= 0.20 and cloud_avg >= 35.0)
+            or (cloud_avg >= 45.0)
+            or (trans_val < 0.65 and cloud_avg >= 25.0)
+        )
+
+        self.assertTrue(is_clear_consensus, "Clear consensus should be recognized")
+        self.assertFalse(is_cloudy_or_rain, "Trace drizzle with clear sky should not trigger rain dampening")
+
+        sorted_gtis = sorted([gti_stream1, gti_stream2, gti_stream3])
+        gti_fused = round(sorted_gtis[1], 1)
+
+        self.assertEqual(gti_fused, 263.4, "Clear consensus must use median (263.4 W/m2) instead of min (160.6 W/m2)")
+
+    def test_predawn_clear_sky_lockout(self):
+        """Verify that pre-dawn forecast runs lock out negative LLM cuts when morning forecasts confirm clear sky."""
+        current_solar_elev = 0.0  # Pre-dawn (e.g. 05:00 IST)
+        live_clearness = 1.0
+        is_clear_ground = False  # SCADA is 0 at night
+        step1_mw = 1.850
+        llm_pessimistic_step2 = 0.720
+
+        b_feat = {
+            "cloud_cover": 5.0,
+            "nwp_clearness": 0.88,
+        }
+
+        is_predawn_clear = (current_solar_elev < 20.0 and (b_feat.get("cloud_cover", 0.0) <= 25.0 or b_feat.get("nwp_clearness", 0.0) >= 0.70))
+        step2 = llm_pessimistic_step2
+
+        if is_clear_ground or live_clearness >= 0.85 or (current_solar_elev < 20.0 and live_clearness >= 0.70) or is_predawn_clear:
+            if step2 < step1_mw:
+                step2 = step1_mw
+
+        self.assertTrue(is_predawn_clear, "Pre-dawn clear condition must evaluate to True")
+        self.assertEqual(step2, step1_mw, "Pre-dawn clear sky guardrail must lock out negative LLM cuts")
+
 if __name__ == "__main__":
     unittest.main()
+

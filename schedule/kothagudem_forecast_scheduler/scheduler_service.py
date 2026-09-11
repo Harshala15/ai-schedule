@@ -567,7 +567,7 @@ def run_schedule_job(
         num_blocks=settings.FORECAST_BLOCKS,
         output_dir=work_output_dir,
         intraday_actuals_path=selection.meter_path,
-        weather_text=selection.weather_summary,
+        weather_text="",
         context_text=selection.context_summary,
         meter_history_text=meter_history_text,
         pvlib_text=pvlib_text,

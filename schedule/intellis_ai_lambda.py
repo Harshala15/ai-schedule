@@ -149,7 +149,9 @@ def lambda_handler(event, context):
     metadata_key = f"{day_prefix}/schedule_from_{snapshot_block}_{snapshot_stamp}.csv.meta.json"
     lock_key = f"{day_prefix}/.idempotency/{site_id}__{target_date}__{run_time_slug}.json"
 
-    idempotency_enabled = _pick("INTELLIS_IDEMPOTENCY_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
+    force = str(event.get("force", "")).lower() in {"1", "true", "yes"} or str(event.get("recompute", "")).lower() in {"1", "true", "yes"}
+    idempotency_val = _event_value(event, "idempotency_enabled", "INTELLIS_IDEMPOTENCY_ENABLED") or _pick("INTELLIS_IDEMPOTENCY_ENABLED", "true")
+    idempotency_enabled = not force and (idempotency_val.lower() in {"1", "true", "yes", "on"})
     if idempotency_enabled:
         if _object_exists(storage, bucket, metadata_key):
             return {

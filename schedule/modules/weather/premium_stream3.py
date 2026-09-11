@@ -218,10 +218,12 @@ def fetch_premium_stream3_weather(
         vpd_val = vpds[i] if i < len(vpds) and vpds[i] is not None else 1.0
 
         # Cloud Optical Transparency Ratio (uv_index / uv_index_clear_sky)
-        if uv_clear_val > 0.1:
+        # Note: At low sun angles (dawn/dusk, uv_clear_val < 1.0), UV is dominated by Rayleigh scattering and rounding.
+        # Use UV optical ratio only under robust daylight (uv_clear_val >= 1.0); otherwise derive from effective cloud %.
+        if uv_clear_val >= 1.0:
             cloud_transmissivity = min(1.0, max(0.05, round(uv_val / uv_clear_val, 3)))
         else:
-            cloud_transmissivity = 1.0 if eff_cloud_pct < 20 else max(0.10, 1.0 - (eff_cloud_pct / 100.0))
+            cloud_transmissivity = 1.0 if eff_cloud_pct < 20 else max(0.20, 1.0 - (eff_cloud_pct / 100.0))
 
         # Sunshine Fraction per Hour (0.0 to 1.0)
         sunshine_fraction = min(1.0, max(0.0, round(sunshine_sec / 3600.0, 3))) if sunshine_sec > 0 else 0.0

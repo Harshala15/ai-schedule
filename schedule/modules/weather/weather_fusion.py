@@ -214,14 +214,33 @@ def fetch_dual_stream_weather_fusion(
 
         delta_spread = abs(gti_stream1 - gti_stream2)
 
+        # Clear-Sky Consensus Rule:
+        # When ECMWF 9 km (Stream 1) and 91-Member Ensemble (Stream 2) agree that sky is clear
+        # (cloud_avg <= 25% and precip < 0.50 mm and no convective storm threat),
+        # an isolated lower value from coarse-grid Stream 3 must not drag the consensus down to min().
+        is_clear_consensus = (cloud_avg <= 25.0) and (precip_max < 0.50) and (cape_val < 1500)
+
         # Robust consensus target:
-        is_cloudy_or_rain = (precip_max >= 0.15) or (cloud_avg >= 40.0) or (trans_val < 0.80)
-        is_convective_storm = (cape_val >= 1500 and (drift_w < -30.0 or cloud_avg >= 40.0 or precip_max >= 0.10))
+        # True rain attenuation requires either meaningful rain (>= 0.50 mm/hr) or rain with heavy cloud (>= 35%).
+        # Trace model drizzle (< 0.50 mm) under sunny skies (cloud <= 25%) is virga / model bias and must not crush irradiance.
+        is_cloudy_or_rain = (not is_clear_consensus) and (
+            (precip_max >= 0.50)
+            or (precip_max >= 0.20 and cloud_avg >= 35.0)
+            or (cloud_avg >= 45.0)
+            or (trans_val < 0.65 and cloud_avg >= 25.0)
+        )
+        is_convective_storm = (cape_val >= 1500 and (drift_w < -30.0 or cloud_avg >= 40.0 or precip_max >= 0.20))
 
         if is_cloudy_or_rain or is_convective_storm:
             gti_fused = min(gti_stream1, gti_stream2, gti_stream3)
             regime = "RAIN / CLOUD DAMPENED (P40 Guardrail)"
             conf = "Convective Storm Threat" if is_convective_storm else "Cloud / Rain Attenuation"
+        elif is_clear_consensus:
+            # Under confirmed clear consensus, use median of the 3 streams
+            sorted_gtis = sorted([gti_stream1, gti_stream2, gti_stream3])
+            gti_fused = round(sorted_gtis[1], 1)  # Robust median
+            regime = "CLEAR SKY CONSENSUS (Robust Median)"
+            conf = "High Confidence (Clear Sky)"
         elif delta_spread <= 60.0:
             gti_fused = round(((gti_stream1 + gti_stream2 + gti_stream3) / 3.0), 1)
             regime = "HIGH AGREEMENT"
