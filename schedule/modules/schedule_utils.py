@@ -536,16 +536,37 @@ def write_full_block_schedule_from_llm_schedule(
     *,
     fallback_csv_path: Path | None = None,
     total_blocks: int = 96,
+    target_date: str | dt.date | None = None,
+    weather_fusion_map: dict | None = None,
 ) -> dict:
     """Write a full block schedule with missing blocks filled with zero.
 
-    The input is expected to contain a `Block` column and a validated
-    schedule MW column. If `fallback_csv_path` (e.g. latest_schedule.csv)
-    is provided, it fills future afternoon blocks up to sunset so the schedule
-    never drops to 0.0 MW prematurely on dashboards.
+    Implements Approach 3 for un-forecasted afternoon daylight blocks:
+    1. Astronomical Solar Geometry (PVLib / time_features elevation envelope).
+    2. Tri-Stream Weather Consensus (ECMWF 9 km, 91-Member Ensemble, 5-Agency Consensus + CAPE).
+    3. Live Ground MOS Bias Calibration (evaluated strictly up to revision time,
+       clamped to [0.85, 1.15] and exponentially damped into late afternoon).
+    4. Physical Safety Guardrails:
+       - Physical diffuse floor >= 25% capacity during high daylight (elev >= 45 deg).
+       - Convective storm attenuation when CAPE >= 1500 J/kg or rain cells detected.
+       - Smooth diurnal descent towards dusk (no unphysical sawtooth spikes).
+       - Seam boundary ramp limit from the last block of the active AI window.
     """
     import math
     schedule_by_block: dict[int, float] = {}
+
+    # Extract target date if not explicitly passed
+    target_date_str = str(target_date) if target_date else None
+    date_match = None
+    if not target_date_str:
+        for p_cand in (input_csv_path, fallback_csv_path):
+            if p_cand:
+                m = re.search(r"(\d{4}-\d{2}-\d{2})", str(p_cand.name))
+                if m:
+                    target_date_str = m.group(1)
+                    break
+    if not target_date_str:
+        target_date_str = dt.datetime.now(IST).strftime("%Y-%m-%d")
 
     # 1. Read fallback / latest schedule first (full diurnal curve)
     if fallback_csv_path and fallback_csv_path.exists():
@@ -567,7 +588,7 @@ def write_full_block_schedule_from_llm_schedule(
                 except (ValueError, TypeError):
                     continue
 
-    # 2. Overlay frozen current-final schedule (authoritative for past frozen blocks)
+    # 2. Overlay frozen current-final schedule (authoritative for past frozen blocks + active AI window)
     if input_csv_path.exists():
         with open(input_csv_path, "r", newline="", encoding="utf-8-sig") as handle:
             for row in csv.DictReader(handle):
@@ -587,16 +608,20 @@ def write_full_block_schedule_from_llm_schedule(
                 except (ValueError, TypeError):
                     continue
 
-    # 3. Dynamic Day-Ahead Diurnal Synthesis for Missing Afternoon Daylight Blocks:
-    # If the current snapshot only covers morning hours (e.g. 11:15 run),
-    # extrapolate the afternoon solar curve down to sunset using the prevailing clearness ratio.
     dc_cap = float(getattr(config, "PLANT_DC_CAPACITY_MW", getattr(config, "PLANT_CAPACITY_MW", 10.0)))
     ac_cap = float(getattr(config, "PLANT_CAPACITY_MW", 10.0))
     pr = float(getattr(config, "PERFORMANCE_RATIO", 0.78))
 
+    # 3. APPROACH 3: Combined Physics + Tri-Stream NWP + Live Ground MOS Calibration
+    max_populated_daylight_block = max(
+        [b for b, mw in schedule_by_block.items() if 28 <= b <= 72 and mw > 0.05],
+        default=27
+    )
+
+    # A. Calculate Live Ground Clearness from morning blocks up to revision time (t <= T_rev)
     clearness_ratios = []
     for b, mw in schedule_by_block.items():
-        if 28 <= b <= 72 and mw > 0.01:
+        if 28 <= b <= max_populated_daylight_block and mw > 0.01:
             b_hour = (b - 1) * 0.25
             h_from_noon = abs(b_hour - 12.25)
             if h_from_noon < 6.0:
@@ -605,29 +630,114 @@ def write_full_block_schedule_from_llm_schedule(
                 if clear_theoretical > 0.1:
                     clearness_ratios.append(min(1.0, mw / clear_theoretical))
 
-    if clearness_ratios:
-        implied_clearness = max(0.20, min(1.0, sum(clearness_ratios) / len(clearness_ratios)))
-    else:
-        implied_clearness = 0.55
+    implied_clearness = max(0.20, min(1.0, sum(clearness_ratios) / len(clearness_ratios))) if clearness_ratios else 0.85
 
-    max_populated_daylight_block = max(
-        [b for b, mw in schedule_by_block.items() if 28 <= b <= 72 and mw > 0.05],
-        default=27
-    )
+    # Guardrail 1: Safety-clamp raw MOS bias to [0.85, 1.15] (prevents morning micro-clouds from over-slashing afternoon)
+    clamped_mos = max(0.85, min(1.15, implied_clearness))
 
-    # Seamlessly continue the afternoon curve for any un-forecasted daylight blocks
+    # B. Load / Fetch Tri-Stream Weather Fusion if not already provided
+    if weather_fusion_map is None:
+        try:
+            from modules.weather import weather_fusion
+            ref_dt = dt.datetime.strptime(f"{target_date_str} 06:00", "%Y-%m-%d %H:%M")
+            lat = float(getattr(config, "PLANT_LAT", 24.56))
+            lon = float(getattr(config, "PLANT_LON", 75.09))
+            p_name = getattr(config, "PLANT_NAME", "Solar Plant")
+            w_res = weather_fusion.fetch_dual_stream_weather_fusion(
+                latitude=lat,
+                longitude=lon,
+                reference_time=ref_dt,
+                hours_ahead=14,
+                plant_name=p_name,
+            )
+            weather_rows = w_res.get("fused_rows", [])
+            weather_fusion_map = {r.get("hour_label"): r for r in weather_rows if isinstance(r, dict) and r.get("hour_label")}
+        except Exception:
+            weather_fusion_map = {}
+
+    # C. Block-by-block Combined Physics + Tri-Stream Weather Synthesis
     for block in range(max_populated_daylight_block + 1, 74):
         block_hour = (block - 1) * 0.25
-        hours_from_noon = abs(block_hour - 12.25)
-        if hours_from_noon < 6.0:
-            elev_sin = math.cos((hours_from_noon / 6.0) * (math.pi / 2.0))
-            taper_mw = round(min(ac_cap, dc_cap * pr * implied_clearness * (elev_sin ** 1.05)), 3)
-            if taper_mw > 0.05:
-                schedule_by_block[block] = taper_mw
-            else:
-                schedule_by_block[block] = 0.0
-        else:
+        b_hour_int = int(block_hour)
+        b_min_int = int(round((block_hour - b_hour_int) * 60))
+        b_time_str = f"{b_hour_int:02d}:{b_min_int:02d}"
+
+        try:
+            from modules.weather import time_features
+            block_dt = dt.datetime.strptime(f"{target_date_str} {b_time_str}", "%Y-%m-%d %H:%M")
+            elev = time_features.compute_time_features(block_dt)["solar_elevation_deg"]
+        except Exception:
+            h_from_noon = abs(block_hour - 12.25)
+            elev = max(0.0, 90.0 - (h_from_noon * 15.0)) if h_from_noon < 6.0 else 0.0
+
+        if elev < 3.0:
             schedule_by_block[block] = 0.0
+            continue
+        elif elev < 7.5:
+            # Low dusk diffuse generation
+            schedule_by_block[block] = round(min(0.20, ac_cap * 0.04), 3)
+            continue
+
+        raw_sine = math.sin(math.radians(max(0.0, elev)))
+        clearsky_mw = min(ac_cap, dc_cap * pr * (raw_sine ** 1.05))
+        clearsky_gti = max(10.0, 1000.0 * (raw_sine ** 0.95))
+
+        # Tri-stream consensus lookup
+        w_entry = weather_fusion_map.get(b_time_str) if weather_fusion_map else None
+        if not w_entry and weather_fusion_map:
+            w_entry = weather_fusion_map.get(f"{b_hour_int:02d}:00")
+
+        if w_entry:
+            gti_fused = float(w_entry.get("gti_fused") or w_entry.get("gti_stream1", 0.0))
+            cloud_pct = float(w_entry.get("cloud_pct", 0.0))
+            precip_mm = float(w_entry.get("precip_mm", 0.0))
+            cape_val = float(w_entry.get("cape_j_kg", 0.0))
+            temp_derate = float(w_entry.get("temp_derate_multiplier", 1.0))
+            if gti_fused > 20.0 and clearsky_gti > 20.0:
+                nwp_clearness = max(0.15, min(1.02, gti_fused / clearsky_gti))
+            else:
+                nwp_clearness = max(0.20, min(1.0, 1.0 - (0.75 * cloud_pct / 100.0)))
+        else:
+            nwp_clearness = implied_clearness
+            precip_mm = 0.0
+            cape_val = 0.0
+            temp_derate = 1.0
+
+        # Guardrail 2: Exponential MOS Damping into late afternoon
+        blocks_ahead = block - max_populated_daylight_block
+        damping_factor = math.exp(-0.12 * blocks_ahead)
+        damped_mos = 1.0 + (clamped_mos - 1.0) * damping_factor
+
+        effective_clearness = max(0.15, min(1.05, nwp_clearness * damped_mos))
+        synth_mw = clearsky_mw * effective_clearness * temp_derate
+
+        # Physical Guardrails:
+        # 1. Physical Diffuse Floor (elevation >= 45 deg)
+        if elev >= 45.0:
+            diffuse_floor = round(ac_cap * 0.25, 3)
+            synth_mw = max(diffuse_floor, synth_mw)
+
+        # 2. Convective Storm Attenuation (High CAPE + Rain)
+        if cape_val >= 1500 and (precip_mm >= 0.15 or (w_entry and w_entry.get("cloud_pct", 0.0) >= 60.0)):
+            synth_mw = min(synth_mw, clearsky_mw * 0.35)
+
+        # 3. Monotonic Afternoon Descent after solar noon (block >= 50)
+        prev_block_mw = schedule_by_block.get(block - 1)
+        if block >= 50 and prev_block_mw is not None:
+            max_allowed_step = prev_block_mw + (ac_cap * 0.05)
+            synth_mw = min(synth_mw, max_allowed_step)
+
+        final_block_mw = round(max(0.0, min(ac_cap, synth_mw)), 3)
+        schedule_by_block[block] = final_block_mw if final_block_mw > 0.02 else 0.0
+
+    # Seam Boundary Smoothing: smooth transition from last AI block
+    if max_populated_daylight_block in schedule_by_block and (max_populated_daylight_block + 1) in schedule_by_block:
+        last_ai_mw = schedule_by_block[max_populated_daylight_block]
+        first_synth_mw = schedule_by_block[max_populated_daylight_block + 1]
+        max_step = ac_cap * 0.15
+        if abs(first_synth_mw - last_ai_mw) > max_step:
+            smoothed = round(last_ai_mw + max_step * (1 if first_synth_mw > last_ai_mw else -1), 3)
+            schedule_by_block[max_populated_daylight_block + 1] = max(0.0, smoothed)
 
     output_csv_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_csv_path, "w", newline="", encoding="utf-8") as handle:

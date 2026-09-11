@@ -1,4 +1,4 @@
-﻿"""Scheduler job runner for the SIMOUR forecast Lambda."""
+"""Scheduler job runner for the SIMOUR forecast Lambda."""
 
 from __future__ import annotations
 
@@ -512,6 +512,7 @@ def run_schedule_job(
         current_final_csv,
         penalty_csv,
         fallback_csv_path=latest_csv,
+        target_date=target_date,
     )
     penalty_total_blocks = int(penalty_summary.get("total_blocks", 96))
 

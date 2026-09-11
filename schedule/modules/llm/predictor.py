@@ -317,8 +317,9 @@ CRITICAL RULES FOR GRID ACCURACY & PENALTY MINIMIZATION:
    - Afternoon (12:45 - 17:30): Strictly non-increasing diurnal descent.
    - Convective / Storm Window Continuity: If high CAPE (>1500 J/kg), rain cells, or storm instability are detected in the weather table, maintain a smooth, contiguous attenuated envelope across all affected 15-min blocks. NEVER create single-block alternating spikes or sawtooth drops.
    - Pre-dawn / Post-dusk: If base_mw is 0.0, adjusted_mw MUST be strictly 0.0.
-3. Telemetry Grounding:
+3. Telemetry Grounding & Horizon Boundary:
    - Prefer today's same-day actual generation telemetry and clearness trend over historical cases.
+   - Satellite solar radiation is strictly limited to past/current blocks up to the revision cutoff time (t <= T_rev) as a virtual meter proxy. Do NOT consider satellite solar radiation for future forecast blocks (t > T_rev); rely strictly on NWP multi-stream weather models and PVLib solar geometry.
    - If evidence shows steady clear sky, follow the natural solar curve; if clouds or volatility are detected, attenuate smoothly.
 
 Return ONLY raw JSON, no markdown or prose.
@@ -576,28 +577,31 @@ def _build_stepwise_prompt(base_predictions: list, feature_row: dict, step1_inpu
     cap_mw = float(getattr(config, "PLANT_CAPACITY_MW", 10.0))
     dc_mw = float(getattr(config, "PLANT_DC_CAPACITY_MW", cap_mw))
     peak_mw_est = round(min(cap_mw, dc_mw * float(getattr(config, "PERFORMANCE_RATIO", 0.78)) * 1.05), 2)
+    tol_band_mw = round(cap_mw * 0.15, 2)
     return f"""
-Generate the {plant_name} forecast in ONE JSON response. Plant AC Capacity is {cap_mw:.1f} MW (DC: {dc_mw:.1f} MW).
+Generate the {plant_name} forecast in ONE JSON response. Plant AC Capacity is {cap_mw:.1f} MW (DC: {dc_mw:.1f} MW). Allowed DSM Tolerance Band (±15%): ±{tol_band_mw:.2f} MW.
 
-CRITICAL FORECAST RULES:
-1. Two-Step Physics & Weather Grounding (No artificial historical bias uplifts):
-   - Step 1 (PVLib Base): Astronomical clear-sky trajectory anchored to current live SCADA meter readings (last 1-2 hours).
-   - Step 2 (Weather Adjustment MW): Adjust Step 1 using ECMWF global tilted irradiance, direct/diffuse ratio, cloud cover %, and live SCADA momentum.
-   - DIRECTIONAL DSM ERROR GUARDRAIL: When ground SCADA / pyranometer confirms clear ground conditions (live POA >= 80% of clear sky or recent clear sky ratio >= 0.85), Step 2 MUST NOT be adjusted downward below Step 1 Base! If actual is ramping strongly above Step 1 Base, Step 2 adjustment must be POSITIVE or ZERO (+MW), NEVER negative (-MW). Downward adjustments are strictly prohibited unless verified cloud attenuation (ground POA dropping below clear-sky levels or confirmed thick overcast > 60%) is present.
-   - Live SCADA Momentum & MOS: If live SCADA generation shows the plant is ramping strongly under clear ground conditions, blend 75% Live SCADA Ground Ramp with 25% Weather Model to eliminate morning lag. If REAL-TIME GROUND SENSOR CALIBRATION (MOS) indicates ground irradiance is outperforming weather models, scale forward weather expectations upward to track ground truth.
-2. Weather & Overcast Enforcement:
-   - When ECMWF weather shows cloud cover (>50%) or reduced irradiance (<600 W/m²), follow the attenuated weather irradiance curve.
-   - REAL CLOUD ATTENUATION: If ground SCADA / pyranometer indicates a cloud drop (POA or power dropping > 25% below clear sky), scale down the immediate forward blocks (next 2-4 blocks) proportionally to match observed ground attenuation.
-   - DAWN EXEMPTION RULE: When solar elevation is < 20.0 deg (before 07:30 AM), low generation (< 2 MW) is normal due to inverter wake-up and low sun angles. DO NOT treat dawn low generation as heavy overcast! If ECMWF weather shows clear/rising irradiance (> 100 W/m²), follow the rising morning ramp toward full clear-sky capacity for forward blocks (07:30 - 11:00).
-   - SUSTAINED OVERCAST RULE: If ground SCADA shows low generation (< 35% of clear sky) between 10:30 and 14:00 (solar elevation >= 45 deg), DO NOT assume rapid recovery to clear sky based solely on NWP weather models. Overcast cloud decks in monsoon regimes persist for 2-4 hours. Step 2 Weather Adjustment MUST NOT exceed 1.25x the live SCADA generation during overcast regimes.
-   - NEVER apply positive historical bias to inflate forecasts during cloudy, monsoon, or overcast conditions.
-   - Favor the conservative lower bound during overcast conditions to avoid DSM penalties.
-3. Solar Geometry & Ramping:
-   - Pre-dawn / Post-dusk: If solar elevation < 3.0 deg, generation is strictly 0.00 MW. Between 3.0 deg and 7.5 deg, output small diffuse dawn/dusk power (0.10 to 0.45 MW) if irradiance > 25 W/mÂ².
-   - Morning (06:30 - 11:30): Smooth monotonic ascent tracking solar elevation and live meter momentum.
-   - Midday Apex (11:45 - 12:45): Smooth apex capped by weather irradiance without flat tabletop clipping.
-   - Afternoon (13:00 - 17:45): Smooth diurnal decay tracking afternoon irradiance down to 0 MW.
-4. Gate Closure: Revisions take effect with a 4-block lag. Output clean, reliable values.
+CRITICAL FORECAST & AI ADJUSTMENT RULES (NO FIXED WEIGHTS):
+1. Dynamic Evidence-Based Adjustment (Do NOT use fixed percentages or static blend weights):
+   - You must evaluate all available evidence: Live SCADA Clearness Ratio (Kt = Actual / ClearSky), Ground POA, 15-minute Ramp Rate (dP/dt), and ALL 3 Independent Weather Streams (Stream 1 ECMWF, Stream 2 91-Member Ensemble, Stream 3 5-Agency Consensus + CAPE + Transmissivity).
+   - Reason dynamically: Decide (a) whether an adjustment is needed, (b) the direction (positive, negative, or neutral), and (c) the exact adjustment magnitude (Delta MW) justified by the evidence.
+   - Explicitly document your physical reasoning and why the chosen magnitude was selected in the "reasoning" field.
+
+2. Regime-Governed Adjustment Decisions:
+   - CLEAR-SKY REGIME: When ground SCADA / pyranometer confirms clear sky (Kt >= 0.85, high POA, or smooth morning ascent), isolated NWP weather model rain drops are diagnosed as spatial-resolution phantom artifacts. Downward cuts below Step 1 Base are STRICTLY PROHIBITED (Step 2 MW >= Step 1 MW). Reason how much positive meter pull (+MW) to apply to track live SCADA ramp and inverter performance.
+   - OVERCAST BREAKOUT & CLOUD DISSIPATION REGIME: When live ground SCADA breaks through an earlier cloud ceiling (Kt rising above 0.65 or SCADA surging), the sustained overcast ceiling is RELEASED IMMEDIATELY. Do not trap future blocks in a stale overcast ceiling based on lagging weather models! Follow the real clearing trajectory back towards Step 1 Base.
+   - CONFIRMED OVERCAST REGIME: When multi-stream weather models agree AND ground telemetry confirms cloud attenuation (Kt < 0.65 and low POA), downward weather adjustment is approved. Sizing the downward magnitude should match the verified ground attenuation to prevent grid over-injection penalties.
+   - CONVECTIVE STORM THREAT: When Stream 3 shows high CAPE (> 1500 J/kg) or sudden ground generation drop during morning ramp (dP/dt < -0.3 MW), apply a cautious downward adjustment down to the diffuse irradiance floor.
+
+3. Solar Geometry & Physical Bounds:
+   - Pre-dawn / Post-dusk: If solar elevation < 3.0 deg, generation is strictly 0.00 MW. Between 3.0 deg and 7.5 deg, output small diffuse dawn/dusk power (0.05 to 0.25 MW) if irradiance > 25 W/m².
+   - Monotonic Morning Ascent (06:30 - 11:30): Solar elevation strictly climbs; avoid unphysical sawtooth drops unless verified severe cloud shading is present on ground.
+   - Physical Diffuse Floor: In India during daylight hours (solar elevation >= 45 deg), diffuse irradiance physically yields at least 25-35% of capacity; generation never drops below this unless torrential rain is confirmed on site.
+   - Upper Ceiling: Step 2 MW must never exceed plant maximum AC export limit of {cap_mw:.2f} MW.
+
+4. Strict Horizon Boundary (Zero Satellite Radiation for Future Blocks):
+   - Satellite solar radiation (GTI / Virtual Meter) is strictly used as an intraday telemetry fallback UP TO the revision cutoff time (t <= T_rev).
+   - For ALL future forecast blocks (t > T_rev), DO NOT consider or extrapolate satellite solar radiation. Future blocks must strictly rely on astronomical solar geometry (PVLib clear-sky envelope), multi-stream Numerical Weather Prediction (ECMWF, 91-Member Ensemble, 5-Agency Consensus + CAPE), and verified live ground SCADA telemetry momentum.
 
 Return ONLY raw JSON, no markdown or prose.
 Array size must be exactly {len(base_predictions)}.

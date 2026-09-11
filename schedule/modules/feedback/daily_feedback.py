@@ -1,4 +1,4 @@
-﻿"""
+"""
 daily_feedback.py
 
 Run this manually at the end of each day, once your plant's actual
@@ -1870,7 +1870,7 @@ def _load_intraday_meter_rows(actuals_csv_path, reference_time: datetime.datetim
             is_imputed = False
             impute_source = "meter"
             if mw is None:
-                # Active Power is NA / missing: impute from solar radiation
+                # Active Power is NA / missing: impute from solar radiation up to revision time
                 try:
                     from modules.weather import satellite_virtual_meter
                     mw, impute_source = satellite_virtual_meter.impute_missing_generation_from_radiation(
@@ -1879,7 +1879,10 @@ def _load_intraday_meter_rows(actuals_csv_path, reference_time: datetime.datetim
                         ground_ghi=ghi_val,
                         ambient_temp=amb_temp,
                         module_temp=mod_temp,
+                        cutoff_time=reference_time,
                     )
+                    if impute_source == "future_block_excluded":
+                        continue
                     is_imputed = True
                 except Exception as exc:
                     print(f"  [WARN] Failed to impute missing meter block at {ts} from solar radiation: {exc}")
@@ -2061,6 +2064,22 @@ def summarize_intraday_state(actuals_csv_path, reference_time: datetime.datetime
         "fluctuation_flag": fluctuation_flag,
         "whole_day_clear_sky_ratio": round(whole_day_ratio, 3) if whole_day_ratio is not None else None,
         "recent_clear_sky_ratio": round(recent_ratio, 3) if recent_ratio is not None else None,
+        "clearness_ratio": round(ratio_for_state, 3) if ratio_for_state is not None else 1.0,
+        "is_clear_ground": bool(
+            ratio_for_state is not None and (
+                ratio_for_state >= 0.85
+                or (is_dawn and ratio_for_state >= 0.50)
+                or (regime in ("clear / strengthening", "clear sunrise / morning ramp"))
+            )
+        ),
+        "is_overcast_ground": bool(
+            ratio_for_state is not None and ratio_for_state < 0.65 and clearness_trend != "strengthening"
+        ),
+        "is_clearing_transition": bool(
+            clearness_trend == "strengthening"
+            or (recent_ratio and morning_ratio_avg and recent_ratio > morning_ratio_avg + 0.05)
+            or (ratio_for_state is not None and 0.65 <= ratio_for_state <= 0.85 and trend_label == "rising")
+        ),
         "regime": regime,
         "live_residual_factor": round(live_residual_factor, 3),
         "imputed_blocks_count": imputed_count,

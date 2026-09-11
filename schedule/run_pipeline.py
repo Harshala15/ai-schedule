@@ -265,6 +265,10 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
 
         # 1. Forward Numerical Weather Prediction (NWP) Clearness for block k:
         #    NWPClearness(k) = OpenMeteo_GTI_fused(k) / pvlib_ClearSky_GTI(k)
+        #    CRITICAL HORIZON POLICY: Zero satellite solar radiation for future blocks (t > T_rev).
+        #    Satellite solar radiation acts strictly as an intraday virtual meter up to revision time.
+        #    Future blocks strictly rely on NWP multi-stream weather forecasts (ECMWF,
+        #    Ensemble, Consensus) and PVLib astronomical clear-sky geometry.
         if gti_fused is not None and elevation >= 3.0 and clearsky_gti > 30.0:
             nwp_clearness = max(0.15, min(1.0, round(float(gti_fused) / clearsky_gti, 3)))
         else:
@@ -426,28 +430,63 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
             fallback_base_predictions=meter_step_predictions,
             prompt_subject=f"{config.PLANT_NAME} one-call revision forecast",
         )
-        # Sustained Overcast Clamping Guardrail (Layer 3 Safety Net):
-        current_solar_elev = current_feature_row.get("solar_elevation_deg", 0.0)
+        # AI Regime-Decided Guardrail Engine:
+        is_clear_ground = bool(intraday_state and intraday_state.get("is_clear_ground"))
+        is_overcast_ground = bool(intraday_state and intraday_state.get("is_overcast_ground"))
+        is_clearing_transition = bool(intraday_state and intraday_state.get("is_clearing_transition"))
+        live_clearness = float(intraday_state.get("clearness_ratio", 1.0)) if intraday_state else 1.0
         live_res_factor = float(intraday_state.get("live_residual_factor", 1.0)) if intraday_state else 1.0
-        is_sustained_overcast = bool(current_solar_elev >= 45.0 and live_res_factor < 0.40)
+        current_solar_elev = current_feature_row.get("solar_elevation_deg", 0.0)
+        cap_mw = float(getattr(config, "PLANT_CAPACITY_MW", 10.0))
+        tol_band_mw = cap_mw * 0.15
+
+        # Overcast breakout check: if ground is clearing or clearness ratio is rising, do NOT clamp!
+        is_sustained_overcast = bool(
+            current_solar_elev >= 45.0
+            and live_res_factor < 0.40
+            and not is_clearing_transition
+            and not (live_clearness >= 0.65)
+            and is_overcast_ground
+        )
         overcast_ceiling_factor = max(live_res_factor * 1.30, 0.25) if is_sustained_overcast else 1.0
 
         for p in llm_predictions:
             base_mw = base_forecast_by_time.get(p["time"], p.get("anchor_mw", 0.0))
             base_ref_mw = base_reference_by_time.get(p["time"], base_mw)
             p["base_anchor_mw"] = base_ref_mw
-            p["step1_mw"] = p.get("step1_mw", p.get("anchor_mw", base_mw))
-            step2 = p.get("step2_mw", p.get("step1_mw", p.get("anchor_mw", base_mw)))
+            step1_mw = p.get("step1_mw", p.get("anchor_mw", base_mw))
+            p["step1_mw"] = step1_mw
+            step2 = p.get("step2_mw", step1_mw)
 
+            b_feat = feature_rows_by_time.get(p["time"], {})
+            b_elev = b_feat.get("solar_elevation_deg", 0.0)
+
+            # 1. CLEAR-SKY REGIME GUARDRAIL (e.g. Sirmour Rule):
+            # When ground telemetry confirms clear sky (is_clear_ground or live_clearness >= 0.85),
+            # strictly prohibit negative weather cuts below Step 1 Base.
+            if is_clear_ground or live_clearness >= 0.85 or (current_solar_elev < 20.0 and live_clearness >= 0.70):
+                if step2 < step1_mw:
+                    step2 = step1_mw
+                    p["reasoning"] = (p.get("reasoning", "") + f" [AI Regime: CLEAR SKY - Rejected negative cut; preserved Step 1 base {step1_mw} MW]").strip()
+
+            # 2. OVERCAST REGIME & BREAKOUT GUARDRAIL (e.g. Anjangaon Rule):
             if is_sustained_overcast:
-                b_feat = feature_rows_by_time.get(p["time"], {})
-                b_elev = b_feat.get("solar_elevation_deg", 0.0)
                 if b_elev >= 45.0:
-                    base_clear = p.get("step1_mw", p.get("anchor_mw", base_mw))
-                    max_allowed = round(base_clear * overcast_ceiling_factor, 3)
+                    base_clear = step1_mw
+                    # Physical diffuse floor: in India at elevation >= 45 deg, diffuse sky radiation provides >= 25% capacity
+                    diffuse_floor = round(cap_mw * 0.25, 3)
+                    max_allowed = max(diffuse_floor, round(base_clear * overcast_ceiling_factor, 3))
                     if step2 > max_allowed:
                         step2 = max_allowed
-                        p["reasoning"] = (p.get("reasoning", "") + f" [Overcast Guardrail applied: clamped to {max_allowed} MW]").strip()
+                        p["reasoning"] = (p.get("reasoning", "") + f" [AI Regime: OVERCAST GUARDRAIL - Clamped to {max_allowed} MW]").strip()
+
+            # 3. SOLAR GEOMETRY & EXPORT BOUNDS:
+            if b_elev < 3.0:
+                step2 = 0.0
+            elif b_elev < 7.5:
+                step2 = min(step2, round(cap_mw * 0.05, 3))
+            else:
+                step2 = round(max(0.0, min(cap_mw, step2)), 3)
 
             p["step2_mw"] = step2
             p["step3_mw"] = step2
@@ -460,6 +499,9 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
                 p["regime_label"] = intraday_state.get("regime", "")
                 p["fluctuation_flag"] = intraday_state.get("fluctuation_flag", False)
                 p["regime_summary"] = intraday_state.get("summary", "")
+                p["is_clear_ground"] = is_clear_ground
+                p["is_overcast_ground"] = is_overcast_ground
+                p["is_clearing_transition"] = is_clearing_transition
     else:
         llm_predictions = llm_predictor.predict_with_llm(
             live_anchor_predictions, current_feature_row, retrieved_cases_text, context_text, intraday_actuals_text,
@@ -468,24 +510,50 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
         )
         current_solar_elev = current_feature_row.get("solar_elevation_deg", 0.0)
         live_res_factor = float(intraday_state.get("live_residual_factor", 1.0)) if intraday_state else 1.0
-        is_sustained_overcast = bool(current_solar_elev >= 45.0 and live_res_factor < 0.40)
+        is_clear_ground = bool(intraday_state and intraday_state.get("is_clear_ground"))
+        is_overcast_ground = bool(intraday_state and intraday_state.get("is_overcast_ground"))
+        is_clearing_transition = bool(intraday_state and intraday_state.get("is_clearing_transition"))
+        live_clearness = float(intraday_state.get("clearness_ratio", 1.0)) if intraday_state else 1.0
+        cap_mw = float(getattr(config, "PLANT_CAPACITY_MW", 10.0))
+
+        is_sustained_overcast = bool(
+            current_solar_elev >= 45.0
+            and live_res_factor < 0.40
+            and not is_clearing_transition
+            and not (live_clearness >= 0.65)
+            and is_overcast_ground
+        )
         overcast_ceiling_factor = max(live_res_factor * 1.30, 0.25) if is_sustained_overcast else 1.0
 
         for p in llm_predictions:
             base_mw = p.get("anchor_mw")
             p["step1_mw"] = p.get("base_anchor_mw", base_mw)
             step2 = p.get("llm_mw", base_mw)
-            if is_sustained_overcast:
-                b_feat = feature_rows_by_time.get(p["time"], {})
-                b_elev = b_feat.get("solar_elevation_deg", 0.0)
-                if b_elev >= 45.0:
-                    base_clear = p.get("step1_mw", base_mw)
-                    max_allowed = round(base_clear * overcast_ceiling_factor, 3)
-                    if step2 > max_allowed:
-                        step2 = max_allowed
+            b_feat = feature_rows_by_time.get(p["time"], {})
+            b_elev = b_feat.get("solar_elevation_deg", 0.0)
+
+            if is_clear_ground or live_clearness >= 0.85:
+                if step2 < p["step1_mw"]:
+                    step2 = p["step1_mw"]
+
+            if is_sustained_overcast and b_elev >= 45.0:
+                base_clear = p.get("step1_mw", base_mw)
+                diffuse_floor = round(cap_mw * 0.25, 3)
+                max_allowed = max(diffuse_floor, round(base_clear * overcast_ceiling_factor, 3))
+                if step2 > max_allowed:
+                    step2 = max_allowed
+
+            if b_elev < 3.0:
+                step2 = 0.0
+            elif b_elev < 7.5:
+                step2 = min(step2, round(cap_mw * 0.05, 3))
+            else:
+                step2 = round(max(0.0, min(cap_mw, step2)), 3)
+
             p["step2_mw"] = step2
             p["step3_mw"] = step2
             p["step4_mw"] = step2
+            p["llm_mw"] = step2
 
     def _stage_factor_value(step_factors: dict, key: str) -> float:
         value = step_factors.get(key, 1.0)
@@ -520,17 +588,26 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
             p["raw_step4_mw"] = round(raw_step4, 3)
             p["raw_llm_mw"] = round(raw_llm, 3)
 
-            p["step1_mw"] = round(max(0.0, raw_step1 * _stage_factor_value(step_factors, "step1_factor")), 3)
-            p["step2_mw"] = round(max(0.0, raw_step2 * _stage_factor_value(step_factors, "step2_factor")), 3)
-            p["step3_mw"] = round(max(0.0, raw_step3 * _stage_factor_value(step_factors, "step3_factor")), 3)
-            p["step4_mw"] = round(max(0.0, raw_step4 * _stage_factor_value(step_factors, "step4_factor")), 3)
-            p["llm_mw"] = p["step4_mw"]
-            p["correction_note"] = (
-                f"bucket={step_factors['bucket']}; "
-                f"base_factor={step_factors['base_factor']}; "
-                f"factors=({step_factors['step1_factor']}, {step_factors['step2_factor']}, "
-                f"{step_factors['step3_factor']}, {step_factors['step4_factor']})"
-            )
+            if stepwise_live_only:
+                # For stepwise live plants, Step 1 through Step 4 are directly governed by AI regime reasoning (no fixed multiplier distortion)
+                p["step1_mw"] = raw_step1
+                p["step2_mw"] = raw_step2
+                p["step3_mw"] = raw_step2
+                p["step4_mw"] = raw_step2
+                p["llm_mw"] = raw_step2
+                p["correction_note"] = "AI Regime Reasoning Preserved (No static multiplier distortion)"
+            else:
+                p["step1_mw"] = round(max(0.0, raw_step1 * _stage_factor_value(step_factors, "step1_factor")), 3)
+                p["step2_mw"] = round(max(0.0, raw_step2 * _stage_factor_value(step_factors, "step2_factor")), 3)
+                p["step3_mw"] = round(max(0.0, raw_step3 * _stage_factor_value(step_factors, "step3_factor")), 3)
+                p["step4_mw"] = round(max(0.0, raw_step4 * _stage_factor_value(step_factors, "step4_factor")), 3)
+                p["llm_mw"] = p["step4_mw"]
+                p["correction_note"] = (
+                    f"bucket={step_factors['bucket']}; "
+                    f"base_factor={step_factors['base_factor']}; "
+                    f"factors=({step_factors['step1_factor']}, {step_factors['step2_factor']}, "
+                    f"{step_factors['step3_factor']}, {step_factors['step4_factor']})"
+                )
 
     _apply_stepwise_corrections(llm_predictions)
 

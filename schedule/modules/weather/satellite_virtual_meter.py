@@ -99,8 +99,26 @@ def get_satellite_irradiance_for_timestamp(
     longitude: float | None = None,
     tilt: float | None = None,
     azimuth: float | None = None,
+    cutoff_time: dt.datetime | None = None,
 ) -> dict[str, Any]:
-    """Fetch satellite solar radiation interpolated for any reference timestamp."""
+    """Fetch satellite solar radiation interpolated for any reference timestamp up to revision cutoff.
+
+    CRITICAL RULE: Satellite solar radiation serves strictly as an intraday
+    virtual meter UP TO the revision cutoff time (t <= cutoff_time). It is NEVER
+    considered or extrapolated for future forecast blocks (t > cutoff_time).
+    """
+    if cutoff_time is not None and reference_time > cutoff_time:
+        return {
+            "status": "excluded_future_block",
+            "gti": 0.0,
+            "ghi": 0.0,
+            "dni": 0.0,
+            "temperature": 25.0,
+            "cloud_cover": 0.0,
+            "source": "none",
+            "message": f"Satellite solar radiation strictly prohibited for future blocks ({reference_time} > {cutoff_time}).",
+        }
+
     hourly = fetch_satellite_day_profile(
         target_date=reference_time.date(),
         latitude=latitude,
@@ -164,14 +182,17 @@ def fetch_satellite_irradiance_at_cutoff(
     longitude: float | None = None,
     tilt: float | None = None,
     azimuth: float | None = None,
+    cutoff_time: dt.datetime | None = None,
 ) -> dict[str, Any]:
     """Fetch satellite solar radiation for the reference cutoff time."""
+    effective_cutoff = cutoff_time or reference_time
     return get_satellite_irradiance_for_timestamp(
         reference_time=reference_time,
         latitude=latitude,
         longitude=longitude,
         tilt=tilt,
         azimuth=azimuth,
+        cutoff_time=effective_cutoff,
     )
 
 
@@ -218,18 +239,26 @@ def impute_missing_generation_from_radiation(
     longitude: float | None = None,
     tilt: float | None = None,
     azimuth: float | None = None,
+    cutoff_time: dt.datetime | None = None,
 ) -> tuple[float, str]:
     """
     Impute active power generation (MW) for a missing or NA SCADA block.
 
-    Priority cascade:
+    CRITICAL HORIZON RULE:
+      - Satellite solar radiation functions strictly as a virtual meter UP TO
+        the revision cutoff time (t <= T_rev).
+      - For future forecast blocks (t > T_rev), satellite solar radiation is
+        STRICTLY PROHIBITED and excluded. Future blocks must rely exclusively on
+        NWP multi-stream weather forecasts (ECMWF, Ensemble, Consensus) and PVLib.
+
+    Priority cascade (for t <= cutoff_time):
       1. On-site pyranometer POA (W/m2) if available and >= 0.0.
       2. On-site pyranometer GHI (W/m2) if available and >= 0.0.
-      3. Satellite Global Tilted Irradiance (GTI/POA) from Open-Meteo.
+      3. Satellite Global Tilted Irradiance (GTI/POA) from Open-Meteo (up to revision cutoff).
 
     Returns:
       (virtual_mw, source_name)
-      source_name in {"ground_poa", "ground_ghi", "satellite_solar_radiation"}
+      source_name in {"ground_poa", "ground_ghi", "satellite_solar_radiation", "future_block_excluded"}
     """
     # 1. On-site Pyranometer POA
     if ground_poa is not None and ground_poa >= 0.0:
@@ -255,14 +284,25 @@ def impute_missing_generation_from_radiation(
         )
         return mw, "ground_ghi"
 
-    # 3. Satellite Solar Radiation GTI Fallback
+    # 3. Satellite Solar Radiation GTI Fallback (Strictly UP TO revision cutoff)
+    if cutoff_time is not None and timestamp > cutoff_time:
+        print(
+            f"  [GUARDRAIL] Timestamp {timestamp.strftime('%Y-%m-%d %H:%M')} exceeds revision cutoff "
+            f"{cutoff_time.strftime('%Y-%m-%d %H:%M')}. Satellite solar radiation is strictly prohibited for future blocks."
+        )
+        return 0.0, "future_block_excluded"
+
     sat_info = get_satellite_irradiance_for_timestamp(
         reference_time=timestamp,
         latitude=latitude,
         longitude=longitude,
         tilt=tilt,
         azimuth=azimuth,
+        cutoff_time=cutoff_time,
     )
+    if sat_info.get("status") == "excluded_future_block":
+        return 0.0, "future_block_excluded"
+
     sat_gti = sat_info.get("gti", 0.0)
     sat_temp = sat_info.get("temperature", ambient_temp if ambient_temp is not None else 25.0)
     mw = calculate_virtual_generation_mw(
@@ -286,13 +326,20 @@ def build_satellite_virtual_intraday_state(
     dc_capacity_mw: float | None = None,
     performance_ratio: float | None = None,
 ) -> dict[str, Any]:
-    """Assemble a synthetic intraday_state dictionary matching the physical meter schema."""
+    """Assemble a synthetic intraday_state dictionary matching the physical meter schema.
+
+    CRITICAL POLICY:
+    Satellite solar radiation is strictly queried UP TO reference_time (the revision cutoff).
+    It acts purely as a live meter telemetry substitute when SCADA is delayed or offline.
+    It is NEVER used to project or synthesize future forecast blocks (t > reference_time).
+    """
     sat_info = fetch_satellite_irradiance_at_cutoff(
         reference_time=reference_time,
         latitude=latitude,
         longitude=longitude,
         tilt=tilt,
         azimuth=azimuth,
+        cutoff_time=reference_time,
     )
 
     cap_mw = float(plant_capacity_mw if plant_capacity_mw is not None else config.PLANT_CAPACITY_MW)
