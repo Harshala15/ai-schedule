@@ -2,9 +2,15 @@
 
 import unittest
 import math
+import sys
 import datetime as dt
 import pandas as pd
 from pathlib import Path
+
+# Ensure schedule directory is on python path
+SCHEDULE_DIR = Path(__file__).resolve().parent
+if str(SCHEDULE_DIR) not in sys.path:
+    sys.path.insert(0, str(SCHEDULE_DIR))
 
 class TestRegimeGuardrails(unittest.TestCase):
     
