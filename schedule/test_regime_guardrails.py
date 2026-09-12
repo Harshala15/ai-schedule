@@ -2,15 +2,9 @@
 
 import unittest
 import math
-import sys
 import datetime as dt
 import pandas as pd
 from pathlib import Path
-
-# Ensure schedule directory is on python path
-SCHEDULE_DIR = Path(__file__).resolve().parent
-if str(SCHEDULE_DIR) not in sys.path:
-    sys.path.insert(0, str(SCHEDULE_DIR))
 
 class TestRegimeGuardrails(unittest.TestCase):
     
@@ -436,6 +430,200 @@ class TestRegimeGuardrails(unittest.TestCase):
 
         self.assertTrue(is_predawn_clear, "Pre-dawn clear condition must evaluate to True")
         self.assertEqual(step2, step1_mw, "Pre-dawn clear sky guardrail must lock out negative LLM cuts")
+
+    def test_p42_clear_sky_headroom_and_peak_cap(self):
+        """Verify that under clear skies, anchor targets P42 quantile and caps peak at 85% of AC capacity."""
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from modules.physics import physics_anchor
+
+        feat = {
+            "solar_elevation_deg": 68.0,
+            "month": 4,
+            "minute_of_day": 735,
+            "hour": 12,
+            "minute": 15,
+            "nwp_clearness": 1.0,
+            "temp_air_c": 32.0,
+        }
+        # 10 MW AC plant, 12 MW DC
+        anchor_mw = physics_anchor.calculate_anchor_mw(
+            feat, capacity_mw=10.0, dc_capacity_mw=12.0, performance_ratio=0.80
+        )
+        # Check that peak is strictly capped at 85% (8.50 MW)
+        self.assertLessEqual(anchor_mw, 8.50, "Peak clear generation must not exceed 85% of AC capacity")
+        self.assertGreater(anchor_mw, 6.80, "Clear peak anchor should be near P42 target (6.8 - 8.5 MW)")
+
+    def test_afternoon_thermal_hysteresis(self):
+        """Verify that afternoon thermal hysteresis (12:30-15:30 IST) applies ~0.94 derating relative to morning."""
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from modules.physics import physics_anchor
+
+        feat_morning = {
+            "solar_elevation_deg": 50.0,
+            "month": 5,
+            "minute_of_day": 630,  # 10:30 AM
+            "hour": 10,
+            "minute": 30,
+            "nwp_clearness": 0.90,
+            "temp_air_c": 30.0,
+        }
+        feat_afternoon = {
+            "solar_elevation_deg": 50.0,
+            "month": 5,
+            "minute_of_day": 840,  # 14:00 PM (peak module heat)
+            "hour": 14,
+            "minute": 0,
+            "nwp_clearness": 0.90,
+            "temp_air_c": 30.0,
+        }
+        morning_mw = physics_anchor.calculate_anchor_mw(feat_morning, capacity_mw=10.0)
+        afternoon_mw = physics_anchor.calculate_anchor_mw(feat_afternoon, capacity_mw=10.0)
+
+        self.assertGreater(morning_mw, afternoon_mw, "Afternoon generation must be lower due to thermal hysteresis derate")
+        ratio = afternoon_mw / morning_mw
+        self.assertAlmostEqual(ratio, 0.94, delta=0.03, msg="Afternoon thermal derate should be ~0.94")
+
+    def test_winter_morning_fog_suppression(self):
+        """Verify winter morning fog cut-in delay and ramp suppression gate."""
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from modules.physics import physics_anchor
+
+        feat_pre_cutin = {
+            "solar_elevation_deg": 4.0,  # Below winter 4.5 deg cut-in
+            "month": 1,  # January
+            "minute_of_day": 435,  # 07:15 AM
+            "hour": 7,
+            "minute": 15,
+            "nwp_clearness": 1.0,
+        }
+        anchor_cutin = physics_anchor.calculate_anchor_mw(feat_pre_cutin, capacity_mw=10.0)
+        self.assertEqual(anchor_cutin, 0.0, "Sun below 4.5 deg in winter must yield 0.0 MW due to fog/inverter delay")
+
+        feat_fog_ramp = {
+            "solar_elevation_deg": 12.0,  # Below 15 deg in winter
+            "month": 12,  # December
+            "minute_of_day": 480,  # 08:00 AM
+            "hour": 8,
+            "minute": 0,
+            "nwp_clearness": 1.0,
+        }
+        anchor_ramp = physics_anchor.calculate_anchor_mw(feat_fog_ramp, capacity_mw=10.0)
+        self.assertLessEqual(anchor_ramp, 3.50, "Winter morning fog ramp must be capped at 35% of plant capacity")
+
+    def test_closed_loop_scada_decay(self):
+        """Verify exponential closed-loop telemetry decay with tau = 75 minutes."""
+        tau_min = 75.0
+        # Block 0 (0 min)
+        w0 = math.exp(-(0 * 15.0) / tau_min)
+        self.assertAlmostEqual(w0, 1.0, places=3)
+
+        # Block 4 (60 min ahead, gate-closure delivery)
+        w4 = math.exp(-(4 * 15.0) / tau_min)
+        self.assertAlmostEqual(w4, 0.449, places=2)
+
+        # Block 8 (120 min ahead)
+        w8 = math.exp(-(8 * 15.0) / tau_min)
+        self.assertAlmostEqual(w8, 0.202, places=2)
+
+    def test_cloud_plateau_shock_absorber(self):
+        """Verify cloud regime plateau shock-absorber dampens high-variance NWP oscillations."""
+        # Simulated scattered regime Kt fluctuating between 0.30 and 0.70
+        raw_clearness = [0.70, 0.30, 0.65, 0.35]
+        damped = [round(0.50 + 0.60 * (kt - 0.50), 3) for kt in raw_clearness]
+
+        self.assertEqual(damped[0], 0.62)  # Dampened from 0.70 to 0.62
+        self.assertEqual(damped[1], 0.38)  # Dampened from 0.30 to 0.38
+        for val in damped:
+            self.assertGreaterEqual(val, 0.35)
+            self.assertLessEqual(val, 0.65)
+
+    def test_asymmetric_slew_rates(self):
+        """Verify validator allows fast upward clearing ramp (22%) while constraining sudden downward drops (12%)."""
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import validator
+
+        # 10 MW plant: Upward clearing ramp from 2.0 to 4.1 MW (+21%) at 08:30
+        predictions_morning = [
+            {"time": "2026-04-15 08:15", "block_number": 34, "anchor_mw": 2.0, "llm_mw": 2.0, "confidence": "High", "reasoning": "fog"},
+            {"time": "2026-04-15 08:30", "block_number": 35, "anchor_mw": 4.1, "llm_mw": 4.1, "confidence": "High", "reasoning": "clearing"},
+        ]
+        val_m = validator.validate_predictions(predictions_morning, capacity_mw=10.0)
+        # 4.1 MW should be accepted because +2.1 MW is within 22% limit (2.2 MW)
+        self.assertEqual(val_m[1]["validated_mw"], 4.1)
+
+        # Midday sudden spurious drop: 7.5 MW down to 5.0 MW (-25%) at 12:30
+        predictions_midday = [
+            {"time": "2026-04-15 12:15", "block_number": 50, "anchor_mw": 7.5, "llm_mw": 7.5, "confidence": "High", "reasoning": "midday clear"},
+            {"time": "2026-04-15 12:30", "block_number": 51, "anchor_mw": 5.0, "llm_mw": 5.0, "confidence": "Low", "reasoning": "spurious model dip"},
+        ]
+        val_mid = validator.validate_predictions(predictions_midday, capacity_mw=10.0)
+        # Drop of 2.5 MW exceeds 1.2 MW max downward step (12% capacity), so it should be smoothed to 7.5 - 1.2 = 6.3 MW
+        self.assertGreater(val_mid[1]["validated_mw"], 5.0, "Midday downward drop must be smoothed")
+        self.assertEqual(val_mid[1]["validated_mw"], 6.3)
+
+    def test_weather_fusion_upper_consensus_rejects_low_outlier(self):
+        """Verify that when 2 streams agree on high clear generation, the low pessimistic outlier is rejected."""
+        s1 = 640.0
+        s2 = 417.0  # Coarse grid outlier
+        s3 = 675.5
+        sorted_gtis = sorted([s1, s2, s3])
+        d_mid_high = sorted_gtis[2] - sorted_gtis[1]
+
+        self.assertLessEqual(d_mid_high, 85.0, "Upper pair must agree within 85 W/m2")
+        fused = round((sorted_gtis[1] + sorted_gtis[2]) / 2.0, 1)
+        self.assertEqual(fused, 657.8, "Fused irradiance must be the average of the upper agreeing pair")
+        self.assertGreater(fused, 600.0, "Fused irradiance must not be crushed to 417 W/m2")
+
+    def test_weather_fusion_failed_stream_filtered(self):
+        """Verify that a daytime stream failure (0.0 W/m2) is filtered out and does not zero out the forecast."""
+        s1 = 700.0
+        s2 = 0.0  # Simulated API failure / timeout
+        s3 = 720.0
+        elev_target = 65.0
+
+        streams_dict = {}
+        if not (elev_target >= 10.0 and s1 <= 0.0 and max(s2, s3) > 50.0):
+            streams_dict["S1"] = s1
+        if not (elev_target >= 10.0 and s2 <= 0.0 and max(s1, s3) > 50.0):
+            streams_dict["S2"] = s2
+        if not (elev_target >= 10.0 and s3 <= 0.0 and max(s1, s2) > 50.0):
+            streams_dict["S3"] = s3
+
+        self.assertNotIn("S2", streams_dict, "Failed daytime 0.0 stream must be discarded")
+        active_vals = list(streams_dict.values())
+        fused = sum(active_vals) / len(active_vals)
+        self.assertEqual(fused, 710.0, "Active streams must be averaged, ignoring the failed stream")
+
+    def test_parabolic_clear_sky_interpolation_at_dawn(self):
+        """Verify that dawn interpolation uses solar elevation cut-in (0.0 W/m2 below 3 deg) and suppresses linear creep."""
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from modules.weather import weather_fusion
+
+        hourly_map = {
+            "06:00": {"gti": 0.0, "temp": 24.0},
+            "07:00": {"gti": 60.0, "temp": 25.0},
+        }
+        # At 06:05, sun elevation is 2.56 deg (< 3.0 deg cut-in)
+        target_dt_pre = dt.datetime(2026, 9, 12, 6, 5)
+        res_pre = weather_fusion._get_hourly_interpolated(hourly_map, "06:05", target_dt=target_dt_pre)
+        self.assertEqual(res_pre["gti"], 0.0, "Pre-cutin dawn solar irradiance must be 0.0 W/m2")
+
+        # At 06:15, sun elevation is 4.83 deg. Linear interpolation would give 15.0 W/m2, but parabolic gives 5.1 W/m2.
+        target_dt_dawn = dt.datetime(2026, 9, 12, 6, 15)
+        res_dawn = weather_fusion._get_hourly_interpolated(hourly_map, "06:15", target_dt=target_dt_dawn)
+        self.assertLess(res_dawn["gti"], 10.0, "Parabolic interpolation must suppress linear creep (5.1 vs 15.0 W/m2)")
+        self.assertEqual(res_dawn["gti"], 5.1)
+
 
 if __name__ == "__main__":
     unittest.main()

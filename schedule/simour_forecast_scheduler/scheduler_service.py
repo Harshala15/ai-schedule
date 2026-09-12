@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import datetime as dt
 import json
+import os
 import re
 import shutil
 from dataclasses import dataclass
@@ -441,7 +442,8 @@ def run_schedule_job(
     schedule_prefix: str,
     event: dict | None = None,
 ) -> dict:
-    config.load_plant_profile(getattr(settings, "PLANT_NAME", "SIRMOUR"))
+    plant_name = os.getenv("PLANT_NAME") or getattr(settings, "PLANT_NAME", "SIRMOUR")
+    config.load_plant_profile(plant_name)
     target_date, target_time, target_dt = _parse_target_datetime(event)
     selection = _pick_latest_capture_bundle(bucket, capture_prefix, meter_prefix, target_dt)
     image_map = _build_image_map(selection.screenshot_dir)

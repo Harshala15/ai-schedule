@@ -123,10 +123,10 @@ def validate_predictions(
     if not llm_predictions:
         return []
 
-    hard_capacity_mw = getattr(config, "PLANT_MAX_FEED_IN_MW", capacity_mw)
-    base_cap = getattr(config, "PLANT_CAPACITY_MW", capacity_mw)
+    base_cap = float(capacity_mw if capacity_mw is not None else getattr(config, "PLANT_CAPACITY_MW", 10.0))
+    hard_capacity_mw = float(capacity_mw if capacity_mw is not None else getattr(config, "PLANT_MAX_FEED_IN_MW", base_cap))
 
-    def _block_max_step(b_dict: dict) -> float:
+    def _block_max_step(b_dict: dict, is_upward: bool = True) -> float:
         t_str = str(b_dict.get("time", ""))
         hr = 12
         if len(t_str) >= 13 and t_str[10] == " ":
@@ -134,15 +134,15 @@ def validate_predictions(
                 hr = int(t_str[11:13])
             except ValueError:
                 hr = 12
-        if 8 <= hr <= 10:
-            # Morning rapid solar geometric ramp-up (allow up to 20% plant capacity per 15 min)
-            return base_cap * 0.20
+        if 7 <= hr <= 10:
+            # Morning rapid solar geometric ramp-up (allow up to 22% plant capacity per 15 min upward)
+            return base_cap * (0.22 if is_upward else 0.14)
         elif 16 <= hr <= 18:
             # Late afternoon rapid sunset ramp-down
-            return base_cap * 0.18
+            return base_cap * (0.14 if is_upward else 0.20)
         elif 11 <= hr <= 15:
             # Midday solar arch
-            return base_cap * 0.12
+            return base_cap * (0.18 if is_upward else 0.12)
         else:
             return base_cap * 0.08
 
@@ -153,10 +153,11 @@ def validate_predictions(
     # ---- Check 3A: boundary continuity against last frozen block ----
     if last_frozen_mw is not None and checked:
         first_mw = checked[0]["validated_mw"]
-        max_step_first = _block_max_step(checked[0])
         boundary_change = first_mw - last_frozen_mw
+        is_up = boundary_change > 0
+        max_step_first = _block_max_step(checked[0], is_upward=is_up)
         if abs(boundary_change) > max_step_first:
-            smoothed_first = last_frozen_mw + max_step_first * (1 if boundary_change > 0 else -1)
+            smoothed_first = last_frozen_mw + max_step_first * (1 if is_up else -1)
             smoothed_first = max(0.0, min(hard_capacity_mw, smoothed_first))
             note = (
                 f"boundary step change of {round(boundary_change, 3)} MW from last frozen block ({last_frozen_mw:.3f} MW) "
@@ -171,11 +172,12 @@ def validate_predictions(
     for i in range(1, len(checked)):
         prev_mw = checked[i - 1]["validated_mw"]
         curr_mw = checked[i]["validated_mw"]
-        max_step_curr = _block_max_step(checked[i])
         change = curr_mw - prev_mw
+        is_up = change > 0
+        max_step_curr = _block_max_step(checked[i], is_upward=is_up)
 
         if abs(change) > max_step_curr:
-            smoothed = prev_mw + max_step_curr * (1 if change > 0 else -1)
+            smoothed = prev_mw + max_step_curr * (1 if is_up else -1)
             smoothed = max(0.0, min(hard_capacity_mw, smoothed))
             note = (
                 f"step change of {round(change, 3)} MW from previous block exceeded "

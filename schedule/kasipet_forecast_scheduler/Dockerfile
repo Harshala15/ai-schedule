@@ -15,6 +15,7 @@ COPY config.py daily_feedback.py feature_builder.py image_feature_extraction.py 
      physics_anchor.py prediction_store.py run_pipeline.py similarity_retrieval.py \
      state_sync.py time_features.py validator.py video_motion_features.py ${LAMBDA_TASK_ROOT}/
 COPY modules/ ${LAMBDA_TASK_ROOT}/modules/
+COPY plant_profiles/ ${LAMBDA_TASK_ROOT}/plant_profiles/
 COPY kasipet_forecast_scheduler/ ${LAMBDA_TASK_ROOT}/kasipet_forecast_scheduler/
 COPY simour_forecast_scheduler/ ${LAMBDA_TASK_ROOT}/simour_forecast_scheduler/
 

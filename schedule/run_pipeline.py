@@ -312,14 +312,28 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
             if intraday_state and intraday_state.get("live_residual_factor") is not None:
                 live_clearness = max(0.20, min(1.10, float(intraday_state.get("live_residual_factor", 1.0))))
 
-        # 3. Dual-Horizon Exponential Blend across 12 forward blocks:
-        #    EffectiveClearness(k) = (e^(-0.25*k) * LiveClearness) + ((1 - e^(-0.25*k)) * NWPClearness(k))
-        #    - Blocks 0-2 (15-45 min): 80% dominated by Live Meter Clearness (catches current passing clouds)
-        #    - Blocks 4-11 (1-3 hours): Transitions smoothly to NWP Weather Clearness (anticipates storm fronts)
-        decay_weight = math.exp(-0.25 * block_index)
+        is_clear_ground = bool(intraday_state and intraday_state.get("is_clear_ground"))
+        is_overcast_ground = bool(intraday_state and intraday_state.get("is_overcast_ground"))
+        is_clearing_transition = bool(intraday_state and intraday_state.get("is_clearing_transition"))
+        is_fluctuating = bool(intraday_state and intraday_state.get("fluctuation_flag"))
+
+        # 3. Closed-Loop SCADA Telemetry Decay Filter (tau = 75 min / 5 blocks):
+        # Forward blocks k inherit live SCADA residual bias with smooth exponential decay.
+        # At block k=4 (first frozen dispatch block after gate closure), ~45% of ground bias is preserved.
+        tau_min = float(getattr(config, "SCADA_TELEMETRY_DECAY_TAU_MINUTES", 75.0))
+        decay_weight = math.exp(-(block_index * 15.0) / max(15.0, tau_min))
         effective_clearness = (decay_weight * live_clearness) + ((1.0 - decay_weight) * nwp_clearness)
 
-        # 4. Contextual Regime Modulations & Dynamic Morning Ramp Acceleration (Gate-Closure Protection):
+        # 4. Cloud Regime Plateau Shock-Absorber:
+        # On fluctuating / overcast days (fluctuation_flag or 0.25 <= nwp_clearness <= 0.75 without confirmed clear ground),
+        # high-frequency NWP cloud oscillations create phase-shift errors.
+        # Dampen variance towards the 0.50 regime plateau to stay comfortably within the +-15% tolerance band.
+        is_scattered = (0.25 <= nwp_clearness <= 0.75) and not (is_clear_ground or live_clearness >= 0.85)
+        if (is_fluctuating or is_scattered) and ref_elev >= 15.0:
+            effective_clearness = 0.50 + 0.60 * (effective_clearness - 0.50)
+            effective_clearness = max(0.20, min(0.90, effective_clearness))
+
+        # 5. Contextual Regime Modulations & Dynamic Morning Ramp Acceleration (Gate-Closure Protection):
         if 7 <= block_time.hour <= 11:
             # Morning Solar Ascent (07:00 - 11:30 AM):
             # Under rising clear-sky conditions (NWP clearness >= 0.70 AND live ground clearness >= 0.60 or ref_elev < 20.0),
