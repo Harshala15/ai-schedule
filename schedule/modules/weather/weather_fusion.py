@@ -300,7 +300,7 @@ def fetch_dual_stream_weather_fusion(
             med_val = sorted_gtis[len(sorted_gtis) // 2]
             delta_spread = round(max(active_vals) - min(active_vals), 1)
 
-            # Check for rain / cloud consensus: require at least 2 streams to confirm rain / thick clouds
+            # Check for rain / cloud consensus across streams
             p1 = float(b.get("precip", 0.0) or 0.0)
             p2 = float(e.get("precip", 0.0) or 0.0)
             p3 = float(p.get("precip_mm", 0.0) or 0.0)
@@ -308,31 +308,36 @@ def fetch_dual_stream_weather_fusion(
             c2 = float(e.get("cloud", 0.0) or 0.0)
             c3 = float(p.get("cloud_pct", 0.0) or 0.0)
 
-            rain_votes = sum(1 for p_val in (p1, p2, p3) if p_val >= 0.50)
-            cloud_votes = sum(1 for c_val in (c1, c2, c3) if c_val >= 50.0)
+            # Strict rain voting: require real precipitation (>= 0.75 mm) from multiple models
+            rain_votes = sum(1 for p_val in (p1, p2, p3) if p_val >= 0.75)
+            cloud_votes = sum(1 for c_val in (c1, c2, c3) if c_val >= 60.0)
 
-            is_confirmed_rain = (rain_votes >= 2) or (rain_votes >= 1 and cloud_votes >= 2)
-            is_confirmed_heavy_cloud = (cloud_votes >= 2)
+            # Confirmed rain requires either 2+ independent rain models, or heavy downpour (>= 2.5 mm) with dense cloud
+            is_confirmed_rain = (rain_votes >= 2) or (max(p1, p2, p3) >= 2.5 and cloud_votes >= 2)
+            is_confirmed_heavy_cloud = (cloud_votes >= 2 and max(active_vals) < 550.0)
 
             if len(sorted_gtis) == 3:
                 d_low_mid = sorted_gtis[1] - sorted_gtis[0]
                 d_mid_high = sorted_gtis[2] - sorted_gtis[1]
 
-                if is_confirmed_rain:
+                # Rule A: Upper Pair Consensus (e.g. 640 and 675 W/m2 vs 417 W/m2):
+                # When two models agree on high/clear irradiance and neither has heavy rain, discard the low pessimistic outlier!
+                is_upper_pair_agreement = (d_mid_high <= 95.0) and (sorted_gtis[1] > sorted_gtis[0] + 80.0)
+
+                if is_upper_pair_agreement and not (rain_votes >= 2):
+                    gti_fused = round((sorted_gtis[1] + sorted_gtis[2]) / 2.0, 1)
+                    regime = "UPPER CONSENSUS (Pessimistic Outlier Rejected)"
+                    conf = "High Confidence (Upper Pair Agreement)"
+                elif is_confirmed_rain:
                     # Confirmed storm/rain by multiple streams: take conservative lower envelope
                     gti_fused = round((sorted_gtis[0] * 0.60 + sorted_gtis[1] * 0.40), 1)
                     regime = "RAIN / CLOUD CONFIRMED (Multi-Stream Consensus)"
                     conf = "Confirmed Rain Attenuation"
                 elif is_confirmed_heavy_cloud and sorted_gtis[0] < sorted_gtis[1] - 100.0:
-                    # Heavy cloud confirmed: reject high ungrounded spike
+                    # Heavy cloud confirmed across models: reject high ungrounded spike
                     gti_fused = round((sorted_gtis[0] * 0.50 + sorted_gtis[1] * 0.50), 1)
                     regime = "OVERCAST CONSENSUS (High Outlier Rejected)"
                     conf = "Heavy Cloud Attenuation"
-                elif d_mid_high <= 85.0 and sorted_gtis[1] > sorted_gtis[0] + 85.0:
-                    # Upper pair agrees (e.g. 640 and 675 W/m2 vs 417 W/m2): discard the low outlier!
-                    gti_fused = round((sorted_gtis[1] + sorted_gtis[2]) / 2.0, 1)
-                    regime = "UPPER CONSENSUS (Pessimistic Outlier Rejected)"
-                    conf = "High Confidence (Upper Pair Agreement)"
                 elif d_low_mid <= 85.0 and sorted_gtis[2] > sorted_gtis[1] + 85.0:
                     # Lower pair agrees (e.g. 350 and 380 W/m2 vs 650 W/m2): discard the high outlier!
                     gti_fused = round((sorted_gtis[0] + sorted_gtis[1]) / 2.0, 1)

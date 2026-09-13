@@ -589,10 +589,11 @@ def write_full_block_schedule_from_llm_schedule(
                     continue
 
     # 2. Overlay frozen current-final schedule (authoritative for past frozen blocks + active AI window)
+    input_blocks: list[int] = []
     if input_csv_path.exists():
         with open(input_csv_path, "r", newline="", encoding="utf-8-sig") as handle:
             for row in csv.DictReader(handle):
-                raw_block = str(row.get("Block", "")).strip()
+                raw_block = str(row.get("Block", "") or row.get("block", "")).strip()
                 try:
                     b = int(raw_block)
                     mw = float(
@@ -605,6 +606,7 @@ def write_full_block_schedule_from_llm_schedule(
                         or 0.0
                     )
                     schedule_by_block[b] = mw
+                    input_blocks.append(b)
                 except (ValueError, TypeError):
                     continue
 
@@ -613,10 +615,17 @@ def write_full_block_schedule_from_llm_schedule(
     pr = float(getattr(config, "PERFORMANCE_RATIO", 0.78))
 
     # 3. APPROACH 3: Combined Physics + Tri-Stream NWP + Live Ground MOS Calibration
-    max_populated_daylight_block = max(
-        [b for b, mw in schedule_by_block.items() if 28 <= b <= 72 and mw > 0.05],
-        default=27
-    )
+    # Authoritative active AI window end:
+    # If input_csv_path has active daylight blocks, synthesize everything after its maximum daylight block.
+    # This prevents stale 05:00 AM fallback blocks from surviving in the afternoon and causing midday craters.
+    active_ai_daylight_blocks = [b for b in input_blocks if 28 <= b <= 72 and schedule_by_block.get(b, 0.0) > 0.02]
+    if active_ai_daylight_blocks:
+        max_populated_daylight_block = max(active_ai_daylight_blocks)
+    else:
+        max_populated_daylight_block = max(
+            [b for b, mw in schedule_by_block.items() if 28 <= b <= 72 and mw > 0.05],
+            default=27
+        )
 
     # A. Calculate Live Ground Clearness from morning blocks up to revision time (t <= T_rev)
     clearness_ratios = []
@@ -712,9 +721,12 @@ def write_full_block_schedule_from_llm_schedule(
         synth_mw = clearsky_mw * effective_clearness * temp_derate
 
         # Physical Guardrails:
-        # 1. Physical Diffuse Floor (elevation >= 45 deg)
-        if elev >= 45.0:
-            diffuse_floor = round(ac_cap * 0.25, 3)
+        # 1. Smooth Elevation-Scaled Diffuse Floor:
+        # Replaces binary 45-deg step cliffs (e.g. 1.875 MW jumping to 0.777 MW).
+        # Scaled continuously by solar geometry: sin(elev)/sin(60 deg) capped at 0.25 * ac_cap.
+        if elev >= 8.0:
+            diffuse_factor = min(1.0, math.sin(math.radians(elev)) / math.sin(math.radians(60.0)))
+            diffuse_floor = round(ac_cap * 0.25 * diffuse_factor, 3)
             synth_mw = max(diffuse_floor, synth_mw)
 
         # 2. Convective Storm Attenuation (High CAPE + Rain)
@@ -730,15 +742,26 @@ def write_full_block_schedule_from_llm_schedule(
         final_block_mw = round(max(0.0, min(ac_cap, synth_mw)), 3)
         schedule_by_block[block] = final_block_mw if final_block_mw > 0.02 else 0.0
 
-    # Seam Boundary Smoothing: smooth transition from last AI block
+    # Seam Boundary Smoothing: multi-block geometric exponential blend from last AI block
     if max_populated_daylight_block in schedule_by_block and (max_populated_daylight_block + 1) in schedule_by_block:
         last_ai_mw = schedule_by_block[max_populated_daylight_block]
-        first_synth_mw = schedule_by_block[max_populated_daylight_block + 1]
+        raw_first_mw = schedule_by_block[max_populated_daylight_block + 1]
         band_pct = float(getattr(config, "PLANT_TOLERANCE_BAND_PCT", 15.0))
         max_step = ac_cap * (band_pct / 100.0)
-        if abs(first_synth_mw - last_ai_mw) > max_step:
-            smoothed = round(last_ai_mw + max_step * (1 if first_synth_mw > last_ai_mw else -1), 3)
-            schedule_by_block[max_populated_daylight_block + 1] = max(0.0, smoothed)
+
+        # Calculate seam offset and smoothly decay across next 4 blocks
+        seam_offset = last_ai_mw - raw_first_mw
+        prev_mw = last_ai_mw
+        for step_i in range(1, 5):
+            b_target = max_populated_daylight_block + step_i
+            if b_target in schedule_by_block and schedule_by_block[b_target] > 0.05:
+                blend_w = math.exp(-step_i / 1.8)
+                blended = schedule_by_block[b_target] + (seam_offset * blend_w)
+                if abs(blended - prev_mw) > max_step:
+                    blended = prev_mw + max_step * (1 if blended > prev_mw else -1)
+                final_b = round(max(0.0, min(ac_cap, blended)), 3)
+                schedule_by_block[b_target] = final_b
+                prev_mw = final_b
 
     output_csv_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_csv_path, "w", newline="", encoding="utf-8") as handle:

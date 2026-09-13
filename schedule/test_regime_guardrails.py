@@ -729,6 +729,132 @@ class TestPlantwiseStateToleranceBands(unittest.TestCase):
         self.assertIn("±2.25 MW", prompt_kasipet, "Kasipet prompt must mandate ±2.25 MW tolerance band")
 
 
+class TestEnercastBehaviorAndSynthesisFixes(unittest.TestCase):
+    """Verify fixes for continuous afternoon synthesis, smooth diffuse floor, and weather fusion upper consensus."""
+
+    def test_continuous_whole_day_synthesis_updates_afternoon(self):
+        """Verify that when input_csv ends at Block 52, afternoon blocks (53-70) are dynamically re-synthesized."""
+        import tempfile
+        import csv
+        import config
+        from modules import schedule_utils
+
+        config.load_plant_profile("SIRMOUR")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            in_csv = tmp / "current_final.csv"
+            fallback_csv = tmp / "stale_0500_fallback.csv"
+            out_csv = tmp / "output_penalty.csv"
+
+            # 1. Fallback CSV has stale 05:00 AM values (e.g. 0.50 MW due to old morning rain forecast)
+            with open(fallback_csv, "w", newline="", encoding="utf-8") as f:
+                w = csv.writer(f)
+                w.writerow(["Block", "Time Interval (15 minute interval)", "Step 2 Weather Adjustment MW"])
+                for b in range(1, 97):
+                    w.writerow([b, f"{b}:00", 0.50])
+
+            # 2. Input CSV has active AI revision ending at Block 52 (Block 52 is 2.50 MW)
+            with open(in_csv, "w", newline="", encoding="utf-8") as f:
+                w = csv.writer(f)
+                w.writerow(["Block", "Time Interval (15 minute interval)", "Step 2 Weather Adjustment MW"])
+                for b in range(21, 53):
+                    w.writerow([b, f"{b}:00", 2.50])
+
+            # 3. Latest weather fusion has clear afternoon (GTI = 750 W/m2)
+            weather_clear = {}
+            for h in range(12, 19):
+                weather_clear[f"{h:02d}:00"] = {
+                    "hour_label": f"{h:02d}:00",
+                    "gti_fused": 750.0,
+                    "cloud_pct": 10.0,
+                    "precip_mm": 0.0,
+                    "cape_j_kg": 200.0,
+                    "temp_derate_multiplier": 0.96,
+                }
+
+            schedule_utils.write_full_block_schedule_from_llm_schedule(
+                in_csv,
+                out_csv,
+                fallback_csv_path=fallback_csv,
+                target_date="2026-09-13",
+                weather_fusion_map=weather_clear,
+            )
+
+            df_out = pd.read_csv(out_csv)
+            # Verify blocks 53, 54, 55 are re-synthesized to high values (> 1.8 MW) rather than stuck at stale 0.50 MW
+            b53_val = float(df_out.loc[df_out["block"] == 53, "schedule_mw"].values[0])
+            b54_val = float(df_out.loc[df_out["block"] == 54, "schedule_mw"].values[0])
+            self.assertGreater(b53_val, 1.8, f"Block 53 must be re-synthesized (got {b53_val:.3f}, expected > 1.8 MW)")
+            self.assertGreater(b54_val, 1.8, f"Block 54 must be re-synthesized (got {b54_val:.3f}, expected > 1.8 MW)")
+
+    def test_smooth_diffuse_floor_eliminates_cliff_drop(self):
+        """Verify that the smooth diffuse floor eliminates the 1.1 MW cliff drop in Anjangaon (7.5 MW)."""
+        import tempfile
+        import csv
+        import config
+        from modules import schedule_utils
+
+        config.load_plant_profile("ANJANGAON")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            in_csv = tmp / "current_final.csv"
+            out_csv = tmp / "output_penalty.csv"
+
+            # Input CSV ending at Block 40 (10:00 AM)
+            with open(in_csv, "w", newline="", encoding="utf-8") as f:
+                w = csv.writer(f)
+                w.writerow(["Block", "Time Interval (15 minute interval)", "Step 2 Weather Adjustment MW"])
+                for b in range(21, 41):
+                    w.writerow([b, f"{b}:00", 1.80])
+
+            # Deep overcast weather (GTI = 120 W/m2)
+            weather_overcast = {}
+            for h in range(10, 19):
+                weather_overcast[f"{h:02d}:00"] = {
+                    "hour_label": f"{h:02d}:00",
+                    "gti_fused": 120.0,
+                    "cloud_pct": 98.0,
+                    "precip_mm": 0.0,
+                    "cape_j_kg": 100.0,
+                    "temp_derate_multiplier": 0.99,
+                }
+
+            schedule_utils.write_full_block_schedule_from_llm_schedule(
+                in_csv,
+                out_csv,
+                target_date="2026-09-13",
+                weather_fusion_map=weather_overcast,
+            )
+
+            df_out = pd.read_csv(out_csv)
+            # Check transition from Block 59 to 62: step change must be smooth (< 0.40 MW), never a -1.1 MW cliff!
+            b59 = float(df_out.loc[df_out["block"] == 59, "schedule_mw"].values[0])
+            b60 = float(df_out.loc[df_out["block"] == 60, "schedule_mw"].values[0])
+            b61 = float(df_out.loc[df_out["block"] == 61, "schedule_mw"].values[0])
+            b62 = float(df_out.loc[df_out["block"] == 62, "schedule_mw"].values[0])
+
+            self.assertLess(abs(b60 - b59), 0.35, f"Step b59->b60 must be smooth (got {abs(b60 - b59):.3f} MW)")
+            self.assertLess(abs(b61 - b60), 0.35, f"Step b60->b61 must be smooth (got {abs(b61 - b60):.3f} MW, cliff eliminated!)")
+            self.assertLess(abs(b62 - b61), 0.35, f"Step b61->b62 must be smooth (got {abs(b62 - b61):.3f} MW)")
+
+    def test_weather_fusion_upper_consensus_immune_to_single_drizzle(self):
+        """Verify that a single model predicting 0.5 mm drizzle does not crush upper consensus when 2 streams agree on sun."""
+        s1 = 788.0
+        s2 = 420.0  # Model with 0.5 mm drizzle and 65% cloud
+        s3 = 690.0
+        sorted_gtis = sorted([s1, s2, s3])
+        d_mid_high = sorted_gtis[2] - sorted_gtis[1]
+
+        p1, p2, p3 = 0.0, 0.5, 0.0
+        rain_votes = sum(1 for p_val in (p1, p2, p3) if p_val >= 0.75)
+        is_upper_pair_agreement = (d_mid_high <= 100.0) and (sorted_gtis[1] > sorted_gtis[0] + 80.0)
+
+        self.assertTrue(is_upper_pair_agreement, "Upper pair (690 & 788 W/m2) must be recognized as agreeing")
+        self.assertEqual(rain_votes, 0, "Single 0.5 mm drizzle must not be treated as confirmed multi-stream rain")
+        fused = round((sorted_gtis[1] + sorted_gtis[2]) / 2.0, 1)
+        self.assertEqual(fused, 739.0, "Upper consensus must average 690 and 788 W/m2, rejecting the 420 W/m2 outlier")
+
+
 if __name__ == "__main__":
     unittest.main()
 

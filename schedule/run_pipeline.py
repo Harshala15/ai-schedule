@@ -340,11 +340,11 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
         # 5. Contextual Regime Modulations & Dynamic Morning Ramp Acceleration (Gate-Closure Protection):
         if 7 <= block_time.hour <= 11:
             # Morning Solar Ascent (07:00 - 11:30 AM):
-            # Under rising clear-sky conditions (NWP clearness >= 0.70 AND live ground clearness >= 0.60 or ref_elev < 20.0),
+            # Under rising clear-sky conditions (confirmed clear ground Kt >= 0.70, OR rising NWP clearness with clear ground),
             # morning ground haze burns off rapidly.
             # We dynamically accelerate the blend towards full clear-sky physical potential to protect T+4 frozen gate-closure blocks.
             # CRITICAL SAFEGUARD: If live ground clearness is low (< 0.50) at midday (elev >= 45 deg), DO NOT force ramp_floor upward!
-            if (nwp_clearness >= 0.65 or cloud_pct <= 25.0) and (live_clearness >= 0.60 or ref_elev < 20.0):
+            if (live_clearness >= 0.70) or ((nwp_clearness >= 0.65 or cloud_pct <= 25.0) and (live_clearness >= 0.60 or ref_elev < 20.0)):
                 morning_hour_progress = max(0.0, (block_time.hour - 7) + (block_time.minute / 60.0))
                 ramp_floor = min(1.0, 0.80 + (0.20 * min(1.0, morning_hour_progress / 3.0)))
                 live_residual_factor = max(ramp_floor, effective_clearness)
