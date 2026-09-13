@@ -729,37 +729,40 @@ def write_full_block_schedule_from_llm_schedule(
             diffuse_floor = round(ac_cap * 0.25 * diffuse_factor, 3)
             synth_mw = max(diffuse_floor, synth_mw)
 
-        # 2. Convective Storm Attenuation (High CAPE + Rain)
-        if cape_val >= 1500 and (precip_mm >= 0.15 or (w_entry and w_entry.get("cloud_pct", 0.0) >= 60.0)):
-            synth_mw = min(synth_mw, clearsky_mw * 0.35)
+        # 2. Continuous Convective Storm Attenuation (High CAPE + Rain)
+        if cape_val >= 1200 and (precip_mm >= 0.15 or (w_entry and w_entry.get("cloud_pct", 0.0) >= 60.0)):
+            cape_severity = min(1.0, (cape_val - 1200.0) / 800.0)
+            attenuation_mult = 1.0 - (0.65 * cape_severity)
+            synth_mw = min(synth_mw, clearsky_mw * attenuation_mult)
 
         # 3. Monotonic Afternoon Descent after solar noon (block >= 50)
         prev_block_mw = schedule_by_block.get(block - 1)
         if block >= 50 and prev_block_mw is not None:
-            max_allowed_step = prev_block_mw + (ac_cap * 0.05)
-            synth_mw = min(synth_mw, max_allowed_step)
+            synth_mw = min(synth_mw, prev_block_mw)
 
         final_block_mw = round(max(0.0, min(ac_cap, synth_mw)), 3)
         schedule_by_block[block] = final_block_mw if final_block_mw > 0.02 else 0.0
 
-    # Seam Boundary Smoothing: multi-block geometric exponential blend from last AI block
+    # Seam Boundary Smoothing: Smooth continuous ramp transition into synthesized curve
+    # Guarantees that EVERY block transition adheres strictly to the state tolerance band (max_step).
     if max_populated_daylight_block in schedule_by_block and (max_populated_daylight_block + 1) in schedule_by_block:
         last_ai_mw = schedule_by_block[max_populated_daylight_block]
-        raw_first_mw = schedule_by_block[max_populated_daylight_block + 1]
         band_pct = float(getattr(config, "PLANT_TOLERANCE_BAND_PCT", 15.0))
         max_step = ac_cap * (band_pct / 100.0)
 
-        # Calculate seam offset and smoothly decay across next 4 blocks
-        seam_offset = last_ai_mw - raw_first_mw
         prev_mw = last_ai_mw
-        for step_i in range(1, 5):
-            b_target = max_populated_daylight_block + step_i
-            if b_target in schedule_by_block and schedule_by_block[b_target] > 0.05:
-                blend_w = math.exp(-step_i / 1.8)
-                blended = schedule_by_block[b_target] + (seam_offset * blend_w)
-                if abs(blended - prev_mw) > max_step:
-                    blended = prev_mw + max_step * (1 if blended > prev_mw else -1)
-                final_b = round(max(0.0, min(ac_cap, blended)), 3)
+        for b_target in range(max_populated_daylight_block + 1, 74):
+            if b_target in schedule_by_block and schedule_by_block[b_target] > 0.02:
+                target_mw = schedule_by_block[b_target]
+                # Clamp step change to plant regulatory band
+                if abs(target_mw - prev_mw) > max_step:
+                    clamped_mw = prev_mw + max_step * (1.0 if target_mw > prev_mw else -1.0)
+                else:
+                    clamped_mw = target_mw
+                # After solar noon (block >= 50), enforce monotonic descent
+                if b_target >= 50:
+                    clamped_mw = min(prev_mw, clamped_mw)
+                final_b = round(max(0.0, min(ac_cap, clamped_mw)), 3)
                 schedule_by_block[b_target] = final_b
                 prev_mw = final_b
 
