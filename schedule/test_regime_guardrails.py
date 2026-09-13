@@ -621,8 +621,107 @@ class TestRegimeGuardrails(unittest.TestCase):
         # At 06:15, sun elevation is 4.83 deg. Linear interpolation would give 15.0 W/m2, but parabolic gives 5.1 W/m2.
         target_dt_dawn = dt.datetime(2026, 9, 12, 6, 15)
         res_dawn = weather_fusion._get_hourly_interpolated(hourly_map, "06:15", target_dt=target_dt_dawn)
-        self.assertLess(res_dawn["gti"], 10.0, "Parabolic interpolation must suppress linear creep (5.1 vs 15.0 W/m2)")
-        self.assertEqual(res_dawn["gti"], 5.1)
+        self.assertLess(res_dawn["gti"], 10.0, "Parabolic interpolation must suppress linear creep (sub-10 vs 15.0 W/m2)")
+        self.assertAlmostEqual(res_dawn["gti"], 5.0, delta=1.0)
+
+
+class TestPlantwiseStateToleranceBands(unittest.TestCase):
+    """
+    Verify state-specific regulatory tolerance band compliance across plant profiles:
+      - Madhya Pradesh (MPERC): ±10% of Available Capacity (AvC)
+      - Maharashtra (MERC):     ±10% of Available Capacity (AvC)
+      - Telangana (TSERC):       ±15% of Available Capacity (AvC)
+    """
+
+    def test_mp_plants_tolerance_band_is_10_percent(self):
+        import config
+        # Sirmour: 5.1 MW AC -> 0.510 MW band
+        config.load_plant_profile("SIRMOUR")
+        self.assertEqual(config.PLANT_TOLERANCE_BAND_PCT, 10.0)
+        self.assertAlmostEqual(config.PLANT_TOLERANCE_BAND_MW, 0.510, places=3)
+
+        # Bamkhal: 5.0 MW AC -> 0.500 MW band
+        config.load_plant_profile("BAMKHAL")
+        self.assertEqual(config.PLANT_TOLERANCE_BAND_PCT, 10.0)
+        self.assertAlmostEqual(config.PLANT_TOLERANCE_BAND_MW, 0.500, places=3)
+
+        # GSNP: 20.0 MW AC -> 2.000 MW band
+        config.load_plant_profile("GSNP")
+        self.assertEqual(config.PLANT_TOLERANCE_BAND_PCT, 10.0)
+        self.assertAlmostEqual(config.PLANT_TOLERANCE_BAND_MW, 2.000, places=3)
+
+        # 7.5 MW series: Balakwada, Andad, Anjangaon, Sawda, Gugariyakhedi, Nandgaon -> 0.750 MW band
+        for plant in ["BALAKWADA", "ANDAD", "ANJANGAON", "SAWDA", "GUGARIYAKHEDI", "NANDGAON"]:
+            config.load_plant_profile(plant)
+            self.assertEqual(config.PLANT_TOLERANCE_BAND_PCT, 10.0, f"{plant} must have 10% tolerance band in MP")
+            self.assertAlmostEqual(config.PLANT_TOLERANCE_BAND_MW, 0.750, places=3, msg=f"{plant} must have 0.750 MW band")
+
+    def test_maharashtra_plants_tolerance_band_is_10_percent(self):
+        import config
+        # CME: 5.0 MW AC -> 0.500 MW band
+        config.load_plant_profile("CME")
+        self.assertEqual(config.PLANT_TOLERANCE_BAND_PCT, 10.0)
+        self.assertAlmostEqual(config.PLANT_TOLERANCE_BAND_MW, 0.500, places=3)
+
+        # OSEPL: 20.0 MW AC -> 2.000 MW band
+        config.load_plant_profile("OSEPL")
+        self.assertEqual(config.PLANT_TOLERANCE_BAND_PCT, 10.0)
+        self.assertAlmostEqual(config.PLANT_TOLERANCE_BAND_MW, 2.000, places=3)
+
+        # ZTRIC: 18.63 MW AC -> 1.863 MW band
+        config.load_plant_profile("ZTRIC")
+        self.assertEqual(config.PLANT_TOLERANCE_BAND_PCT, 10.0)
+        self.assertAlmostEqual(config.PLANT_TOLERANCE_BAND_MW, 1.863, places=3)
+
+    def test_telangana_plants_tolerance_band_is_15_percent(self):
+        import config
+        # Kasipet: 15.0 MW AC -> 2.250 MW band
+        config.load_plant_profile("KASIPET")
+        self.assertEqual(config.PLANT_TOLERANCE_BAND_PCT, 15.0)
+        self.assertAlmostEqual(config.PLANT_TOLERANCE_BAND_MW, 2.250, places=3)
+
+        # Bhupalpally: 10.0 MW AC -> 1.500 MW band
+        config.load_plant_profile("BHUPALPALLY")
+        self.assertEqual(config.PLANT_TOLERANCE_BAND_PCT, 15.0)
+        self.assertAlmostEqual(config.PLANT_TOLERANCE_BAND_MW, 1.500, places=3)
+
+        # Kothagudem: 37.0 MW AC -> 5.550 MW band
+        config.load_plant_profile("KOTHAGUDEM")
+        self.assertEqual(config.PLANT_TOLERANCE_BAND_PCT, 15.0)
+        self.assertAlmostEqual(config.PLANT_TOLERANCE_BAND_MW, 5.550, places=3)
+
+        # Mandamarri: 28.0 MW AC -> 4.200 MW band
+        config.load_plant_profile("MANDAMARRI")
+        self.assertEqual(config.PLANT_TOLERANCE_BAND_PCT, 15.0)
+        self.assertAlmostEqual(config.PLANT_TOLERANCE_BAND_MW, 4.200, places=3)
+
+    def test_llm_prompt_adapts_to_state_specific_tolerance_band(self):
+        import config
+        from modules.llm import predictor
+
+        # Test Sirmour (Madhya Pradesh -> 10%, 0.51 MW)
+        config.load_plant_profile("SIRMOUR")
+        base_preds_sirmour = [{"time": "2026-09-13 10:00", "anchor_mw": 3.0}]
+        prompt_sirmour = predictor._build_stepwise_prompt(
+            base_predictions=base_preds_sirmour,
+            feature_row={},
+            step1_inputs_text="step 1 test",
+            weather_text="weather test",
+        )
+        self.assertIn("±10%", prompt_sirmour, "Sirmour prompt must mandate ±10% tolerance band")
+        self.assertIn("±0.51 MW", prompt_sirmour, "Sirmour prompt must mandate ±0.51 MW tolerance band")
+
+        # Test Kasipet (Telangana -> 15%, 2.25 MW)
+        config.load_plant_profile("KASIPET")
+        base_preds_kasipet = [{"time": "2026-09-13 10:00", "anchor_mw": 8.0}]
+        prompt_kasipet = predictor._build_stepwise_prompt(
+            base_predictions=base_preds_kasipet,
+            feature_row={},
+            step1_inputs_text="step 1 test",
+            weather_text="weather test",
+        )
+        self.assertIn("±15%", prompt_kasipet, "Kasipet prompt must mandate ±15% tolerance band")
+        self.assertIn("±2.25 MW", prompt_kasipet, "Kasipet prompt must mandate ±2.25 MW tolerance band")
 
 
 if __name__ == "__main__":

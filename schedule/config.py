@@ -447,6 +447,47 @@ PLANT_PENALTY_REGULATION = _read_profile_setting("PLANT_PENALTY_REGULATION", "pe
 PERFORMANCE_RATIO = _read_profile_float_setting("PERFORMANCE_RATIO", "performance_ratio", 0.78)
 
 
+def get_plant_tolerance_band_pct(penalty_regulation: str | None = None, plant_name: str | None = None) -> float:
+    """
+    Return the allowable DSM penalty-free tolerance band percentage (e.g. 10.0 or 15.0)
+    mandated by state electricity regulatory commissions.
+
+    Regulatory Mandates:
+      - Madhya Pradesh (MPERC): ±10% of Available Capacity (AvC)
+      - Maharashtra (MERC):     ±10% of Available Capacity (AvC)
+      - Telangana (TSERC):       ±15% of Available Capacity (AvC)
+      - CERC / Interstate:      ±15% of Available Capacity (AvC)
+    """
+    reg = (penalty_regulation or PLANT_PENALTY_REGULATION or "").strip().lower()
+    name = (plant_name or PLANT_NAME or "").strip().upper()
+
+    if "madhya pradesh" in reg or "mperc" in reg:
+        return 10.0
+    if "maharashtra" in reg or "merc" in reg:
+        return 10.0
+    if "telangana" in reg or "tserc" in reg:
+        return 15.0
+
+    # Plant-name fallback if penalty_regulation was omitted or generic
+    mp_plants = {"SIRMOUR", "GSNP", "GSPPL", "BAMKHAL", "BALAKWADA", "ANDAD", "ANJANGAON", "ANJANGOAN", "SAWDA", "GUGARIYAKHEDI", "NANDGAON"}
+    if name in mp_plants:
+        return 10.0
+
+    mh_plants = {"CME", "OSEPL", "ZTRIC"}
+    if name in mh_plants:
+        return 10.0
+
+    tg_plants = {"BHUPALPALLY", "KASIPET", "KOTHAGUDEM", "MANDAMARRI"}
+    if name in tg_plants:
+        return 15.0
+
+    return 15.0
+
+
+PLANT_TOLERANCE_BAND_PCT = get_plant_tolerance_band_pct(PLANT_PENALTY_REGULATION, PLANT_NAME)
+PLANT_TOLERANCE_BAND_MW = round((PLANT_TOLERANCE_BAND_PCT / 100.0) * PLANT_CAPACITY_MW, 3)
+
+
 def load_plant_profile(plant_name: str | None = None) -> dict:
     """Authoritatively load and bind plant profile parameters into config globals."""
     global PLANT_NAME, PLANT_LAT, PLANT_LON, PLANT_CAPACITY_MW, PLANT_DC_CAPACITY_MW
@@ -454,6 +495,7 @@ def load_plant_profile(plant_name: str | None = None) -> dict:
     global PLANT_TRACKER_TYPE, PLANT_AVAILABILITY_PLANNED_PCT, PLANT_PPA_RATE_INR_PER_KWH
     global PLANT_EEG_ID, PLANT_KEY, PERFORMANCE_RATIO, PLANT_PROFILE, PLANT_PROFILE_PATH
     global PREDICTION_CONTEXT_PATH, PLANT_PENALTY_REGULATION
+    global PLANT_TOLERANCE_BAND_PCT, PLANT_TOLERANCE_BAND_MW
 
     name = (plant_name or PLANT_NAME or "SIRMOUR").strip().upper()
     profile_path = Path(__file__).resolve().with_name("plant_profiles") / f"{name}.json"
@@ -478,6 +520,8 @@ def load_plant_profile(plant_name: str | None = None) -> dict:
     PLANT_EEG_ID = _profile_str(profile, "eeg_id", fallback.get("eeg_id", ""))
     PLANT_KEY = _profile_str(profile, "plant_key", "")
     PLANT_PENALTY_REGULATION = _profile_str(profile, "penalty_regulation", fallback.get("penalty_regulation", "CERC"))
+    PLANT_TOLERANCE_BAND_PCT = get_plant_tolerance_band_pct(PLANT_PENALTY_REGULATION, name)
+    PLANT_TOLERANCE_BAND_MW = round((PLANT_TOLERANCE_BAND_PCT / 100.0) * PLANT_CAPACITY_MW, 3)
     PERFORMANCE_RATIO = _profile_float(profile, "performance_ratio", 0.78)
     PREDICTION_CONTEXT_PATH = _storage_path("prediction_context", f"{name}_context.json")
 

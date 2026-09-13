@@ -734,7 +734,8 @@ def write_full_block_schedule_from_llm_schedule(
     if max_populated_daylight_block in schedule_by_block and (max_populated_daylight_block + 1) in schedule_by_block:
         last_ai_mw = schedule_by_block[max_populated_daylight_block]
         first_synth_mw = schedule_by_block[max_populated_daylight_block + 1]
-        max_step = ac_cap * 0.15
+        band_pct = float(getattr(config, "PLANT_TOLERANCE_BAND_PCT", 15.0))
+        max_step = ac_cap * (band_pct / 100.0)
         if abs(first_synth_mw - last_ai_mw) > max_step:
             smoothed = round(last_ai_mw + max_step * (1 if first_synth_mw > last_ai_mw else -1), 3)
             schedule_by_block[max_populated_daylight_block + 1] = max(0.0, smoothed)

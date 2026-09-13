@@ -577,14 +577,18 @@ def _build_stepwise_prompt(base_predictions: list, feature_row: dict, step1_inpu
     cap_mw = float(getattr(config, "PLANT_CAPACITY_MW", 10.0))
     dc_mw = float(getattr(config, "PLANT_DC_CAPACITY_MW", cap_mw))
     peak_mw_est = round(min(cap_mw, dc_mw * float(getattr(config, "PERFORMANCE_RATIO", 0.78)) * 1.05), 2)
-    tol_band_mw = round(cap_mw * 0.15, 2)
+    reg_name = getattr(config, "PLANT_PENALTY_REGULATION", "CERC")
+    tol_band_pct = float(getattr(config, "PLANT_TOLERANCE_BAND_PCT", getattr(config, "get_plant_tolerance_band_pct", lambda *_: 15.0)(reg_name, plant_name)))
+    tol_band_mw = round(cap_mw * (tol_band_pct / 100.0), 3)
     return f"""
-Generate the {plant_name} forecast in ONE JSON response. Plant AC Capacity is {cap_mw:.1f} MW (DC: {dc_mw:.1f} MW). Allowed DSM Tolerance Band (±15%): ±{tol_band_mw:.2f} MW.
+Generate the {plant_name} forecast in ONE JSON response. Plant AC Capacity is {cap_mw:.1f} MW (DC: {dc_mw:.1f} MW).
+State Regulatory Regime: {reg_name} (Strict DSM Tolerance Band: ±{tol_band_pct:.0f}% -> ±{tol_band_mw:.2f} MW).
 
 CRITICAL FORECAST & AI ADJUSTMENT RULES (NO FIXED WEIGHTS):
-1. Dynamic Evidence-Based Adjustment (Do NOT use fixed percentages or static blend weights):
+1. Dynamic Evidence-Based Adjustment with Strict State Tolerance Band (±{tol_band_pct:.0f}% -> ±{tol_band_mw:.2f} MW):
+   - Under {reg_name} grid regulations, any deviation exceeding ±{tol_band_pct:.0f}% of capacity (±{tol_band_mw:.2f} MW) incurs direct DSM cash penalties!
    - You must evaluate all available evidence: Live SCADA Clearness Ratio (Kt = Actual / ClearSky), Ground POA, 15-minute Ramp Rate (dP/dt), and ALL 3 Independent Weather Streams (Stream 1 ECMWF, Stream 2 91-Member Ensemble, Stream 3 5-Agency Consensus + CAPE + Transmissivity).
-   - Reason dynamically: Decide (a) whether an adjustment is needed, (b) the direction (positive, negative, or neutral), and (c) the exact adjustment magnitude (Delta MW) justified by the evidence.
+   - Reason dynamically: Decide (a) whether an adjustment is needed, (b) the direction (positive, negative, or neutral), and (c) the exact adjustment magnitude (Delta MW) justified by the evidence so that the schedule remains safely within the ±{tol_band_mw:.2f} MW band.
    - Explicitly document your physical reasoning and why the chosen magnitude was selected in the "reasoning" field.
 
 2. Regime-Governed Adjustment Decisions:

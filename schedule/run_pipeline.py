@@ -327,11 +327,15 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
         # 4. Cloud Regime Plateau Shock-Absorber:
         # On fluctuating / overcast days (fluctuation_flag or 0.25 <= nwp_clearness <= 0.75 without confirmed clear ground),
         # high-frequency NWP cloud oscillations create phase-shift errors.
-        # Dampen variance towards the 0.50 regime plateau to stay comfortably within the +-15% tolerance band.
+        # Dampen variance towards the 0.50 regime plateau to stay comfortably within the state regulatory band (±10% MP/MH, ±15% Telangana).
         is_scattered = (0.25 <= nwp_clearness <= 0.75) and not (is_clear_ground or live_clearness >= 0.85)
         if (is_fluctuating or is_scattered) and ref_elev >= 15.0:
-            effective_clearness = 0.50 + 0.60 * (effective_clearness - 0.50)
-            effective_clearness = max(0.20, min(0.90, effective_clearness))
+            band_pct = float(getattr(config, "PLANT_TOLERANCE_BAND_PCT", 15.0))
+            # Tighter dampening (0.45) for strict 10% band states (MP/MH) vs 0.60 for 15% band (Telangana)
+            damp_factor = 0.45 if band_pct <= 10.0 else 0.60
+            max_ceiling = 0.82 if band_pct <= 10.0 else 0.90
+            effective_clearness = 0.50 + damp_factor * (effective_clearness - 0.50)
+            effective_clearness = max(0.20, min(max_ceiling, effective_clearness))
 
         # 5. Contextual Regime Modulations & Dynamic Morning Ramp Acceleration (Gate-Closure Protection):
         if 7 <= block_time.hour <= 11:
