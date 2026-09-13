@@ -508,6 +508,24 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
             else:
                 step2 = round(max(0.0, min(cap_mw, step2)), 3)
 
+            # 4. OSEPL PLANT-SPECIFIC RECEIVABLE OPTIMIZATION GUARDRAIL:
+            # Under Maharashtra Inter-State / CERC regulations, when Schedule <= Meter, the plant
+            # earns DSM receivables at the full PPA rate (Rs 9.27/kWh) with ZERO penalty.
+            # When Schedule > Meter, the plant suffers severe shortfall penalties.
+            # For OSEPL only: keep the schedule slightly below meter data / expectation,
+            # but strictly within the 10% regulatory band (<= 2.0 MW below meter).
+            if config.PLANT_NAME.upper() == "OSEPL" and b_elev >= 7.5:
+                band_mw = cap_mw * 0.10  # 2.0 MW for OSEPL
+                opt_under_offset = min(1.20, max(0.40, step2 * 0.06))
+                step2_opt = round(max(0.0, step2 - opt_under_offset), 3)
+
+                latest_m = float(intraday_state.get("latest_mw", 0.0)) if intraday_state else 0.0
+                if latest_m > 0.5 and step2_opt > latest_m:
+                    step2_opt = round(max(latest_m - (band_mw * 0.85), latest_m * 0.96), 3)
+
+                step2 = step2_opt
+                p["reasoning"] = (p.get("reasoning", "") + f" [OSEPL Receivable Optimization: Biased below meter ({step2:.3f} MW) to maximize surplus receivables]").strip()
+
             p["step2_mw"] = step2
             p["step3_mw"] = step2
             p["step4_mw"] = step2
@@ -569,6 +587,11 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
                 step2 = min(step2, round(cap_mw * 0.05, 3))
             else:
                 step2 = round(max(0.0, min(cap_mw, step2)), 3)
+
+            if config.PLANT_NAME.upper() == "OSEPL" and b_elev >= 7.5:
+                band_mw = cap_mw * 0.10
+                opt_under_offset = min(1.20, max(0.40, step2 * 0.06))
+                step2 = round(max(0.0, step2 - opt_under_offset), 3)
 
             p["step2_mw"] = step2
             p["step3_mw"] = step2

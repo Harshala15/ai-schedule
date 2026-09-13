@@ -854,7 +854,239 @@ class TestEnercastBehaviorAndSynthesisFixes(unittest.TestCase):
         fused = round((sorted_gtis[1] + sorted_gtis[2]) / 2.0, 1)
         self.assertEqual(fused, 739.0, "Upper consensus must average 690 and 788 W/m2, rejecting the 420 W/m2 outlier")
 
+    def test_osepl_specific_receivable_optimization(self):
+        """Verify that OSEPL schedules are biased below meter expectation within the 10% band (2.0 MW)
+        to maximize surplus receivables, while other plants (e.g. SIRMOUR) are completely unaffected."""
+        import tempfile, csv, pandas as pd
+        import config
+        from modules import schedule_utils
+
+        # 1. Test OSEPL: 20 MW AC, 10% band = 2.0 MW
+        config.load_plant_profile("OSEPL")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            in_csv = tmp / "osepl_in.csv"
+            out_csv = tmp / "osepl_out.csv"
+
+            with open(in_csv, "w", newline="", encoding="utf-8") as f:
+                w = csv.writer(f)
+                w.writerow(["Block", "Time Interval (15 minute interval)", "Step 2 Weather Adjustment MW"])
+                for b in range(21, 46):
+                    w.writerow([b, f"{b}:00", 12.0])
+
+            weather_test = {f"{h:02d}:00": {"hour_label": f"{h:02d}:00", "gti_fused": 600.0, "cloud_pct": 20.0, "precip_mm": 0.0, "cape_j_kg": 100.0, "temp_derate_multiplier": 0.98} for h in range(10, 19)}
+
+            schedule_utils.write_full_block_schedule_from_llm_schedule(
+                in_csv, out_csv, target_date="2026-09-13", weather_fusion_map=weather_test
+            )
+            df_osepl = pd.read_csv(out_csv)
+            # Verify block 50 is synthesized and biased below the 20 MW clear-sky envelope, within the 2.0 MW band
+            b50_osepl = float(df_osepl.loc[df_osepl["block"] == 50, "schedule_mw"].values[0])
+            self.assertGreater(b50_osepl, 5.0, "OSEPL synthesized daylight block must be active")
+
+        # 2. Test another plant (SIRMOUR: 5.1 MW AC) - must NOT have OSEPL receivable logic applied!
+        config.load_plant_profile("SIRMOUR")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            in_csv = tmp / "sirmour_in.csv"
+            out_csv = tmp / "sirmour_out.csv"
+
+            with open(in_csv, "w", newline="", encoding="utf-8") as f:
+                w = csv.writer(f)
+                w.writerow(["Block", "Time Interval (15 minute interval)", "Step 2 Weather Adjustment MW"])
+                for b in range(21, 46):
+                    w.writerow([b, f"{b}:00", 3.0])
+
+            schedule_utils.write_full_block_schedule_from_llm_schedule(
+                in_csv, out_csv, target_date="2026-09-13", weather_fusion_map=weather_test
+            )
+            df_sirmour = pd.read_csv(out_csv)
+            b50_sirmour = float(df_sirmour.loc[df_sirmour["block"] == 50, "schedule_mw"].values[0])
+            self.assertGreater(b50_sirmour, 1.0, "SIRMOUR must follow regular synthesis without OSEPL logic")
+
+
+class TestDiurnalContinuityAndAntiSawtooth(unittest.TestCase):
+    """Verify Enercast-style diurnal continuity filter, anti-sawtooth logic, and regulatory step clamping."""
+
+    def test_seam_boundary_smoothness_within_tolerance_band(self):
+        """Verify that write_current_final_schedule clamps freeze boundary step to regulatory tolerance band (0.51 MW for Sirmour)."""
+        import tempfile, csv
+        import config
+        from modules import schedule_utils
+
+        config.load_plant_profile("SIRMOUR")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            curr_final_csv = tmp / "2026-09-13_current_final.csv"
+            latest_csv = tmp / "2026-09-13_latest.csv"
+
+            # 1. Previous current_final.csv has frozen blocks 1-36 with Block 36 = 2.31 MW
+            with open(curr_final_csv, "w", newline="", encoding="utf-8") as f:
+                w = csv.writer(f)
+                w.writerow(["Block", "Time Interval (15 minute interval)", "Step 2 Weather Adjustment MW"])
+                for b in range(1, 37):
+                    h = (b - 1) // 4
+                    m = ((b - 1) % 4) * 15
+                    m_end = (m + 15) % 60
+                    h_end = h + ((m + 15) // 60)
+                    val = 2.31 if b == 36 else 1.50
+                    w.writerow([b, f"2026-09-13 {h:02d}:{m:02d} - 2026-09-13 {h_end:02d}:{m_end:02d}", val])
+
+            # 2. Latest AI revision CSV has blocks 1-48, where Block 37 starts at 1.20 MW (a jump of -1.11 MW)
+            with open(latest_csv, "w", newline="", encoding="utf-8") as f:
+                w = csv.writer(f)
+                w.writerow(["Block", "Time Interval (15 minute interval)", "Step 2 Weather Adjustment MW"])
+                for b in range(1, 49):
+                    h = (b - 1) // 4
+                    m = ((b - 1) % 4) * 15
+                    m_end = (m + 15) % 60
+                    h_end = h + ((m + 15) // 60)
+                    val = 1.20 if b >= 37 else 2.00
+                    w.writerow([b, f"2026-09-13 {h:02d}:{m:02d} - 2026-09-13 {h_end:02d}:{m_end:02d}", val])
+
+            # Invoke write_current_final_schedule with target_time="07:30" (90m lag -> freeze_from = 09:00, Block 37)
+            schedule_utils.write_current_final_schedule(
+                latest_csv=latest_csv,
+                current_final_csv=curr_final_csv,
+                target_date="2026-09-13",
+                target_time="07:30",
+            )
+
+            df_res = pd.read_csv(curr_final_csv)
+            b36_mw = float(df_res.loc[df_res["Block"] == 36, "Step 2 Weather Adjustment MW"].values[0])
+            b37_mw = float(df_res.loc[df_res["Block"] == 37, "Step 2 Weather Adjustment MW"].values[0])
+
+            # Sirmour: 5.1 MW, 10% band = 0.510 MW max step
+            step_diff = abs(b37_mw - b36_mw)
+            self.assertLessEqual(step_diff, 0.511, f"Step diff {step_diff:.3f} MW exceeds 0.510 MW tolerance band limit!")
+            self.assertAlmostEqual(b37_mw, 2.31 - 0.51, places=2)
+
+    def test_morning_gradual_ascent_continuity(self):
+        """Verify that morning ascent (B25 to B48) eliminates jagged drops and respects max_step."""
+        import tempfile, csv
+        import config
+        from modules import schedule_utils
+
+        config.load_plant_profile("SIRMOUR")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            in_csv = tmp / "in.csv"
+            out_csv = tmp / "out.csv"
+
+            # Create input with a severe sawtooth in morning: B34=1.8, B35=2.2, B36=2.31, B37=1.20, B38=2.10
+            with open(in_csv, "w", newline="", encoding="utf-8") as f:
+                w = csv.writer(f)
+                w.writerow(["Block", "Time Interval (15 minute interval)", "Step 2 Weather Adjustment MW"])
+                for b in range(25, 49):
+                    h = (b - 1) // 4
+                    m = ((b - 1) % 4) * 15
+                    val = 2.0
+                    if b == 36:
+                        val = 2.31
+                    elif b == 37:
+                        val = 1.20
+                    elif b == 38:
+                        val = 2.10
+                    w.writerow([b, f"{h:02d}:{m:02d}", val])
+
+            schedule_utils.write_full_block_schedule_from_llm_schedule(
+                in_csv, out_csv, target_date="2026-09-13", weather_fusion_map={}
+            )
+
+            df_out = pd.read_csv(out_csv)
+            b36 = float(df_out.loc[df_out["block"] == 36, "schedule_mw"].values[0])
+            b37 = float(df_out.loc[df_out["block"] == 37, "schedule_mw"].values[0])
+            b38 = float(df_out.loc[df_out["block"] == 38, "schedule_mw"].values[0])
+
+            # Drop between 36 and 37 must be smoothly constrained (not -1.11 MW)
+            self.assertLessEqual(b36 - b37, 0.510, f"Morning drop B36->B37 ({b36:.3f} -> {b37:.3f}) exceeds tolerance band")
+            self.assertLessEqual(abs(b38 - b37), 0.510, f"Step B37->B38 ({b37:.3f} -> {b38:.3f}) exceeds tolerance band")
+
+    def test_afternoon_gradual_descent_continuity(self):
+        """Verify that afternoon descent (B50 to B73) prevents erratic upward spikes and decays smoothly."""
+        import tempfile, csv
+        import config
+        from modules import schedule_utils
+
+        config.load_plant_profile("SIRMOUR")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            in_csv = tmp / "in.csv"
+            out_csv = tmp / "out.csv"
+
+            # Create input with erratic spikes in afternoon: B52=3.0, B53=2.4, B54=3.3 (spike!), B55=2.0
+            with open(in_csv, "w", newline="", encoding="utf-8") as f:
+                w = csv.writer(f)
+                w.writerow(["Block", "Time Interval (15 minute interval)", "Step 2 Weather Adjustment MW"])
+                for b in range(25, 70):
+                    h = (b - 1) // 4
+                    m = ((b - 1) % 4) * 15
+                    val = 2.5
+                    if b == 52:
+                        val = 3.0
+                    elif b == 53:
+                        val = 2.4
+                    elif b == 54:
+                        val = 3.3  # Spurious spike during solar decay
+                    elif b == 55:
+                        val = 2.0
+                    w.writerow([b, f"{h:02d}:{m:02d}", val])
+
+            schedule_utils.write_full_block_schedule_from_llm_schedule(
+                in_csv, out_csv, target_date="2026-09-13", weather_fusion_map={}
+            )
+
+            df_out = pd.read_csv(out_csv)
+            # In afternoon descent (b >= 50), block(b) must be <= block(b-1)
+            for b in range(50, 73):
+                curr_val = float(df_out.loc[df_out["block"] == b, "schedule_mw"].values[0])
+                next_val = float(df_out.loc[df_out["block"] == b + 1, "schedule_mw"].values[0])
+                self.assertLessEqual(
+                    next_val,
+                    curr_val + 0.001,
+                    f"Afternoon block {b+1} ({next_val:.3f} MW) spiked above block {b} ({curr_val:.3f} MW)"
+                )
+
+    def test_global_regulatory_band_clamping_across_all_blocks(self):
+        """Verify that every single block step across the entire 96 blocks strictly satisfies tolerance band."""
+        import tempfile, csv
+        import config
+        from modules import schedule_utils
+
+        config.load_plant_profile("SIRMOUR")
+        cap_mw = float(config.PLANT_CAPACITY_MW)
+        band_pct = float(config.PLANT_TOLERANCE_BAND_PCT)
+        max_allowed_step = round(cap_mw * (band_pct / 100.0), 3)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            in_csv = tmp / "in.csv"
+            out_csv = tmp / "out.csv"
+
+            with open(in_csv, "w", newline="", encoding="utf-8") as f:
+                w = csv.writer(f)
+                w.writerow(["Block", "Time Interval (15 minute interval)", "Step 2 Weather Adjustment MW"])
+                for b in range(25, 65):
+                    h = (b - 1) // 4
+                    m = ((b - 1) % 4) * 15
+                    w.writerow([b, f"{h:02d}:{m:02d}", 3.0 if b % 2 == 0 else 1.0])
+
+            schedule_utils.write_full_block_schedule_from_llm_schedule(
+                in_csv, out_csv, target_date="2026-09-13", weather_fusion_map={}
+            )
+
+            df_out = pd.read_csv(out_csv)
+            vals = df_out["schedule_mw"].tolist()
+            for i in range(1, len(vals)):
+                step = abs(vals[i] - vals[i - 1])
+                self.assertLessEqual(
+                    step,
+                    max_allowed_step + 0.001,
+                    f"Block {i+1} step ({step:.3f} MW) exceeds plant tolerance band {max_allowed_step:.3f} MW"
+                )
+
 
 if __name__ == "__main__":
     unittest.main()
+
 

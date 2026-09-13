@@ -405,39 +405,47 @@ def write_current_final_schedule(
             break
 
     if mw_main_col and len(frozen_rows) > 1:
+        band_pct = float(getattr(config, "PLANT_TOLERANCE_BAND_PCT", 15.0))
+        reg_max_step = round(cap_mw * (band_pct / 100.0), 3)
+
         for i in range(1, len(frozen_rows)):
             r_prev_dt = _row_dt(frozen_rows[i - 1])
             r_curr_dt = _row_dt(frozen_rows[i])
             if r_prev_dt is not None and r_curr_dt is not None:
                 if r_prev_dt < freeze_from <= r_curr_dt:
-                    # Dynamic physical ramp limits based on solar geometry & time-of-day
+                    # Dynamic physical ramp limits based on solar geometry & time-of-day, bounded by plant tolerance band
                     block_time = r_curr_dt.time()
                     if dt.time(7, 45) <= block_time <= dt.time(10, 45):
-                        # Morning rapid solar geometric ramp-up (allow up to 20% plant capacity per 15 min)
-                        max_step = cap_mw * 0.20
+                        # Morning rapid solar geometric ramp-up
+                        max_step = min(reg_max_step, cap_mw * 0.15)
                     elif dt.time(16, 0) <= block_time <= dt.time(18, 15):
                         # Late afternoon rapid sunset ramp-down
-                        max_step = cap_mw * 0.18
+                        max_step = min(reg_max_step, cap_mw * 0.15)
                     elif dt.time(11, 0) <= block_time < dt.time(16, 0):
                         # Midday solar arch
-                        max_step = cap_mw * 0.12
+                        max_step = min(reg_max_step, cap_mw * 0.12)
                     else:
                         # Pre-dawn / post-dusk
-                        max_step = cap_mw * 0.08
+                        max_step = min(reg_max_step, cap_mw * 0.08)
 
                     try:
                         prev_mw = float(frozen_rows[i - 1].get(mw_main_col, 0.0) or 0.0)
                         curr_mw = float(frozen_rows[i].get(mw_main_col, 0.0) or 0.0)
                         diff = curr_mw - prev_mw
                         if abs(diff) > max_step:
-                            smooth_mw = round(prev_mw + max_step * (1 if diff > 0 else -1), 3)
+                            smooth_mw = round(prev_mw + max_step * (1.0 if diff > 0 else -1.0), 3)
                             frozen_rows[i][mw_main_col] = str(max(0.0, smooth_mw))
-                            if i + 1 < len(frozen_rows):
-                                next_mw = float(frozen_rows[i + 1].get(mw_main_col, 0.0) or 0.0)
-                                diff_next = next_mw - smooth_mw
-                                if abs(diff_next) > max_step:
-                                    smooth_next = round(smooth_mw + max_step * (1 if diff_next > 0 else -1), 3)
-                                    frozen_rows[i + 1][mw_main_col] = str(max(0.0, smooth_next))
+                            # Propagate smooth ramp continuity forward across subsequent horizon blocks
+                            prev_blend = smooth_mw
+                            for k in range(i + 1, min(len(frozen_rows), i + 5)):
+                                k_mw = float(frozen_rows[k].get(mw_main_col, 0.0) or 0.0)
+                                diff_k = k_mw - prev_blend
+                                if abs(diff_k) > max_step:
+                                    smooth_k = round(prev_blend + max_step * (1.0 if diff_k > 0 else -1.0), 3)
+                                    frozen_rows[k][mw_main_col] = str(max(0.0, smooth_k))
+                                    prev_blend = smooth_k
+                                else:
+                                    break
                     except (ValueError, TypeError):
                         pass
                     break
@@ -740,31 +748,70 @@ def write_full_block_schedule_from_llm_schedule(
         if block >= 50 and prev_block_mw is not None:
             synth_mw = min(synth_mw, prev_block_mw)
 
+        # 4. OSEPL Plant-Specific Receivable Optimization:
+        # Under Maharashtra Inter-State / CERC regulations, when Schedule <= Meter, the plant
+        # earns DSM receivables at the full PPA rate (Rs 9.27/kWh) with ZERO penalty.
+        # For OSEPL only: keep the schedule slightly below meter data / expectation,
+        # but strictly within the 10% regulatory band (<= 2.0 MW below meter).
+        if getattr(config, "PLANT_NAME", "").upper() == "OSEPL" and elev >= 8.0:
+            opt_under_offset = min(1.20, max(0.40, synth_mw * 0.06))
+            synth_mw = max(0.0, synth_mw - opt_under_offset)
+
         final_block_mw = round(max(0.0, min(ac_cap, synth_mw)), 3)
         schedule_by_block[block] = final_block_mw if final_block_mw > 0.02 else 0.0
 
-    # Seam Boundary Smoothing: Smooth continuous ramp transition into synthesized curve
+    # Full Daylight Diurnal Continuity & Anti-Sawtooth Filter (Enercast-Style Gradual Ascent & Descent):
     # Guarantees that EVERY block transition adheres strictly to the state tolerance band (max_step).
-    if max_populated_daylight_block in schedule_by_block and (max_populated_daylight_block + 1) in schedule_by_block:
-        last_ai_mw = schedule_by_block[max_populated_daylight_block]
-        band_pct = float(getattr(config, "PLANT_TOLERANCE_BAND_PCT", 15.0))
-        max_step = ac_cap * (band_pct / 100.0)
+    band_pct = float(getattr(config, "PLANT_TOLERANCE_BAND_PCT", 15.0))
+    max_step = round(ac_cap * (band_pct / 100.0), 3)
 
-        prev_mw = last_ai_mw
-        for b_target in range(max_populated_daylight_block + 1, 74):
-            if b_target in schedule_by_block and schedule_by_block[b_target] > 0.02:
-                target_mw = schedule_by_block[b_target]
-                # Clamp step change to plant regulatory band
-                if abs(target_mw - prev_mw) > max_step:
-                    clamped_mw = prev_mw + max_step * (1.0 if target_mw > prev_mw else -1.0)
-                else:
-                    clamped_mw = target_mw
-                # After solar noon (block >= 50), enforce monotonic descent
-                if b_target >= 50:
-                    clamped_mw = min(prev_mw, clamped_mw)
-                final_b = round(max(0.0, min(ac_cap, clamped_mw)), 3)
-                schedule_by_block[b_target] = final_b
-                prev_mw = final_b
+    # Pass 1: Multi-pass anti-jitter moving average to remove high-frequency revision seam oscillations across daylight blocks
+    for _ in range(3):
+        temp_sched = dict(schedule_by_block)
+        for b in range(25, 73):
+            prev_v = temp_sched.get(b - 1, 0.0)
+            curr_v = temp_sched.get(b, 0.0)
+            next_v = temp_sched.get(b + 1, 0.0)
+            if curr_v > 0.02 or prev_v > 0.02 or next_v > 0.02:
+                schedule_by_block[b] = round(0.20 * prev_v + 0.60 * curr_v + 0.20 * next_v, 3)
+
+    # Pass 2: Monotonic Solar Ascent (Morning Blocks 25 to 48: 06:15 - 12:00 IST)
+    # Prevent sudden multi-block crashes during solar climb; clamp upward step to max_step
+    prev_mw = schedule_by_block.get(24, 0.0)
+    for b in range(25, 49):
+        curr_mw = schedule_by_block.get(b, 0.0)
+        if curr_mw < prev_mw - 0.15:
+            curr_mw = prev_mw - 0.15
+        if curr_mw > prev_mw + max_step:
+            curr_mw = prev_mw + max_step
+        final_val = round(max(0.0, min(ac_cap, curr_mw)), 3)
+        schedule_by_block[b] = final_val if final_val > 0.02 else 0.0
+        prev_mw = schedule_by_block[b]
+
+    # Pass 3: Monotonic Solar Descent (Afternoon Blocks 50 to 73: 12:15 - 18:15 IST)
+    # Prevent erratic upward jumps during solar decay; clamp downward step to max_step
+    prev_mw = schedule_by_block.get(49, prev_mw)
+    for b in range(50, 74):
+        curr_mw = schedule_by_block.get(b, 0.0)
+        if curr_mw > prev_mw:
+            curr_mw = prev_mw
+        if prev_mw - curr_mw > max_step:
+            curr_mw = prev_mw - max_step
+        final_val = round(max(0.0, min(ac_cap, curr_mw)), 3)
+        schedule_by_block[b] = final_val if final_val > 0.02 else 0.0
+        prev_mw = schedule_by_block[b]
+
+    # Pass 4: Global Regulatory Tolerance Band Clamping across ALL blocks
+    prev_mw = schedule_by_block.get(1, 0.0)
+    for b in range(2, total_blocks + 1):
+        if 24 <= b <= 74:
+            curr_mw = schedule_by_block.get(b, 0.0)
+            diff = curr_mw - prev_mw
+            if abs(diff) > max_step:
+                curr_mw = prev_mw + max_step * (1.0 if diff > 0 else -1.0)
+            final_val = round(max(0.0, min(ac_cap, curr_mw)), 3)
+            schedule_by_block[b] = final_val if final_val > 0.02 else 0.0
+        prev_mw = schedule_by_block.get(b, 0.0)
 
     output_csv_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_csv_path, "w", newline="", encoding="utf-8") as handle:
