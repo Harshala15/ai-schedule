@@ -86,17 +86,21 @@ def _ensure_timezone(name: str) -> ZoneInfo:
 
 def _request_payload(latitude: float, longitude: float, start_date: str, end_date: str, timezone: str, tilt: float, azimuth: float) -> dict:
     effective_azimuth = config.to_openmeteo_azimuth(azimuth)
+    api_key = getattr(config, "OPENMETEO_API_KEY", "") or os.getenv("OPENMETEO_API_KEY", "").strip()
+    model_name = "ecmwf_ifs025" if api_key else "best_match"
     params = {
         "latitude": latitude,
         "longitude": longitude,
         "minutely_15": MINUTELY_15_VARIABLES,
-        "models": "best_match",
+        "models": model_name,
         "timezone": timezone,
         "tilt": tilt,
         "azimuth": effective_azimuth,
         "start_date": start_date,
         "end_date": end_date,
     }
+    if api_key:
+        params["apikey"] = api_key
 
     try:
         import requests_cache
@@ -106,7 +110,8 @@ def _request_payload(latitude: float, longitude: float, start_date: str, end_dat
         cache_session = requests_cache.CachedSession(str(CACHE_DIR), expire_after=1800)
         retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
         client = openmeteo_requests.Client(session=retry_session)
-        response = client.weather_api(URL, params=params)[0]
+        target_url = _get_forecast_url()
+        response = client.weather_api(target_url, params=params)[0]
         min15 = response.Minutely15()
         interval = int(min15.Interval())
         time_start = dt.datetime.fromtimestamp(int(min15.Time()), tz=dt.timezone.utc)
