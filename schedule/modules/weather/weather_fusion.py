@@ -243,9 +243,15 @@ def fetch_dual_stream_weather_fusion(
     fused_rows = []
     gateway_label = "Open-Meteo Professional Commercial Gateway (EUR 99 Plan Active)" if is_commercial else "Open-Meteo Standard Gateway"
     
+    # Active AI Revision Window (first 12-16 blocks / 3-4 hours) gets full block-by-block prompt table.
+    # Rest of the day is populated in fused_rows for continuous 96-block schedule generation.
+    active_prompt_hours = set(all_hours[:16])
+    active_range_end = all_hours[min(11, len(all_hours) - 1)]
+
     prompt_lines = [
         f"THREE SEPARATE WEATHER FORECAST STREAMS FOR AI ANALYSIS ({gateway_label}):",
-        f"- Target Horizon: {all_hours[0]} to {all_hours[-1]}",
+        f"- Active AI Revision Window (3 Hours): {all_hours[0]} to {active_range_end}",
+        f"- Full Fresh NWP Day Horizon: {all_hours[0]} to {all_hours[-1]} (All remaining blocks populated for 96-block dispatch)",
         f"- Atmospheric Clarity / AOD: {aod_clarity}",
         "- STREAM 1: ECMWF 9 km High-Resolution Deterministic Model (local microclimate rain cells & peak shape)",
         "- STREAM 2: 91-Member Multi-Model Super-Ensemble (51 ECMWF + 40 DWD ICON, probabilistic P40 cloud bounds)",
@@ -399,9 +405,22 @@ def fetch_dual_stream_weather_fusion(
             "confidence": conf,
         })
 
+        if h in active_prompt_hours:
+            prompt_lines.append(
+                f"  * {h} | Stream 1: {gti_stream1:>5.1f} W/m2 | Stream 2: {gti_stream2:>5.1f} W/m2 | Stream 3 (OM-Prem 5-Agency): {gti_stream3:>5.1f} W/m2 | "
+                f"Fused: {gti_fused:>5.1f} W/m2 ({regime}) | [CAPE: {cape_val:>4d} J/kg | Transmissivity: {trans_val:.2f} | Sandia T_cell: {cell_t}C | Rain: {precip_max:.2f}mm | {conf}]"
+            )
+
+    # If there are extended daylight hours beyond the active 3-hour window, append a summary
+    extended_rows = [r for r in fused_rows if r["hour_label"] not in active_prompt_hours]
+    if extended_rows:
+        peak_gti = max([r["gti_fused"] for r in extended_rows], default=0.0)
+        max_precip = max([r["precip_mm"] for r in extended_rows], default=0.0)
+        avg_cloud = sum([r["cloud_pct"] for r in extended_rows]) / max(1, len(extended_rows))
         prompt_lines.append(
-            f"  * {h} | Stream 1: {gti_stream1:>5.1f} W/m2 | Stream 2: {gti_stream2:>5.1f} W/m2 | Stream 3 (OM-Prem 5-Agency): {gti_stream3:>5.1f} W/m2 | "
-            f"Fused: {gti_fused:>5.1f} W/m2 ({regime}) | [CAPE: {cape_val:>4d} J/kg | Transmissivity: {trans_val:.2f} | Sandia T_cell: {cell_t}C | Rain: {precip_max:.2f}mm | {conf}]"
+            f"\n- EXTENDED REST-OF-DAY FRESH NWP SUMMARY ({extended_rows[0]['hour_label']} to {extended_rows[-1]['hour_label']}): "
+            f"Peak GTI={peak_gti:.1f} W/m2 | Max Rain={max_precip:.2f} mm | Avg Cloud={avg_cloud:.1f}% "
+            f"(Populates remaining blocks 13-96 in final schedule with zero daylight cratering)."
         )
 
     prompt_lines.extend([

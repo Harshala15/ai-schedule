@@ -130,10 +130,13 @@ def save_generation_csv(rows, output_dir=None) -> list:
             step1_mw = _clip_display_mw(row.get("step1_mw", row.get("Step 1 Meter Base Forecast MW", row.get("anchor_mw", ""))))
             step2_mw = _clip_display_mw(
                 row.get(
-                    "step2_mw",
+                    "final_mw",
                     row.get(
-                        "Step 2 Weather Adjustment MW",
-                        row.get("Step 2 Weather + Video Adjusted MW", row.get("llm_mw", row.get("final_mw", ""))),
+                        "step2_mw",
+                        row.get(
+                            "Step 2 Weather Adjustment MW",
+                            row.get("Step 2 Weather + Video Adjusted MW", row.get("llm_mw", "")),
+                        ),
                     ),
                 )
             )

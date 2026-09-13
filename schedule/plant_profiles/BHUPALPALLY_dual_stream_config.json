@@ -1,0 +1,73 @@
+{
+  "site": "BHUPALPALLY",
+  "capacity_mw": 10.0,
+  "tolerance_band_pct": 0.15,
+  "stream_1_clear_models": [
+    {
+      "model": "ECMWF_member44",
+      "weight": 0.269,
+      "historical_mae_mw": 0.391,
+      "description": "Top Clear Synoptic Champion (ECMWF)"
+    },
+    {
+      "model": "ECMWF_member25",
+      "weight": 0.191,
+      "historical_mae_mw": 0.549,
+      "description": "Clear Sky Specialist (ECMWF)"
+    },
+    {
+      "model": "ECMWF_member35",
+      "weight": 0.188,
+      "historical_mae_mw": 0.559,
+      "description": "Clear Sky Specialist (ECMWF)"
+    },
+    {
+      "model": "ECMWF_member38",
+      "weight": 0.18,
+      "historical_mae_mw": 0.585,
+      "description": "Clear Sky Specialist (ECMWF)"
+    },
+    {
+      "model": "ECMWF_member26",
+      "weight": 0.172,
+      "historical_mae_mw": 0.61,
+      "description": "Clear Sky Specialist (ECMWF)"
+    }
+  ],
+  "stream_2_abrupt_models": [
+    {
+      "model": "DWD_ICON_member38",
+      "weight": 0.21,
+      "historical_mae_mw": 0.535,
+      "description": "Rapid Convective Specialist (ICON)"
+    },
+    {
+      "model": "DWD_ICON_member25",
+      "weight": 0.201,
+      "historical_mae_mw": 0.557,
+      "description": "Rapid Convective Specialist (ICON)"
+    },
+    {
+      "model": "DWD_ICON_member36",
+      "weight": 0.201,
+      "historical_mae_mw": 0.559,
+      "description": "Rapid Convective Specialist (ICON)"
+    },
+    {
+      "model": "DWD_ICON_member31",
+      "weight": 0.197,
+      "historical_mae_mw": 0.57,
+      "description": "Rapid Convective Specialist (ICON)"
+    },
+    {
+      "model": "DWD_ICON_member27",
+      "weight": 0.192,
+      "historical_mae_mw": 0.584,
+      "description": "Rapid Convective Specialist (ICON)"
+    }
+  ],
+  "scada_decay_alpha": 0.7,
+  "outlier_max_rel_spread": 0.35,
+  "mos_min_bias": 0.85,
+  "mos_max_bias": 1.1
+}

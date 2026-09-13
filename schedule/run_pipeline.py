@@ -138,7 +138,12 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
         try:
             from modules.weather import weather_fusion
             is_volatile = bool(intraday_state and intraday_state.get("fluctuation_flag"))
-            forecast_hours = max(1, int(math.ceil((num_blocks or config.NUM_FORECAST_BLOCKS) * config.BLOCK_MINUTES / 60.0)))
+            # Fetch fresh model run for the ENTIRE rest of the day (up to midnight / 24:00),
+            # with minimum 16 hours ahead, so the fresh model run covers BOTH:
+            # 1. The active 12-block (3-hour) AI revision window
+            # 2. AND all subsequent daylight blocks (Blocks 13 to 96) in the 96-block schedule!
+            remaining_hours_today = int(math.ceil((24 - reference_time.hour) + (60 - reference_time.minute) / 60.0))
+            forecast_hours = max(16, remaining_hours_today)
             raw_az = getattr(config, "PLANT_ORIENTATION_FROM_SOUTH_DEG", getattr(config, "PLANT_ORIENTATION_DEG_FROM_SOUTH", 0.0))
             w_report = weather_fusion.fetch_dual_stream_weather_fusion(
                 latitude=config.PLANT_LAT,
@@ -426,11 +431,46 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
                 f"{pvlib_text.strip()}"
             )
         step1_inputs_text = "\n\n".join(step1_input_parts)
+        # Generate Dual-Stream Forecasts (Top-5 Clear Specialist vs Top-5 Abrupt Specialist)
+        try:
+            from modules.forecasting import dual_stream_engine
+            f_times = [a["time"] for a in live_anchor_predictions]
+            f_blocks = [a["block_number"] for a in live_anchor_predictions]
+            f_base_nwp = [a.get("base_anchor_mw", a["anchor_mw"]) for a in live_anchor_predictions]
+            w_precip = [float(fused_weather_map.get(t.split(" ")[-1], {}).get("precip_mm", 0.0) or 0.0) for t in f_times]
+            w_cloud = [float(fused_weather_map.get(t.split(" ")[-1], {}).get("cloud_pct", 20.0) or 20.0) for t in f_times]
+            w_cs = [float(fused_weather_map.get(t.split(" ")[-1], {}).get("gti_clearsky", 0.0) or 0.0) for t in f_times]
+            s1_blocks, s2_blocks, regime_meta = dual_stream_engine.generate_dual_streams(
+                site_name=config.PLANT_NAME,
+                forecast_times=f_times,
+                block_numbers=f_blocks,
+                base_nwp_mw=f_base_nwp,
+                live_scada_mw=float(intraday_state.get("latest_mw")) if intraday_state and intraday_state.get("latest_mw") is not None else None,
+                live_poa=float(intraday_state.get("latest_poa")) if intraday_state and intraday_state.get("latest_poa") is not None else None,
+                clearsky_poa=w_cs if any(v > 10.0 for v in w_cs) else None,
+                weather_features={"precip_mm": w_precip, "cloud_pct": w_cloud},
+                capacity_mw=float(getattr(config, "PLANT_CAPACITY_MW", 10.0)),
+                intraday_state=intraday_state,
+            )
+            for idx, a in enumerate(live_anchor_predictions):
+                a["stream1_mw"] = s1_blocks[idx]["stream1_mw"]
+                a["stream2_mw"] = s2_blocks[idx]["stream2_mw"]
+            print(
+                f"  [DUAL-STREAM] Generated 5-Model Clear Stream & 5-Model Abrupt Stream "
+                f"(Regime: {regime_meta.get('ground_regime', 'UNKNOWN')}, "
+                f"MOS Bias: {regime_meta.get('mos_bias_factor', 1.0):.2f}, "
+                f"Outliers Dropped: S1={regime_meta.get('stream1_outliers_rejected', 0)}, S2={regime_meta.get('stream2_outliers_rejected', 0)})"
+            )
+        except Exception as _ds_err:
+            print(f"  [WARN] Dual stream generation error: {_ds_err}")
+
         meter_step_predictions = [
             {
                 "time": anchor["time"],
                 "block_number": anchor["block_number"],
                 "anchor_mw": anchor["anchor_mw"],
+                "stream1_mw": anchor.get("stream1_mw"),
+                "stream2_mw": anchor.get("stream2_mw"),
             }
             for anchor in live_anchor_predictions
         ]
@@ -752,6 +792,8 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
         generation_rows.append({
             "block_number": p["block_number"],
             "time": p["time"],
+            "stream1_mw": p.get("stream1_mw", ""),
+            "stream2_mw": p.get("stream2_mw", ""),
             "step1_mw": step1_mw,
             "step2_mw": step2_mw,
             "step3_mw": step3_mw,
@@ -764,6 +806,8 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
         trace_rows.append({
             "Block": p["block_number"],
             "Time": p["time"],
+            "Stream 1 Clear MW": p.get("stream1_mw", ""),
+            "Stream 2 Abrupt MW": p.get("stream2_mw", ""),
             "Step 1 Scaffold MW": step1_scaffold_mw,
             "Base Anchor MW": base_anchor_mw,
             "Raw Step 1 MW": p.get("raw_step1_mw", ""),
@@ -812,4 +856,7 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
 
     trace_paths = prediction_store.save_forecast_trace_csv(trace_rows, output_dir=output_dir)
     print(f"Forecast trace written to: {', '.join(str(p.resolve()) for p in trace_paths)}")
+
+    return (csv_paths[0] if csv_paths else None, features_log_paths[0] if features_log_paths else None)
+
 

@@ -1085,8 +1085,82 @@ class TestDiurnalContinuityAndAntiSawtooth(unittest.TestCase):
                     f"Block {i+1} step ({step:.3f} MW) exceeds plant tolerance band {max_allowed_step:.3f} MW"
                 )
 
+    def test_inverse_mae_weighting_favors_stronger_models(self):
+        """Verify that inverse-MAE weighting rewards lower MAE models and sums to 1.0."""
+        from modules.forecasting import dual_stream_engine
+        # Model 1 has MAE 0.30 MW, Model 2 has MAE 0.60 MW, Model 3 has MAE 0.90 MW
+        maes = {"top_champion": 0.30, "middle_model": 0.60, "weaker_model": 0.90}
+        weights = dual_stream_engine.compute_inverse_mae_weights(maes, method="inverse_mae")
+        
+        self.assertAlmostEqual(sum(weights.values()), 1.0, places=3)
+        self.assertGreater(weights["top_champion"], weights["middle_model"])
+        self.assertGreater(weights["middle_model"], weights["weaker_model"])
+        # With 1/0.30 = 3.33, 1/0.60 = 1.67, 1/0.90 = 1.11 => sum = 6.11 => top is ~0.545
+        self.assertGreater(weights["top_champion"], 0.50)
+
+    def test_rogue_outlier_rejection_drops_spikes(self):
+        """Verify that a rogue single-member spike is rejected from the ensemble aggregate."""
+        from modules.forecasting import dual_stream_engine
+        # 4 members predict ~2.2 MW, 1 rogue member predicts 8.5 MW spike
+        preds = [2.10, 2.30, 2.20, 8.50, 2.15]
+        weights = [0.20, 0.20, 0.20, 0.20, 0.20]
+        agg_val, rejected = dual_stream_engine.filter_outliers_and_aggregate(
+            preds, weights, capacity_mw=10.0, max_rel_spread=0.35, max_abs_dev_ratio=0.25
+        )
+        self.assertIn(3, rejected, "Rogue member at index 3 (8.50 MW) must be identified and rejected")
+        self.assertLess(agg_val, 2.50, f"Aggregated value ({agg_val:.3f} MW) was contaminated by the rogue spike")
+        self.assertGreater(agg_val, 2.00)
+
+    def test_morning_ground_mos_calibration_bounds(self):
+        """Verify morning MOS bias factor accurately corrects bias and respects [0.85, 1.10] clamp."""
+        from modules.forecasting import dual_stream_engine
+        # Case A: Outperforming ground (e.g. 1.25x actual vs model) -> clamped to 1.10
+        bias_high = dual_stream_engine.calculate_morning_mos_bias(
+            live_poa=800.0, model_gti=600.0, min_bias=0.85, max_bias=1.10
+        )
+        self.assertEqual(bias_high, 1.10, "Morning MOS bias must be capped at 1.10 ceiling")
+
+        # Case B: Severe ground cloud attenuation (e.g. 0.50x actual vs model) -> clamped to 0.85
+        bias_low = dual_stream_engine.calculate_morning_mos_bias(
+            live_poa=250.0, model_gti=600.0, min_bias=0.85, max_bias=1.10
+        )
+        self.assertEqual(bias_low, 0.85, "Morning MOS bias must be floored at 0.85 to avoid over-suppression")
+
+        # Case C: Moderate 5% derate (e.g. 0.95 ratio) -> preserved accurately
+        bias_mid = dual_stream_engine.calculate_morning_mos_bias(
+            live_poa=570.0, model_gti=600.0, min_bias=0.85, max_bias=1.10
+        )
+        self.assertEqual(bias_mid, 0.95, "Moderate physical derating should be preserved")
+
+    def test_dual_stream_engine_end_to_end(self):
+        """Verify generate_dual_streams produces bounded, non-NaN streams with MOS and decay."""
+        from modules.forecasting import dual_stream_engine
+        f_times = [f"2026-09-13 {12 + (i*15)//60:02d}:{(i*15)%60:02d}" for i in range(12)]
+        f_blocks = [49 + i for i in range(12)]
+        base_nwp = [4.5, 4.4, 4.2, 4.0, 3.8, 3.5, 3.2, 2.8, 2.4, 2.0, 1.5, 1.0]
+        
+        s1, s2, meta = dual_stream_engine.generate_dual_streams(
+            site_name="BHUPALPALLY",
+            forecast_times=f_times,
+            block_numbers=f_blocks,
+            base_nwp_mw=base_nwp,
+            live_scada_mw=3.85,
+            live_poa=620.0,
+            capacity_mw=10.0,
+            morning_mos_factor=0.96,
+        )
+        self.assertEqual(len(s1), 12)
+        self.assertEqual(len(s2), 12)
+        self.assertEqual(meta["mos_bias_factor"], 0.96)
+        for b1, b2 in zip(s1, s2):
+            self.assertGreaterEqual(b1["stream1_mw"], 0.0)
+            self.assertLessEqual(b1["stream1_mw"], 10.0)
+            self.assertGreaterEqual(b2["stream2_mw"], 0.0)
+            self.assertLessEqual(b2["stream2_mw"], 10.0)
+
 
 if __name__ == "__main__":
     unittest.main()
+
 
 

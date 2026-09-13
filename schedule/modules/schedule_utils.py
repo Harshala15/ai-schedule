@@ -664,7 +664,7 @@ def write_full_block_schedule_from_llm_schedule(
                 latitude=lat,
                 longitude=lon,
                 reference_time=ref_dt,
-                hours_ahead=14,
+                hours_ahead=16,
                 plant_name=p_name,
             )
             weather_rows = w_res.get("fused_rows", [])

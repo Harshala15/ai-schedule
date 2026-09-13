@@ -551,10 +551,18 @@ def _build_stepwise_prompt(base_predictions: list, feature_row: dict, step1_inpu
                            context_text: str = "", intraday_state_text: str = "",
                            step4_feedback_text: str = "", weather_text: str = "", video_text: str = "",
                            prompt_subject: str = "revision forecast") -> str:
-    blocks_text = "\n".join(
-        f"{i + 1}. time={p['time']}, meter_base_mw={p['anchor_mw']}"
-        for i, p in enumerate(base_predictions)
-    )
+    blocks_text_lines = []
+    for i, p in enumerate(base_predictions):
+        s1 = p.get("stream1_mw")
+        s2 = p.get("stream2_mw")
+        if s1 is not None and s2 is not None:
+            blocks_text_lines.append(
+                f"{i + 1}. time={p['time']}, base_mw={p['anchor_mw']:.2f}, "
+                f"stream1_clear_mw={float(s1):.2f}, stream2_abrupt_mw={float(s2):.2f}"
+            )
+        else:
+            blocks_text_lines.append(f"{i + 1}. time={p['time']}, meter_base_mw={p['anchor_mw']}")
+    blocks_text = "\n".join(blocks_text_lines)
 
     sections = []
     if step1_inputs_text.strip():
@@ -584,28 +592,21 @@ def _build_stepwise_prompt(base_predictions: list, feature_row: dict, step1_inpu
 Generate the {plant_name} forecast in ONE JSON response. Plant AC Capacity is {cap_mw:.1f} MW (DC: {dc_mw:.1f} MW).
 State Regulatory Regime: {reg_name} (Strict DSM Tolerance Band: ±{tol_band_pct:.0f}% -> ±{tol_band_mw:.2f} MW).
 
-CRITICAL FORECAST & AI ADJUSTMENT RULES (NO FIXED WEIGHTS):
-1. Dynamic Evidence-Based Adjustment with Strict State Tolerance Band (±{tol_band_pct:.0f}% -> ±{tol_band_mw:.2f} MW):
-   - Under {reg_name} grid regulations, any deviation exceeding ±{tol_band_pct:.0f}% of capacity (±{tol_band_mw:.2f} MW) incurs direct DSM cash penalties!
-   - You must evaluate all available evidence: Live SCADA Clearness Ratio (Kt = Actual / ClearSky), Ground POA, 15-minute Ramp Rate (dP/dt), and ALL 3 Independent Weather Streams (Stream 1 ECMWF, Stream 2 91-Member Ensemble, Stream 3 5-Agency Consensus + CAPE + Transmissivity).
-   - Reason dynamically: Decide (a) whether an adjustment is needed, (b) the direction (positive, negative, or neutral), and (c) the exact adjustment magnitude (Delta MW) justified by the evidence so that the schedule remains safely within the ±{tol_band_mw:.2f} MW band.
-   - Explicitly document your physical reasoning and why the chosen magnitude was selected in the "reasoning" field.
+DUAL-STREAM METEOROLOGICAL SPECIALIST ARBITRATION:
+You are provided with two regime-specialized reference curves for each 15-minute block:
+- stream1_clear_mw: Historical Top-5 Clear-Sky Models. Represents optimal output under stable, sunny conditions.
+- stream2_abrupt_mw: Historical Top-5 Abrupt/Rain Models with SCADA closed-loop rapid decay. Tracks live ground generation and reacts instantly to cloud/rain fronts.
 
-2. Regime-Governed Adjustment Decisions:
-   - CLEAR-SKY REGIME: When ground SCADA / pyranometer confirms clear sky (Kt >= 0.85, high POA, or smooth morning ascent), isolated NWP weather model rain drops are diagnosed as spatial-resolution phantom artifacts. Downward cuts below Step 1 Base are STRICTLY PROHIBITED (Step 2 MW >= Step 1 MW). Reason how much positive meter pull (+MW) to apply to track live SCADA ramp and inverter performance.
-   - OVERCAST BREAKOUT & CLOUD DISSIPATION REGIME: When live ground SCADA breaks through an earlier cloud ceiling (Kt rising above 0.65 or SCADA surging), the sustained overcast ceiling is RELEASED IMMEDIATELY. Do not trap future blocks in a stale overcast ceiling based on lagging weather models! Follow the real clearing trajectory back towards Step 1 Base.
-   - CONFIRMED OVERCAST REGIME: When multi-stream weather models agree AND ground telemetry confirms cloud attenuation (Kt < 0.65 and low POA), downward weather adjustment is approved. Sizing the downward magnitude should match the verified ground attenuation to prevent grid over-injection penalties.
-   - CONVECTIVE STORM THREAT: When Stream 3 shows high CAPE (> 1500 J/kg) or sudden ground generation drop during morning ramp (dP/dt < -0.3 MW), apply a cautious downward adjustment down to the diffuse irradiance floor.
+METEOROLOGICAL SYNTHESIS RULES:
+1. When live ground telemetry (Kt >= 0.80, rising POA, clear sky) confirms stable weather: Synthesize closely with Stream 1 (Clear). Do not cut below Stream 1.
+2. When upcoming weather table indicates rain fronts (precip > 0.1 mm), convective cloud buildup (cloud > 50%), or live SCADA drops sharply: Transition dynamically toward Stream 2 (Abrupt).
+3. Ensure smooth transitions: If transitioning between regimes across the 12 blocks, blend gradually so adjacent blocks never jump erratically (sawtooth prevention).
+4. Strict regulatory tolerance: Keep schedule strictly within ±{tol_band_mw:.2f} MW (±{tol_band_pct:.0f}%) of actual expected generation to guarantee zero DSM penalties.
 
-3. Solar Geometry & Physical Bounds:
-   - Pre-dawn / Post-dusk: If solar elevation < 3.0 deg, generation is strictly 0.00 MW. Between 3.0 deg and 7.5 deg, output small diffuse dawn/dusk power (0.05 to 0.25 MW) if irradiance > 25 W/m².
-   - Monotonic Morning Ascent (06:30 - 11:30): Solar elevation strictly climbs; avoid unphysical sawtooth drops unless verified severe cloud shading is present on ground.
-   - Physical Diffuse Floor: In India during daylight hours (solar elevation >= 45 deg), diffuse irradiance physically yields at least 25-35% of capacity; generation never drops below this unless torrential rain is confirmed on site.
-   - Upper Ceiling: Step 2 MW must never exceed plant maximum AC export limit of {cap_mw:.2f} MW.
-
-4. Strict Horizon Boundary (Zero Satellite Radiation for Future Blocks):
-   - Satellite solar radiation (GTI / Virtual Meter) is strictly used as an intraday telemetry fallback UP TO the revision cutoff time (t <= T_rev).
-   - For ALL future forecast blocks (t > T_rev), DO NOT consider or extrapolate satellite solar radiation. Future blocks must strictly rely on astronomical solar geometry (PVLib clear-sky envelope), multi-stream Numerical Weather Prediction (ECMWF, 91-Member Ensemble, 5-Agency Consensus + CAPE), and verified live ground SCADA telemetry momentum.
+Physical Bounds:
+- Pre-dawn / Post-dusk: If solar elevation < 3.0 deg, generation is strictly 0.00 MW.
+- Monotonic Morning Ascent (06:30 - 11:30): Solar elevation climbs; avoid unphysical sawtooth drops unless confirmed ground shading.
+- Upper Ceiling: Step 2 MW must never exceed plant maximum AC limit of {cap_mw:.2f} MW.
 
 Return ONLY raw JSON, no markdown or prose.
 Array size must be exactly {len(base_predictions)}.
@@ -716,6 +717,8 @@ def _parse_stepwise_llm_response(raw_text: str, base_predictions: list) -> list:
             "step3_mw": step3_mw,
             "step4_mw": step4_mw,
             "llm_mw": llm_mw,
+            "stream1_mw": base.get("stream1_mw"),
+            "stream2_mw": base.get("stream2_mw"),
             "confidence": (item or {}).get("confidence", "Medium"),
             "reasoning": (item or {}).get(
                 "reasoning",

@@ -5,7 +5,7 @@ param(
   [string]$RoleName = "global1-lambda-role",
   [string]$RepoName = "intellis-ai-scheduler",
   [string]$Tag = "intellis-ai-scheduler-20260907",
-  [string]$OpenMeteoApiKey = "PASTE_OPENMETEO_PROFESSIONAL_KEY_HERE"
+  [string]$OpenMeteoApiKey = "jbThkFlLZSXZE3CU"
 )
 
 function awscli { py -m awscli @args }
