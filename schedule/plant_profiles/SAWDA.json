@@ -10,5 +10,17 @@
   "number_of_panels": 14671,
   "eeg_id": "SAWDA",
   "ppa_rate_inr_per_kwh": 2.94,
-  "penalty_regulation": "Madhya Pradesh"
+  "penalty_regulation": "Madhya Pradesh",
+  "meter_data": {
+    "s3_prefix": "raw/vedanjay/{site_id}/{date}/metered_data/",
+    "file_name_regex": "^(sawda_)?.*\\.csv$",
+    "delimiter": ",",
+    "timestamp_column": "block_end",
+    "power_column": "metered_mw",
+    "power_unit": "mw",
+    "poa_column": "poa_wm2",
+    "module_temperature_column": "mod_temp",
+    "ghi_column": "ghi_wm2",
+    "ambient_temperature_column": "amb_temp"
+  }
 }

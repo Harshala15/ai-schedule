@@ -1,0 +1,26 @@
+{
+  "plant_name": "INTEGRATED",
+  "latitude": 18.557968,
+  "longitude": 76.859083,
+  "dc_capacity_kw": 1000,
+  "maximum_feed_in_ac_kw": 1206,
+  "tracker_type": "None",
+  "orientation_deg_from_south": 8,
+  "tilt_deg": 15,
+  "eeg_id": "INTEGRATED",
+  "ppa_rate_inr_per_kwh": 3.5,
+  "penalty_regulation": "Maharashtra",
+  "tolerance_band_percent": 10.0,
+  "meter_data": {
+    "s3_prefix": "raw/vedanjay/multiple_generator/ZTRIC/{date}/metered_data/INTEGRATED/",
+    "file_name_regex": "^INTEGRATED_.*\\.csv$",
+    "delimiter": ",",
+    "timestamp_column": "block_end",
+    "power_column": "metered_mw",
+    "power_unit": "mw",
+    "poa_column": "poa_wm2",
+    "module_temperature_column": "mod_temp",
+    "ghi_column": "ghi_wm2",
+    "ambient_temperature_column": "amb_temp"
+  }
+}

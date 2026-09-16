@@ -104,3 +104,63 @@ def build_pvlib_block_summary(
 
     return "\n".join(lines)
 
+
+def compute_pvlib_clearsky_series(
+    reference_time: dt.datetime,
+    num_blocks: int,
+    *,
+    latitude: float = config.PLANT_LAT,
+    longitude: float = config.PLANT_LON,
+    timezone: str = "Asia/Kolkata",
+    tilt_deg: float | None = None,
+    azimuth_deg: float | None = None,
+    capacity_mw: float | None = None,
+    performance_ratio: float | None = None,
+    block_minutes: int | None = None,
+) -> list[float] | None:
+    """Return an exact series of PVLib Ineichen clear-sky MW values for the forecast blocks."""
+    try:
+        import pandas as pd
+        from pvlib.location import Location
+        from pvlib import irradiance
+    except Exception as exc:
+        return None
+
+    block_minutes = block_minutes or config.BLOCK_MINUTES
+    tilt_deg = float(tilt_deg if tilt_deg is not None else getattr(config, "PLANT_TILT_DEG", 20.0))
+    azimuth_deg = float(
+        azimuth_deg
+        if azimuth_deg is not None
+        else 180.0 + float(getattr(config, "PLANT_ORIENTATION_FROM_SOUTH_DEG", 0.0))
+    )
+    ac_capacity_mw = float(capacity_mw if capacity_mw is not None else getattr(config, "PLANT_CAPACITY_MW", 0.0))
+    dc_capacity_mw = float(getattr(config, "PLANT_DC_CAPACITY_MW", ac_capacity_mw))
+    performance_ratio = float(
+        performance_ratio if performance_ratio is not None else getattr(config, "PERFORMANCE_RATIO", 0.78)
+    )
+
+    base_ts = _as_timezone_aware_timestamp(reference_time, timezone)
+    times = pd.date_range(
+        start=base_ts,
+        periods=num_blocks,
+        freq=f"{block_minutes}min",
+        tz=timezone,
+    )
+
+    location = Location(latitude=latitude, longitude=longitude, tz=timezone)
+    solar_position = location.get_solarposition(times)
+    clearsky = location.get_clearsky(times, model="ineichen")
+    poa = irradiance.get_total_irradiance(
+        surface_tilt=tilt_deg,
+        surface_azimuth=azimuth_deg,
+        solar_zenith=solar_position["apparent_zenith"],
+        solar_azimuth=solar_position["azimuth"],
+        dni=clearsky["dni"],
+        ghi=clearsky["ghi"],
+        dhi=clearsky["dhi"],
+    )
+
+    poa_global = poa["poa_global"].fillna(0.0).clip(lower=0.0)
+    estimated_mw = ((poa_global / 1000.0) * dc_capacity_mw * performance_ratio).clip(lower=0.0, upper=ac_capacity_mw)
+    return [round(max(0.0, float(v)), 3) for v in estimated_mw]
+

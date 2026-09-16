@@ -74,7 +74,7 @@ ENABLE_WINDY_VIDEO_FEATURES = _read_env_bool("ENABLE_WINDY_VIDEO_FEATURES", defa
 # the shared pipeline modules can create their working folders on writable
 # storage instead of the read-only package directory.
 _DEFAULT_STORAGE_ROOT = "/tmp/intellis_ai_scheduler" if os.getenv("AWS_LAMBDA_FUNCTION_NAME") else "."
-STORAGE_ROOT = Path(os.getenv("SIMOUR_STORAGE_ROOT", _DEFAULT_STORAGE_ROOT)).expanduser().resolve()
+STORAGE_ROOT = Path(os.getenv("SIMOUR_STORAGE_ROOT", os.getenv("TEST_OUTPUT_DIR", _DEFAULT_STORAGE_ROOT))).expanduser().resolve()
 
 
 def _storage_path(*parts: str) -> Path:
@@ -551,6 +551,10 @@ ANIMATION_RECORD_SECONDS = 8
 # ---- Forecast settings ----
 NUM_FORECAST_BLOCKS = 12      # 12 x 15 min = next 3 hours
 BLOCK_MINUTES = 15
+# Number of completed days used to rank Intellis ensemble members.  The
+# selector still accepts an explicit value for backtests, while production
+# uses this setting so the lookback is not accidentally ignored.
+INTELLIS_MODEL_LOOKBACK_DAYS = max(1, int(_read_env_float("INTELLIS_MODEL_LOOKBACK_DAYS", 7.0)))
 
 # ---- Capture schedule ----
 # Capture only at these fixed times each day (24h "HH:MM") -- required by
@@ -641,7 +645,10 @@ for _dir in (SCREENSHOT_DIR, VIDEO_DIR, PREDICTIONS_DIR, FEATURES_LOG_DIR, MODEL
              HISTORIC_CASES_DIR, ACTUALS_INBOX_DIR, ACTUALS_INBOX_PROCESSED_DIR, PREDICTION_CONTEXT_PATH.parent, METER_HISTORY_DIR, PVLIB_SUMMARY_DIR, PLANT_PERFORMANCE_DIR, ECMWF_WEATHER_DIR,
              MANUAL_INPUT_SCREENSHOTS_DIR, MANUAL_INPUT_VIDEO_DIR, MANUAL_INPUT_ACTUALS_DIR, MANUAL_INPUT_OUTPUT_DIR,
              EVALUATION_OUTPUT_DIR):
-    _dir.mkdir(parents=True, exist_ok=True)
+    try:
+        _dir.mkdir(parents=True, exist_ok=True)
+    except (PermissionError, OSError):
+        pass
 
 MODEL_PATH = MODELS_DIR / "generation_model.pkl"
 

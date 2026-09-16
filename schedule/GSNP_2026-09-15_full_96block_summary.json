@@ -1,0 +1,79 @@
+{
+  "date": "2026-09-15",
+  "plant": "GSNP",
+  "weather_source": "fresh Premium Open-Meteo ensemble",
+  "meter_source": "s3://vedanjay-schedules-test-608744602858/raw/vedanjay/GSNP/2026-09-15/metered_data/GSPPL_FORECAST_2026-09-15.csv",
+  "actual_poa_source": "derived from meter MW because the S3 CSV has no POA column",
+  "lookback_days": 7,
+  "observed_blocks": 47,
+  "gti_mae_wm2_observed": 148.48,
+  "mw_mae_observed": 2.89,
+  "actual_max_meter_mw": 14.39,
+  "actual_max_poa_wm2": 781.8,
+  "slot_model_selections": {
+    "morning": {
+      "blocks": [
+        24,
+        40
+      ],
+      "lookback_days": 7,
+      "models": [
+        "shortwave_radiation_member22_icon_seamless_eps",
+        "shortwave_radiation_member39_icon_seamless_eps",
+        "shortwave_radiation_member11_icon_seamless_eps",
+        "shortwave_radiation_member15_icon_seamless_eps",
+        "shortwave_radiation_member33_icon_seamless_eps"
+      ],
+      "weights": {
+        "shortwave_radiation_member22_icon_seamless_eps": 0.2053,
+        "shortwave_radiation_member39_icon_seamless_eps": 0.2034,
+        "shortwave_radiation_member11_icon_seamless_eps": 0.2008,
+        "shortwave_radiation_member15_icon_seamless_eps": 0.1975,
+        "shortwave_radiation_member33_icon_seamless_eps": 0.193
+      }
+    },
+    "midday": {
+      "blocks": [
+        40,
+        56
+      ],
+      "lookback_days": 7,
+      "models": [
+        "shortwave_radiation_member05_icon_seamless_eps",
+        "shortwave_radiation_member21_icon_seamless_eps",
+        "shortwave_radiation_member19_icon_seamless_eps",
+        "shortwave_radiation_member24_icon_seamless_eps",
+        "shortwave_radiation_member12_icon_seamless_eps"
+      ],
+      "weights": {
+        "shortwave_radiation_member05_icon_seamless_eps": 0.2073,
+        "shortwave_radiation_member21_icon_seamless_eps": 0.2052,
+        "shortwave_radiation_member19_icon_seamless_eps": 0.1972,
+        "shortwave_radiation_member24_icon_seamless_eps": 0.1952,
+        "shortwave_radiation_member12_icon_seamless_eps": 0.1951
+      }
+    },
+    "afternoon": {
+      "blocks": [
+        56,
+        75
+      ],
+      "lookback_days": 7,
+      "models": [
+        "shortwave_radiation_member17_gem_global_ensemble",
+        "shortwave_radiation_member31_icon_seamless_eps",
+        "shortwave_radiation_member05_icon_seamless_eps",
+        "shortwave_radiation_member11_icon_seamless_eps",
+        "shortwave_radiation_member17_icon_seamless_eps"
+      ],
+      "weights": {
+        "shortwave_radiation_member17_gem_global_ensemble": 0.2258,
+        "shortwave_radiation_member31_icon_seamless_eps": 0.2115,
+        "shortwave_radiation_member05_icon_seamless_eps": 0.1923,
+        "shortwave_radiation_member11_icon_seamless_eps": 0.1854,
+        "shortwave_radiation_member17_icon_seamless_eps": 0.185
+      }
+    }
+  },
+  "comparison_csv": "D:\\14 sept intellis\\schedule\\GSNP_2026-09-15_full_96block_comparison.csv"
+}

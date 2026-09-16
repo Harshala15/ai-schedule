@@ -9,5 +9,17 @@
   "tilt_deg": 20,
   "eeg_id": "SIRMOUR",
   "ppa_rate_inr_per_kwh": 2.94,
-  "penalty_regulation": "Madhya Pradesh"
+  "penalty_regulation": "Madhya Pradesh",
+  "meter_data": {
+    "s3_prefix": "raw/vedanjay/{site_id}/{date}/metered_data/",
+    "file_name_regex": ".*\\.csv$",
+    "delimiter": ",",
+    "timestamp_column": "TimeStamp",
+    "power_column": "Active Power (kW)",
+    "power_unit": "kw",
+    "poa_column": "POA (W/m2)",
+    "module_temperature_column": "MOD TEMP",
+    "ghi_column": "GHI (W/m2)",
+    "ambient_temperature_column": "AMB TEMP"
+  }
 }

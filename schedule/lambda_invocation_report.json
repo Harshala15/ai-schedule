@@ -1,0 +1,107 @@
+[
+  {
+    "Function": "SIRMOUR-ai-intellis-scheduler",
+    "Status": "ok",
+    "DurationSec": 6.0,
+    "SnapshotKey": "generated/vedanjay_ai_intellis/SIRMOUR/outputs/2026-09-15/schedule_from_39_20260915t093000.csv",
+    "Error": null
+  },
+  {
+    "Function": "BHUPALPALLY-ai-intellis-scheduler",
+    "Status": "ok",
+    "DurationSec": 16.4,
+    "SnapshotKey": "generated/vedanjay_ai_intellis/BHUPALPALLY/outputs/2026-09-15/schedule_from_39_20260915t093000.csv",
+    "Error": null
+  },
+  {
+    "Function": "KASIPET-ai-intellis-scheduler",
+    "Status": "ok",
+    "DurationSec": 14.6,
+    "SnapshotKey": "generated/vedanjay_ai_intellis/KASIPET/outputs/2026-09-15/schedule_from_39_20260915t093000.csv",
+    "Error": null
+  },
+  {
+    "Function": "KOTHAGUDEM-ai-intellis-scheduler",
+    "Status": "ok",
+    "DurationSec": 15.8,
+    "SnapshotKey": "generated/vedanjay_ai_intellis/KOTHAGUDEM/outputs/2026-09-15/schedule_from_39_20260915t093000.csv",
+    "Error": null
+  },
+  {
+    "Function": "OSEPL-ai-intellis-scheduler",
+    "Status": "ok",
+    "DurationSec": 15.4,
+    "SnapshotKey": "generated/vedanjay_ai_intellis/OSEPL/outputs/2026-09-15/schedule_from_39_20260915t093000.csv",
+    "Error": null
+  },
+  {
+    "Function": "ANJANGOAN-ai-intellis-scheduler",
+    "Status": "ok",
+    "DurationSec": 4.4,
+    "SnapshotKey": "generated/vedanjay_ai_intellis/ANJANGOAN/outputs/2026-09-15/schedule_from_39_20260915t093000.csv",
+    "Error": null
+  },
+  {
+    "Function": "BAMKHAL-ai-intellis-scheduler",
+    "Status": "ok",
+    "DurationSec": 4.4,
+    "SnapshotKey": "generated/vedanjay_ai_intellis/BAMKHAL/outputs/2026-09-15/schedule_from_39_20260915t093000.csv",
+    "Error": null
+  },
+  {
+    "Function": "BALAKWADA-ai-intellis-scheduler",
+    "Status": "ok",
+    "DurationSec": 20.2,
+    "SnapshotKey": "generated/vedanjay_ai_intellis/BALAKWADA/outputs/2026-09-15/schedule_from_39_20260915t093000.csv",
+    "Error": null
+  },
+  {
+    "Function": "CME-ai-intellis-scheduler",
+    "Status": "ok",
+    "DurationSec": 19.7,
+    "SnapshotKey": "generated/vedanjay_ai_intellis/CME/outputs/2026-09-15/schedule_from_39_20260915t093000.csv",
+    "Error": null
+  },
+  {
+    "Function": "ANDAD-ai-intellis-scheduler",
+    "Status": "ok",
+    "DurationSec": 20.3,
+    "SnapshotKey": "generated/vedanjay_ai_intellis/ANDAD/outputs/2026-09-15/schedule_from_39_20260915t093000.csv",
+    "Error": null
+  },
+  {
+    "Function": "SAWDA-ai-intellis-scheduler",
+    "Status": "ok",
+    "DurationSec": 20.1,
+    "SnapshotKey": "generated/vedanjay_ai_intellis/SAWDA/outputs/2026-09-15/schedule_from_39_20260915t093000.csv",
+    "Error": null
+  },
+  {
+    "Function": "GUGARIYAKHEDI-ai-intellis-scheduler",
+    "Status": "ok",
+    "DurationSec": 20.3,
+    "SnapshotKey": "generated/vedanjay_ai_intellis/GUGARIYAKHEDI/outputs/2026-09-15/schedule_from_39_20260915t093000.csv",
+    "Error": null
+  },
+  {
+    "Function": "NANDGAON-ai-intellis-scheduler",
+    "Status": "ok",
+    "DurationSec": 4.3,
+    "SnapshotKey": "generated/vedanjay_ai_intellis/NANDGAON/outputs/2026-09-15/schedule_from_39_20260915t093000.csv",
+    "Error": null
+  },
+  {
+    "Function": "GSNP-ai-intellis-scheduler",
+    "Status": "ok",
+    "DurationSec": 3.9,
+    "SnapshotKey": "generated/vedanjay_ai_intellis/GSNP/outputs/2026-09-15/schedule_from_39_20260915t093000.csv",
+    "Error": null
+  },
+  {
+    "Function": "ZTRIC-ai-intellis-scheduler",
+    "Status": "ok",
+    "DurationSec": 10.3,
+    "SnapshotKey": "generated/vedanjay_ai_intellis/multiple_generator/ZTRIC/outputs/2026-09-15/schedule_from_41_20260915t093000.csv",
+    "Error": null
+  }
+]

@@ -1,4 +1,4 @@
-﻿# Python
+# Python
 __pycache__/
 *.py[cod]
 *.pyo
@@ -99,3 +99,14 @@ schedule/*-intellis-response*.json
 schedule/*-intellis-test*.json
 schedule/*-intellis-target*.json
 schedule/_scheduler_work/
+
+# Data downloads and caches
+openmeteo_api_data/
+openmeteo_premium_data/
+s3_downloads/
+schedule/s3_downloads/
+schedule/openmeteo_premium_data/
+schedule/test_cache_gsnp/
+*.csv
+*.xlsx
+

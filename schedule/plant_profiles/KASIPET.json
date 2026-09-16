@@ -9,5 +9,18 @@
   "tilt_deg": 20,
   "eeg_id": "Singareni Collieries Company Limited-Kasipet Mines",
   "ppa_rate_inr_per_kwh": 5.65,
-  "penalty_regulation": "Telangana"
+  "penalty_regulation": "Telangana",
+  "tolerance_band_percent": 15,
+  "meter_data": {
+    "s3_prefix": "raw/vedanjay/{site_id}/{date}/metered_data/",
+    "file_name_regex": ".*\\.csv$",
+    "delimiter": ",",
+    "timestamp_column": "Timestamp",
+    "power_column": "Active Power-Avg MFM-OUT (KW)",
+    "power_unit": "kw",
+    "poa_column": "POA (W/m2)",
+    "module_temperature_column": "Module Temperature (C)",
+    "ghi_column": "GHI_W (W/m2)",
+    "ambient_temperature_column": "Ambient Temperature (C)"
+  }
 }

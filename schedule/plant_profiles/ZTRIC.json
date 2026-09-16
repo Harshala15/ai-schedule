@@ -7,6 +7,14 @@
   "tilt_deg": 16,
   "orientation_deg_from_south": 0,
   "tracker_type": "None",
-  "availability_planned_pct": 100,
-  "performance_ratio": 0.78
+  "performance_ratio": 0.78,
+  "meter_data": {
+    "s3_prefix": "raw/vedanjay/multiple_generator/ZTRIC/{date}/metered_data/",
+    "delimiter": ",",
+    "timestamp_column": "block_end",
+    "power_column": "metered_mw",
+    "power_unit": "mw",
+    "poa_column": "poa_wm2",
+    "ghi_column": "ghi_wm2"
+  }
 }

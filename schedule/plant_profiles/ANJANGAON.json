@@ -11,5 +11,19 @@
   "plant_key": "ANJANGAON",
   "ppa_rate_inr_per_kwh": 2.94,
   "penalty_regulation": "Madhya Pradesh",
-  "performance_ratio": 0.78
+  "performance_ratio": 0.78,
+  "meter_data": {
+    "s3_prefix": "raw/vedanjay/{site_id}/{date}/metered_data/",
+    "file_name_regex": "^anjangoan_\\d{8}\\.csv$",
+    "delimiter": ",",
+    "timestamp_column": "block_end",
+    "power_column": "metered_mw",
+    "power_unit": "mw",
+    "source_power_column": "Solar_Meter_Active_Power(KW)",
+    "block_column": "block_no",
+    "poa_column": "poa_wm2",
+    "module_temperature_column": "mod_temp",
+    "ghi_column": "ghi_wm2",
+    "ambient_temperature_column": "amb_temp"
+  }
 }

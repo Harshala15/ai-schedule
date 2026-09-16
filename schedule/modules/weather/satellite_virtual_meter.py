@@ -17,6 +17,7 @@ import math
 import os
 from typing import Any
 
+import numpy as np
 import requests
 import config
 from modules.weather import time_features
@@ -48,10 +49,13 @@ def fetch_satellite_day_profile(
 
     now = dt.datetime.now()
     days_diff = (now.date() - target_date).days
+    date_str = target_date.strftime("%Y-%m-%d")
 
     params: dict[str, Any] = {
         "latitude": lat,
         "longitude": lon,
+        "start_date": date_str,
+        "end_date": date_str,
         "hourly": [
             "shortwave_radiation",
             "direct_normal_irradiance",
@@ -66,17 +70,9 @@ def fetch_satellite_day_profile(
     if api_key:
         params["apikey"] = api_key
 
-    if 0 <= days_diff <= 7:
-        params["past_days"] = min(7, max(1, days_diff + 1))
-        params["forecast_days"] = 1
-        query_url = base_url
-    elif days_diff > 7:
-        date_str = target_date.strftime("%Y-%m-%d")
-        params["start_date"] = date_str
-        params["end_date"] = date_str
+    if days_diff > 30:
         query_url = "https://archive-api.open-meteo.com/v1/archive"
     else:
-        params["forecast_days"] = 2
         query_url = base_url
 
     try:
@@ -413,3 +409,100 @@ def build_satellite_virtual_intraday_state(
         "satellite_gti": gti,
         "satellite_cloud_cover": cloud,
     }
+
+
+def fetch_satellite_96block_profile(
+    target_date: dt.date | str,
+    latitude: float | None = None,
+    longitude: float | None = None,
+    tilt: float | None = None,
+    azimuth: float | None = None,
+    plant_capacity_mw: float | None = None,
+    dc_capacity_mw: float | None = None,
+    performance_ratio: float | None = None,
+    cutoff_time: dt.datetime | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Generate 96-block synthetic (meter_mw, meter_poa) arrays from satellite solar radiation API.
+
+    Used exclusively as a virtual meter fallback for designated non-meter sites
+    (ANDAD, GUGARIYAKHEDI, SAWDA, BALAKWADA, CME) when physical SCADA telemetry is not available.
+    """
+    if isinstance(target_date, str):
+        target_date = dt.datetime.strptime(target_date, "%Y-%m-%d").date()
+
+    if cutoff_time is None and target_date == dt.date.today():
+        cutoff_time = dt.datetime.now()
+
+    hourly = fetch_satellite_day_profile(
+        target_date=target_date,
+        latitude=latitude,
+        longitude=longitude,
+        tilt=tilt,
+        azimuth=azimuth,
+    )
+
+    times = hourly.get("time", [])
+    gtis = hourly.get("global_tilted_irradiance", [])
+    temps = hourly.get("temperature_2m", [])
+    clouds = hourly.get("cloud_cover", [])
+
+    target_str = target_date.strftime("%Y-%m-%d")
+    hour_data: dict[int, dict[str, float]] = {}
+    for t_str, g_val, tmp_val, cld_val in zip(times, gtis, temps, clouds):
+        if t_str.startswith(target_str):
+            try:
+                h = int(t_str.split("T")[1].split(":")[0])
+                hour_data[h] = {
+                    "gti": float(g_val if g_val is not None else 0.0),
+                    "temp": float(tmp_val if tmp_val is not None else 25.0),
+                    "cloud": float(cld_val if cld_val is not None else 0.0),
+                }
+            except Exception:
+                continue
+
+    poa_96 = np.zeros(96, dtype=float)
+    mw_96 = np.zeros(96, dtype=float)
+
+    cap_mw = float(plant_capacity_mw if plant_capacity_mw is not None else config.PLANT_CAPACITY_MW)
+    dc_mw = float(dc_capacity_mw if dc_capacity_mw is not None else getattr(config, "PLANT_DC_CAPACITY_MW", cap_mw * 1.074))
+    pr = float(performance_ratio if performance_ratio is not None else getattr(config, "PERFORMANCE_RATIO", 0.78))
+
+    for b in range(1, 97):
+        end_min = b * 15
+        end_hr, end_m = divmod(end_min, 60)
+        if end_hr == 24:
+            blk_end_dt = dt.datetime.combine(target_date + dt.timedelta(days=1), dt.time(0, 0))
+        else:
+            blk_end_dt = dt.datetime.combine(target_date, dt.time(end_hr, end_m))
+
+        if cutoff_time is not None and blk_end_dt > cutoff_time:
+            continue
+
+        if b < 22 or b > 75:
+            poa_96[b - 1] = 0.0
+            mw_96[b - 1] = 0.0
+            continue
+
+        mid_min = (b - 0.5) * 15
+        h = int(mid_min // 60)
+        m = mid_min % 60
+        frac = m / 60.0
+
+        curr = hour_data.get(h, {"gti": 0.0, "temp": 25.0, "cloud": 0.0})
+        nxt = hour_data.get(min(23, h + 1), curr)
+
+        gti_interp = curr["gti"] + frac * (nxt["gti"] - curr["gti"])
+        temp_interp = curr["temp"] + frac * (nxt["temp"] - curr["temp"])
+
+        p_virt = calculate_virtual_generation_mw(
+            gti_w_per_m2=gti_interp,
+            temperature_c=temp_interp,
+            plant_capacity_mw=cap_mw,
+            dc_capacity_mw=dc_mw,
+            performance_ratio=pr,
+        )
+
+        poa_96[b - 1] = round(max(0.0, gti_interp), 2)
+        mw_96[b - 1] = round(max(0.0, p_virt), 3)
+
+    return mw_96, poa_96

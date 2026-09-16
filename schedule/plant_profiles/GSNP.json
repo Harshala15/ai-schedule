@@ -9,5 +9,17 @@
   "tilt_deg": 15,
   "eeg_id": "GSPPL",
   "ppa_rate_inr_per_kwh": 6.97,
-  "penalty_regulation": "Madhya Pradesh"
+  "penalty_regulation": "Madhya Pradesh",
+  "meter_data": {
+    "s3_prefix": "raw/vedanjay/{site_id}/{date}/metered_data/",
+    "file_name_regex": "^(GSPPL_)?FORECAST_.*\\.csv$",
+    "delimiter": ",",
+    "timestamp_column": "datetime",
+    "power_column": "TVM Active Power",
+    "power_unit": "kw",
+    "poa_column": "poa_wm2",
+    "module_temperature_column": "mod_temp",
+    "ghi_column": "ghi_wm2",
+    "ambient_temperature_column": "amb_temp"
+  }
 }

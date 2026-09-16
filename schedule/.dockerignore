@@ -14,4 +14,9 @@ daily_actuals_inbox
 manual_input
 evaluation_schedules
 models
-
+openmeteo_premium_data
+openmeteo_api_data
+s3_downloads
+test_cache_gsnp
+*.csv
+*.xlsx

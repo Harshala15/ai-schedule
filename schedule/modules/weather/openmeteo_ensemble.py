@@ -337,6 +337,7 @@ def _load_historical_scada_for_day(
     plant_name: str = config.PLANT_NAME,
     historic_dir: Path | None = None,
 ) -> list[dict[str, Any]]:
+    workspace_root = Path(__file__).resolve().parent.parent.parent.parent
     dirs_to_check = [
         historic_dir,
         Path("schedule/meter_data") / plant_name,
@@ -344,8 +345,13 @@ def _load_historical_scada_for_day(
         config.HISTORIC_CASES_DIR,
         config.HISTORIC_CASES_DIR / plant_name,
         config.STORAGE_ROOT / "raw" / "vedanjay" / plant_name / target_date_str / "meter_data",
+        config.STORAGE_ROOT / "raw" / "vedanjay" / plant_name / target_date_str / "metered_data",
         config.STORAGE_ROOT / "meter_history",
         config.STORAGE_ROOT / "daily_actuals_inbox",
+        workspace_root / "s3_downloads" / plant_name / target_date_str,
+        workspace_root / "s3_downloads" / plant_name / target_date_str / "raw" / "vedanjay" / plant_name / target_date_str / "metered_data",
+        workspace_root / "s3_downloads" / plant_name,
+        Path("s3_downloads") / plant_name / target_date_str,
     ]
     rows: list[dict[str, Any]] = []
 
@@ -377,20 +383,24 @@ def _load_historical_scada_for_day(
     if bucket and plant_name:
         client = _s3_client()
         if client:
-            s3_prefix = f"raw/vedanjay/{plant_name}/{target_date_str}/meter_data/"
-            try:
-                res = client.list_objects_v2(Bucket=bucket, Prefix=s3_prefix)
-                for obj in res.get("Contents", []):
-                    if obj["Key"].endswith(".csv"):
-                        resp = client.get_object(Bucket=bucket, Key=obj["Key"])
-                        content = resp["Body"].read().decode("utf-8-sig", errors="ignore")
-                        reader = csv.DictReader(content.splitlines())
-                        for r in reader:
-                            rows.append(dict(r))
-                        if rows:
-                            return rows
-            except Exception:
-                pass
+            s3_prefixes = [
+                f"raw/vedanjay/{plant_name}/{target_date_str}/metered_data/",
+                f"raw/vedanjay/{plant_name}/{target_date_str}/meter_data/",
+            ]
+            for s3_prefix in s3_prefixes:
+                try:
+                    res = client.list_objects_v2(Bucket=bucket, Prefix=s3_prefix)
+                    for obj in res.get("Contents", []):
+                        if obj["Key"].endswith(".csv"):
+                            resp = client.get_object(Bucket=bucket, Key=obj["Key"])
+                            content = resp["Body"].read().decode("utf-8-sig", errors="ignore")
+                            reader = csv.DictReader(content.splitlines())
+                            for r in reader:
+                                rows.append(dict(r))
+                            if rows:
+                                return rows
+                except Exception:
+                    pass
 
     return rows
 
@@ -439,13 +449,22 @@ def _extract_hourly_actual_weather(
         if poa_val is not None:
             poa_by_hour.setdefault(hour, []).append(poa_val)
 
-        power_candidates = ["Active Power (kW)", "Active Power-Avg MFM-OUT (KW)", "Active Power (MW)", "power_mw", "Active Power", "AC_Active Output Power (KW) BLK-A:INV1"]
+        power_candidates = [
+            "TVM Active Power",
+            "TVM Active Power (kW)",
+            "Active Power (kW)",
+            "Active Power-Avg MFM-OUT (KW)",
+            "Active Power (MW)",
+            "power_mw",
+            "Active Power",
+            "AC_Active Output Power (KW) BLK-A:INV1",
+        ]
         power_val = None
         for col in power_candidates:
             if col in row and row[col] not in (None, ""):
                 val = _coerce_float(row[col])
                 if val is not None and val >= 0.0:
-                    if "kw" in col.lower() and "mw" not in col.lower():
+                    if ("kw" in col.lower() or "tvm" in col.lower()) and "mw" not in col.lower():
                         power_val = val / 1000.0
                     else:
                         power_val = val
@@ -485,18 +504,19 @@ def select_best_recent_ensemble_members(
     tilt: float = 20.0,
     azimuth: float = 0.0,
     cache_dir: Path | None = None,
+    enforce_provider_diversity: bool = True,
 ) -> tuple[list[str], dict[str, float], dict[str, Any]]:
     target_date = dt.date.fromisoformat(target_date_str)
     tz = _ensure_timezone(timezone)
 
+    days_evaluated: list[str] = []
     member_daily_errors: dict[str, list[float]] = {}
     member_morning_errors: dict[str, list[float]] = {}
     member_peak_errors: dict[str, list[float]] = {}
     member_afternoon_errors: dict[str, list[float]] = {}
-    days_evaluated: list[str] = []
 
-    for day_offset in range(selection_days, 0, -1):
-        hist_date = target_date - dt.timedelta(days=day_offset)
+    for offset in range(1, max(1, selection_days) + 1):
+        hist_date = target_date - dt.timedelta(days=offset)
         hist_date_str = hist_date.isoformat()
 
         scada_rows = _load_historical_scada_for_day(hist_date_str, plant_name=plant_name)
@@ -594,9 +614,24 @@ def select_best_recent_ensemble_members(
         avg_mae = sum(error_list) / len(error_list)
         overall_scores.append((suffix, avg_mae))
 
-    overall_scores.sort(key=lambda item: item[1])
-    selected_k = min(len(overall_scores), max(5, int(top_k)))
-    top_entries = overall_scores[:selected_k]
+    if enforce_provider_diversity:
+        icon_entries = [e for e in overall_scores if "icon" in e[0].lower()]
+        ecmwf_entries = [e for e in overall_scores if "ecmwf" in e[0].lower() or "ifs" in e[0].lower()]
+        icon_entries.sort(key=lambda item: item[1])
+        ecmwf_entries.sort(key=lambda item: item[1])
+        if icon_entries and ecmwf_entries:
+            n_icon = min(len(icon_entries), max(3, int(round(top_k * 0.6))))
+            n_ecmwf = min(len(ecmwf_entries), max(2, int(round(top_k * 0.4))))
+            top_entries = icon_entries[:n_icon] + ecmwf_entries[:n_ecmwf]
+            top_entries.sort(key=lambda item: item[1])
+        else:
+            overall_scores.sort(key=lambda item: item[1])
+            selected_k = min(len(overall_scores), max(5, int(top_k)))
+            top_entries = overall_scores[:selected_k]
+    else:
+        overall_scores.sort(key=lambda item: item[1])
+        selected_k = min(len(overall_scores), max(5, int(top_k)))
+        top_entries = overall_scores[:selected_k]
     selected_members = [item[0] for item in top_entries]
 
     # Calculate Inverse-Variance Weights: w_i = 1 / (MAE_i^2)

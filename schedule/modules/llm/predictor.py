@@ -597,9 +597,14 @@ CRITICAL FORECAST & AI ADJUSTMENT RULES (NO FIXED WEIGHTS):
    - CONFIRMED OVERCAST REGIME: When multi-stream weather models agree AND ground telemetry confirms cloud attenuation (Kt < 0.65 and low POA), downward weather adjustment is approved. Sizing the downward magnitude should match the verified ground attenuation to prevent grid over-injection penalties.
    - CONVECTIVE STORM THREAT: When Stream 3 shows high CAPE (> 1500 J/kg) or sudden ground generation drop during morning ramp (dP/dt < -0.3 MW), apply a cautious downward adjustment down to the diffuse irradiance floor.
 
-3. Solar Geometry & Physical Bounds:
+3. Solar Geometry, Curve-Shape & Physical Bounds (STRICT CONTINUITY & ANTI-ZIGZAG):
+   - Never alternate schedule direction unnecessarily: DO NOT generate alternating up/down zig-zag behavior (e.g. 10.0 -> 12.0 -> 10.5 -> 13.0).
+   - Morning Ascent (06:30 - 11:30): Enforce a smooth, convex increasing curve matching rising solar elevation. Avoid erratic dips unless verified by sustained ground cloud shading.
+   - Midday Apex (11:30 - 13:30): Enforce a stable plateau or smooth dome without step jumps.
+   - Afternoon Descent (13:30 - 18:00): Enforce a smooth, monotonic concave decline; never create late afternoon re-spikes.
+   - Boundary Continuity & Tapering: Connect Block 1 smoothly to current live measured generation. If applying a short-term telemetry correction, taper it gradually toward the multi-model ensemble baseline over 4-6 blocks.
+   - Avoid chasing isolated single-block weather or model spikes. Prefer the value with the highest probability of remaining inside the ±{tol_band_mw:.2f} MW DSM tolerance band.
    - Pre-dawn / Post-dusk: If solar elevation < 3.0 deg, generation is strictly 0.00 MW. Between 3.0 deg and 7.5 deg, output small diffuse dawn/dusk power (0.05 to 0.25 MW) if irradiance > 25 W/m².
-   - Monotonic Morning Ascent (06:30 - 11:30): Solar elevation strictly climbs; avoid unphysical sawtooth drops unless verified severe cloud shading is present on ground.
    - Physical Diffuse Floor: In India during daylight hours (solar elevation >= 45 deg), diffuse irradiance physically yields at least 25-35% of capacity; generation never drops below this unless torrential rain is confirmed on site.
    - Upper Ceiling: Step 2 MW must never exceed plant maximum AC export limit of {cap_mw:.2f} MW.
 
