@@ -581,25 +581,51 @@ def run_schedule_job(
         work_output_dir.parent,
     )
 
-    run_pipeline.run_prediction_pipeline(
-        image_map={},
-        video_path=selection.video_path,
-        reference_time=forecast_start_dt,
-        num_blocks=settings.FORECAST_BLOCKS,
-        output_dir=work_output_dir,
-        intraday_actuals_path=selection.meter_path,
-        weather_text="",
-        context_text=selection.context_summary,
-        meter_history_text=meter_history_text,
-        pvlib_text=pvlib_text,
-        plant_performance_text=plant_performance_text,
-    )
-    mirrored_features = _mirror_features_log_to_persistent_store(work_output_dir)
-    if mirrored_features:
-        print(
-            "  [STATE] Mirrored features_log file(s) into the persistent case store: "
-            + ", ".join(str(path.resolve()) for path in mirrored_features)
+    if config.is_wind_plant():
+        from modules.weather.wind_ensemble import calculate_wind_schedule_96block, WindTurbineProfile
+        wind_prof = WindTurbineProfile(
+            plant_name=config.PLANT_NAME,
+            rated_capacity_mw=config.PLANT_CAPACITY_MW,
+            hub_height_m=getattr(config, "PLANT_PROFILE", {}).get("hub_height_m", 100.0),
         )
+        wind_sched = calculate_wind_schedule_96block(
+            config.PLANT_LAT,
+            config.PLANT_LON,
+            target_date,
+            profile=wind_prof,
+        )
+        snapshot_source = work_output_dir / f"{config.PLANT_NAME}_energy_generation_{target_date}.csv"
+        fieldnames = ["Block", "Time Interval (15 minute interval)", "intellis_gti", "intellis_mw", "schedule_mw"]
+        rows_to_write = []
+        for b in wind_sched["blocks"]:
+            rows_to_write.append({
+                "Block": b["block"],
+                "Time Interval (15 minute interval)": b["time_interval"],
+                "intellis_gti": b["intellis_gti"],
+                "intellis_mw": b["intellis_mw"],
+                "schedule_mw": b["schedule_mw"],
+            })
+        shared_schedule_utils.write_csv(snapshot_source, fieldnames, rows_to_write)
+    else:
+        run_pipeline.run_prediction_pipeline(
+            image_map={},
+            video_path=selection.video_path,
+            reference_time=forecast_start_dt,
+            num_blocks=settings.FORECAST_BLOCKS,
+            output_dir=work_output_dir,
+            intraday_actuals_path=selection.meter_path,
+            weather_text="",
+            context_text=selection.context_summary,
+            meter_history_text=meter_history_text,
+            pvlib_text=pvlib_text,
+            plant_performance_text=plant_performance_text,
+        )
+        mirrored_features = _mirror_features_log_to_persistent_store(work_output_dir)
+        if mirrored_features:
+            print(
+                "  [STATE] Mirrored features_log file(s) into the persistent case store: "
+                + ", ".join(str(path.resolve()) for path in mirrored_features)
+            )
 
     snapshot_source = work_output_dir / f"{config.PLANT_NAME}_energy_generation_{target_date}.csv"
     if not snapshot_source.exists():

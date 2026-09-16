@@ -107,6 +107,8 @@ s3_downloads/
 schedule/s3_downloads/
 schedule/openmeteo_premium_data/
 schedule/test_cache_gsnp/
+schedule/wind_ensemble_cache/
+wind_ensemble_cache/
 *.csv
 *.xlsx
 

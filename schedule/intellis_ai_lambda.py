@@ -34,6 +34,8 @@ SITE_PACKAGES = {
     "GUGARIYAKHEDI": "bhupalpally_forecast_scheduler",
     "NANDGAON": "bhupalpally_forecast_scheduler",
     "GSNP": "bhupalpally_forecast_scheduler",
+    "CHANDAWASA": "bhupalpally_forecast_scheduler",
+    "CHANDWASA": "bhupalpally_forecast_scheduler",
     "ZTRIC": "ztric_forecast_scheduler",
 }
 
@@ -54,6 +56,8 @@ SERVICE_MODULES = {
     "GUGARIYAKHEDI": "bhupalpally_forecast_scheduler.scheduler_service",
     "NANDGAON": "bhupalpally_forecast_scheduler.scheduler_service",
     "GSNP": "bhupalpally_forecast_scheduler.scheduler_service",
+    "CHANDAWASA": "bhupalpally_forecast_scheduler.scheduler_service",
+    "CHANDWASA": "bhupalpally_forecast_scheduler.scheduler_service",
     "ZTRIC": "ztric_forecast_scheduler.scheduler_service",
 }
 

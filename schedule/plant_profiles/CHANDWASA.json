@@ -1,0 +1,29 @@
+{
+  "plant_name": "CHANDWASA",
+  "plant_type": "WIND",
+  "latitude": 24.166208338682694,
+  "longitude": 75.45968356960226,
+  "hub_height_m": 100.0,
+  "maximum_feed_in_ac_kw": 10000.0,
+  "dc_capacity_kw": 10000.0,
+  "capacity_mw": 10.0,
+  "ac_capacity_mw": 10.0,
+  "dc_capacity_mw": 10.0,
+  "v_cut_in": 3.0,
+  "v_rated": 11.5,
+  "v_cut_out": 22.0,
+  "park_derate_factor": 0.89,
+  "wake_loss_factor": 0.94,
+  "turbine_availability": 0.97,
+  "electrical_efficiency": 0.98,
+  "ppa_rate_inr_per_kwh": 4.50,
+  "penalty_regulation": "Madhya Pradesh",
+  "tolerance_band_mw": 1.50,
+  "band_percentage": 0.15,
+  "freeze_lag_minutes": 90,
+  "meter_data": {
+    "is_virtual": true,
+    "meter_type": "WIND_REANALYSIS_VIRTUAL",
+    "description": "Boundary SCADA meter unavailable; virtual wind reanalysis telemetry utilized."
+  }
+}

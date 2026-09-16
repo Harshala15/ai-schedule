@@ -337,6 +337,36 @@ _PLANT_FALLBACKS = {
         "dc_capacity_mw": 23.027,
         "max_feed_in_mw": 18.63,
     },
+    "CHANDAWASA": {
+        "latitude": 24.166208,
+        "longitude": 75.459684,
+        "capacity_mw": 10.0,
+        "dc_capacity_mw": 10.0,
+        "max_feed_in_mw": 10.0,
+        "tilt_deg": 0.0,
+        "orientation_deg_from_south": 0.0,
+        "ppa_rate_inr_per_kwh": 4.50,
+        "penalty_regulation": "Madhya Pradesh",
+        "plant_type": "WIND",
+        "hub_height_m": 100.0,
+        "tolerance_band_mw": 1.50,
+        "eeg_id": "CHANDAWASA",
+    },
+    "CHANDWASA": {
+        "latitude": 24.166208,
+        "longitude": 75.459684,
+        "capacity_mw": 10.0,
+        "dc_capacity_mw": 10.0,
+        "max_feed_in_mw": 10.0,
+        "tilt_deg": 0.0,
+        "orientation_deg_from_south": 0.0,
+        "ppa_rate_inr_per_kwh": 4.50,
+        "penalty_regulation": "Madhya Pradesh",
+        "plant_type": "WIND",
+        "hub_height_m": 100.0,
+        "tolerance_band_mw": 1.50,
+        "eeg_id": "CHANDAWASA",
+    },
 }
 _fallback = _PLANT_FALLBACKS.get(_DEFAULT_PLANT_NAME.upper(), _PLANT_FALLBACKS["SIRMOUR"])
 _DEFAULT_PLANT_PROFILE_PATH = Path(
@@ -398,6 +428,19 @@ PLANT_ORIENTATION_FROM_SOUTH_DEG = _read_profile_float_setting(
     0.0,
 )
 PLANT_ORIENTATION_DEG_FROM_SOUTH = PLANT_ORIENTATION_FROM_SOUTH_DEG
+PLANT_TYPE = _read_profile_setting("PLANT_TYPE", "plant_type", _fallback.get("plant_type", "SOLAR")).upper()
+
+
+def is_wind_plant(plant_name: str | None = None) -> bool:
+    name = (plant_name or PLANT_NAME or "").strip().upper()
+    if name in ("CHANDAWASA", "CHANDWASA"):
+        return True
+    p_type = ""
+    if isinstance(PLANT_PROFILE, dict):
+        p_type = PLANT_PROFILE.get("plant_type", "")
+    p_type = p_type or PLANT_TYPE
+    return str(p_type).strip().upper() == "WIND"
+
 
 
 def to_openmeteo_azimuth(raw_azimuth: float | None = None) -> float:
@@ -461,6 +504,9 @@ def get_plant_tolerance_band_pct(penalty_regulation: str | None = None, plant_na
     reg = (penalty_regulation or PLANT_PENALTY_REGULATION or "").strip().lower()
     name = (plant_name or PLANT_NAME or "").strip().upper()
 
+    if is_wind_plant(name):
+        return 15.0
+
     if "madhya pradesh" in reg or "mperc" in reg:
         return 10.0
     if "maharashtra" in reg or "merc" in reg:
@@ -494,7 +540,7 @@ def load_plant_profile(plant_name: str | None = None) -> dict:
     global PLANT_MAX_FEED_IN_MW, PLANT_TILT_DEG, PLANT_ORIENTATION_FROM_SOUTH_DEG, PLANT_ORIENTATION_DEG_FROM_SOUTH
     global PLANT_TRACKER_TYPE, PLANT_AVAILABILITY_PLANNED_PCT, PLANT_PPA_RATE_INR_PER_KWH
     global PLANT_EEG_ID, PLANT_KEY, PERFORMANCE_RATIO, PLANT_PROFILE, PLANT_PROFILE_PATH
-    global PREDICTION_CONTEXT_PATH, PLANT_PENALTY_REGULATION
+    global PREDICTION_CONTEXT_PATH, PLANT_PENALTY_REGULATION, PLANT_TYPE
     global PLANT_TOLERANCE_BAND_PCT, PLANT_TOLERANCE_BAND_MW
 
     name = (plant_name or PLANT_NAME or "SIRMOUR").strip().upper()
@@ -505,6 +551,7 @@ def load_plant_profile(plant_name: str | None = None) -> dict:
     PLANT_NAME = name
     PLANT_PROFILE_PATH = profile_path
     PLANT_PROFILE = profile
+    PLANT_TYPE = _profile_str(profile, "plant_type", fallback.get("plant_type", "SOLAR")).upper()
 
     PLANT_LAT = _profile_float(profile, "latitude", fallback["latitude"])
     PLANT_LON = _profile_float(profile, "longitude", fallback["longitude"])

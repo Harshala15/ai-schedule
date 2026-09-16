@@ -226,6 +226,7 @@ def freeze_from_datetime(target_date: str, target_time: str, block_minutes: int 
         "BALAKWADA": 90,
         "BAMKHAL": 90,
         "CHANDAWASA": 90,
+        "CHANDWASA": 90,
         "GSNP": 90,
         "GUGARIYAKHEDI": 90,
         "NANDGAON": 90,
@@ -288,6 +289,7 @@ def write_current_final_schedule(
         "BALAKWADA": 90,
         "BAMKHAL": 90,
         "CHANDAWASA": 90,
+        "CHANDWASA": 90,
         "GSNP": 90,
         "GUGARIYAKHEDI": 90,
         "NANDGAON": 90,
@@ -405,9 +407,10 @@ def write_current_final_schedule(
             return False
         return row_dt.time() >= dt.time(19, 0)
 
+    is_wind = getattr(config, "is_wind_plant", lambda: False)()
     for row in frozen_rows:
         block_number = _row_block_number(row)
-        should_zero = (block_number is not None and (block_number < 24 or block_number > 76)) or _is_night_time(row)
+        should_zero = not is_wind and ((block_number is not None and (block_number < 24 or block_number > 76)) or _is_night_time(row))
         if should_zero:
             row["intellis_mw"] = "0.0"
             row["schedule_mw"] = "0.0"
@@ -630,7 +633,7 @@ def write_full_block_schedule_from_llm_schedule(
         b_data = schedule_by_block.get(block, {})
         gti_val = float(b_data.get("intellis_gti", 0.0))
         mw_val = float(b_data.get("intellis_mw", 0.0))
-        if block < 24 or block > 76:
+        if not getattr(config, "is_wind_plant", lambda: False)() and (block < 24 or block > 76):
             mw_val = 0.0
             gti_val = 0.0
 
