@@ -155,11 +155,20 @@ def _pick_latest_capture_bundle(
     if selected_meter is not None:
         raw_meter_path = meter_dir / Path(selected_meter.key).name
         storage.download_file(bucket, selected_meter.key, raw_meter_path)
-        clipped_meter_path, meter_rows_available, meter_rows_used = _clip_meter_to_cutoff(
-            raw_meter_path,
-            meter_dir / f"{Path(selected_meter.key).stem}_upto_{target_dt.strftime('%H-%M')}.csv",
-            target_dt,
-        )
+        try:
+            clipped_meter_path, meter_rows_available, meter_rows_used = _clip_meter_to_cutoff(
+                raw_meter_path,
+                meter_dir / f"{Path(selected_meter.key).stem}_upto_{target_dt.strftime('%H-%M')}.csv",
+                target_dt,
+            )
+        except Exception as e:
+            if config.is_wind_plant():
+                print(f"  [INFO] Wind plant meter data clipping bypassed ({e}); using virtual telemetry.")
+                clipped_meter_path = None
+                meter_rows_available = 0
+                meter_rows_used = 0
+            else:
+                raise
 
     if selected_video is not None:
         storage.download_file(bucket, selected_video.key, video_dir / Path(selected_video.key).name)

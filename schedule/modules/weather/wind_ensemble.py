@@ -44,13 +44,40 @@ def get_wind_ensemble_url() -> str:
 class WindTurbineProfile:
     plant_name: str = "CHANDAWASA"
     rated_capacity_mw: float = 10.0
-    hub_height_m: float = 100.0
+    turbine_manufacturer: str = "Gamesa"
+    turbine_model: str = "G114/2000"
+    rotor_diameter_m: float = 114.0
+    num_turbines: int = 5
+    hub_height_m: float = 80.0
     v_cut_in: float = 3.0
-    v_rated: float = 11.5
-    v_cut_out: float = 22.0
+    v_rated: float = 10.5
+    v_cut_out: float = 25.0
     ramp_exponent: float = 2.8
     park_derate_factor: float = 0.89  # wake loss (0.94) * electrical (0.98) * availability (0.97)
     standard_air_density: float = 1.225  # kg/m³ at sea level / 15°C
+    empirical_multipliers: list[float] | None = None
+
+
+def load_site_calibrated_multipliers(plant_name: str) -> list[float] | None:
+    """Load empirical 96-block transfer multipliers for wind sites (e.g. CHANDAWASA / CHANDWASA)."""
+    clean_name = re.sub(r"[^A-Za-z0-9_]", "", plant_name).upper()
+    if clean_name in ("CHANDAWASA", "CHANDWASA"):
+        candidates = [
+            Path(__file__).parent.parent.parent / "plant_profiles" / "chandawasa_calibrated_weights.json",
+            Path("/var/task/plant_profiles/chandawasa_calibrated_weights.json"),
+            Path("plant_profiles/chandawasa_calibrated_weights.json"),
+            Path(__file__).parent / "chandawasa_calibrated_weights.json",
+        ]
+        for cand in candidates:
+            if cand.exists():
+                try:
+                    data = json.loads(cand.read_text(encoding="utf-8"))
+                    mults = data.get("calibrated_block_multipliers", [])
+                    if len(mults) == 96:
+                        return mults
+                except Exception:
+                    pass
+    return None
 
 
 def compute_air_density(surface_pressure_hpa: float, temperature_c: float) -> float:
@@ -239,7 +266,13 @@ def calculate_wind_schedule_96block(
 
     # Apply park derate factor (wake, electrical, availability)
     b_net_mw = np.clip(b_gross_mw * prof.park_derate_factor, 0.0, prof.rated_capacity_mw)
-    b_net_mw = np.round(b_net_mw, 2)
+
+    # Apply site-specific empirical calibration (diurnal transfer function learned from Enercast)
+    site_mults = prof.empirical_multipliers or load_site_calibrated_multipliers(prof.plant_name)
+    if site_mults and len(site_mults) == 96:
+        b_net_mw = np.array([round(b_net_mw[b] * site_mults[b], 2) for b in range(96)])
+    else:
+        b_net_mw = np.round(b_net_mw, 2)
 
     blocks_data = []
     for b in range(96):
@@ -258,6 +291,8 @@ def calculate_wind_schedule_96block(
             "block": b + 1,
             "time": t_str,
             "time_interval": t_interval,
+            "wind_speed_80m": v_hub,
+            "wind_speed_hub_m_s": v_hub,
             "wind_speed_100m": v_hub,
             "air_density_kg_m3": rho_val,
             "intellis_gti": v_hub,  # Canonical compatibility: hub wind speed
@@ -273,11 +308,21 @@ def calculate_wind_schedule_96block(
     return {
         "plant_name": prof.plant_name,
         "plant_type": "WIND",
+        "turbine_manufacturer": prof.turbine_manufacturer,
+        "turbine_model": prof.turbine_model,
+        "hub_height_m": prof.hub_height_m,
+        "rotor_diameter_m": prof.rotor_diameter_m,
         "target_date": target_date_str,
         "total_blocks": 96,
         "capacity_mw": prof.rated_capacity_mw,
         "total_ensemble_members": len(member_hourly_mw),
         "mean_daily_mw": round(float(np.mean(b_net_mw)), 2),
         "peak_mw": round(float(np.max(b_net_mw)), 2),
+        "revision_schedule": {
+            "start_time": "06:00",
+            "end_time": "21:00",
+            "frequency_minutes": 30,
+            "effective_lag_minutes": 90,
+        },
         "blocks": blocks_data,
     }

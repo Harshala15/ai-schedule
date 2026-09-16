@@ -348,8 +348,9 @@ _PLANT_FALLBACKS = {
         "ppa_rate_inr_per_kwh": 4.50,
         "penalty_regulation": "Madhya Pradesh",
         "plant_type": "WIND",
-        "hub_height_m": 100.0,
-        "tolerance_band_mw": 1.50,
+        "hub_height_m": 80.0,
+        "tolerance_band_mw": 1.00,
+        "band_percentage": 0.10,
         "eeg_id": "CHANDAWASA",
     },
     "CHANDWASA": {
@@ -363,8 +364,9 @@ _PLANT_FALLBACKS = {
         "ppa_rate_inr_per_kwh": 4.50,
         "penalty_regulation": "Madhya Pradesh",
         "plant_type": "WIND",
-        "hub_height_m": 100.0,
-        "tolerance_band_mw": 1.50,
+        "hub_height_m": 80.0,
+        "tolerance_band_mw": 1.00,
+        "band_percentage": 0.10,
         "eeg_id": "CHANDAWASA",
     },
 }
@@ -504,9 +506,6 @@ def get_plant_tolerance_band_pct(penalty_regulation: str | None = None, plant_na
     reg = (penalty_regulation or PLANT_PENALTY_REGULATION or "").strip().lower()
     name = (plant_name or PLANT_NAME or "").strip().upper()
 
-    if is_wind_plant(name):
-        return 15.0
-
     if "madhya pradesh" in reg or "mperc" in reg:
         return 10.0
     if "maharashtra" in reg or "merc" in reg:
@@ -515,7 +514,11 @@ def get_plant_tolerance_band_pct(penalty_regulation: str | None = None, plant_na
         return 15.0
 
     # Plant-name fallback if penalty_regulation was omitted or generic
-    mp_plants = {"SIRMOUR", "GSNP", "GSPPL", "BAMKHAL", "BALAKWADA", "ANDAD", "ANJANGAON", "ANJANGOAN", "SAWDA", "GUGARIYAKHEDI", "NANDGAON"}
+    mp_plants = {
+        "SIRMOUR", "GSNP", "GSPPL", "BAMKHAL", "BALAKWADA", "ANDAD",
+        "ANJANGAON", "ANJANGOAN", "SAWDA", "GUGARIYAKHEDI", "NANDGAON",
+        "CHANDAWASA", "CHANDWASA"
+    }
     if name in mp_plants:
         return 10.0
 
@@ -525,6 +528,9 @@ def get_plant_tolerance_band_pct(penalty_regulation: str | None = None, plant_na
 
     tg_plants = {"BHUPALPALLY", "KASIPET", "KOTHAGUDEM", "MANDAMARRI"}
     if name in tg_plants:
+        return 15.0
+
+    if is_wind_plant(name):
         return 15.0
 
     return 15.0
@@ -567,7 +573,10 @@ def load_plant_profile(plant_name: str | None = None) -> dict:
     PLANT_EEG_ID = _profile_str(profile, "eeg_id", fallback.get("eeg_id", ""))
     PLANT_KEY = _profile_str(profile, "plant_key", "")
     PLANT_PENALTY_REGULATION = _profile_str(profile, "penalty_regulation", fallback.get("penalty_regulation", "CERC"))
-    PLANT_TOLERANCE_BAND_PCT = get_plant_tolerance_band_pct(PLANT_PENALTY_REGULATION, name)
+    if profile and "band_percentage" in profile:
+        PLANT_TOLERANCE_BAND_PCT = round(float(profile["band_percentage"]) * 100.0, 2)
+    else:
+        PLANT_TOLERANCE_BAND_PCT = get_plant_tolerance_band_pct(PLANT_PENALTY_REGULATION, name)
     PLANT_TOLERANCE_BAND_MW = round((PLANT_TOLERANCE_BAND_PCT / 100.0) * PLANT_CAPACITY_MW, 3)
     PERFORMANCE_RATIO = _profile_float(profile, "performance_ratio", 0.78)
     PREDICTION_CONTEXT_PATH = _storage_path("prediction_context", f"{name}_context.json")
