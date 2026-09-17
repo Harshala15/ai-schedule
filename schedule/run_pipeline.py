@@ -311,6 +311,20 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
             feature_row["meter_kt"] = None
             feature_row["is_inverter_clipped"] = False
 
+        # Extract top slot-ranked models and live 60-min tracking errors for LLM prompt
+        try:
+            from modules.weather.intellis_ensemble_gti_ai import IntellisEnsembleGTIAI, load_plant_profile
+            prof = load_plant_profile(getattr(config, "PLANT_NAME", "GSNP"))
+            ensemble_ai = IntellisEnsembleGTIAI(plant_profile=prof)
+            target_d_str = reference_time.strftime("%Y-%m-%d")
+            curr_b = (reference_time.hour * 4) + (reference_time.minute // 15) + 1
+            live_poa = float(feature_row.get("meter_gti_wm2") or (clearsky_gti * 0.90))
+            feature_row["slot_candidates_diagnostics"] = ensemble_ai.get_slot_candidate_diagnostics(
+                target_d_str, curr_b, live_poa, lookback_blocks=4, horizon_blocks=num_blocks or config.NUM_FORECAST_BLOCKS
+            )
+        except Exception:
+            feature_row["slot_candidates_diagnostics"] = None
+
         if feature_columns is None:
             feature_columns = feature_builder.get_feature_columns(feature_row)
         # 2. Live Clearness from latest recorded meter reading at revision time:
@@ -469,7 +483,7 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
         )
         overcast_ceiling_factor = max(live_res_factor * 1.30, 0.25) if is_sustained_overcast else 1.0
 
-        for p in llm_predictions:
+        for block_idx, p in enumerate(llm_predictions):
             base_mw = base_forecast_by_time.get(p["time"], p.get("anchor_mw", 0.0))
             base_ref_mw = base_reference_by_time.get(p["time"], base_mw)
             p["base_anchor_mw"] = base_ref_mw
@@ -510,11 +524,6 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
                 step2 = round(max(0.0, min(cap_mw, step2)), 3)
 
             # 4. OSEPL PLANT-SPECIFIC RECEIVABLE OPTIMIZATION GUARDRAIL:
-            # Under Maharashtra Inter-State / CERC regulations, when Schedule <= Meter, the plant
-            # earns DSM receivables at the full PPA rate (Rs 9.27/kWh) with ZERO penalty.
-            # When Schedule > Meter, the plant suffers severe shortfall penalties.
-            # For OSEPL only: keep the schedule slightly below meter data / expectation,
-            # but strictly within the 10% regulatory band (<= 2.0 MW below meter).
             if config.PLANT_NAME.upper() == "OSEPL" and b_elev >= 7.5:
                 band_mw = cap_mw * 0.10  # 2.0 MW for OSEPL
                 opt_under_offset = min(1.20, max(0.40, step2 * 0.06))
@@ -526,6 +535,18 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
 
                 step2 = step2_opt
                 p["reasoning"] = (p.get("reasoning", "") + f" [OSEPL Receivable Optimization: Biased below meter ({step2:.3f} MW) to maximize surplus receivables]").strip()
+
+            # 5. CLOSED-LOOP SCADA TELEMETRY RELAXATION (T+4 NUDGE, tau = 45 min):
+            # Smoothly connects Block 1 (T+15 min) to real measured SCADA generation,
+            # eliminating seam jump error and transitioning into winning model trajectory over 4 blocks.
+            latest_m = float(intraday_state.get("latest_mw", 0.0)) if intraday_state else 0.0
+            if latest_m > 0.0 and b_elev >= 15.0 and block_idx < 4:
+                nudge_tau = float(getattr(config, "SCADA_NUDGE_TAU_MINUTES", 45.0))
+                meter_weight = math.exp(-((block_idx + 1) * 15.0) / max(15.0, nudge_tau))
+                ref_cs = max(10.0, 1000.0 * (math.sin(math.radians(max(0.0, current_solar_elev))) ** 0.95))
+                b_cs = max(10.0, 1000.0 * (math.sin(math.radians(max(0.0, b_elev))) ** 0.95))
+                projected_meter = latest_m * (b_cs / max(1.0, ref_cs))
+                step2 = round((meter_weight * projected_meter) + ((1.0 - meter_weight) * step2), 3)
 
             p["step2_mw"] = step2
             p["step3_mw"] = step2
@@ -564,7 +585,7 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
         )
         overcast_ceiling_factor = max(live_res_factor * 1.30, 0.25) if is_sustained_overcast else 1.0
 
-        for p in llm_predictions:
+        for block_idx, p in enumerate(llm_predictions):
             base_mw = p.get("anchor_mw")
             p["step1_mw"] = p.get("base_anchor_mw", base_mw)
             step2 = p.get("llm_mw", base_mw)
@@ -593,6 +614,16 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
                 band_mw = cap_mw * 0.10
                 opt_under_offset = min(1.20, max(0.40, step2 * 0.06))
                 step2 = round(max(0.0, step2 - opt_under_offset), 3)
+
+            # 5. CLOSED-LOOP SCADA TELEMETRY RELAXATION (T+4 NUDGE, tau = 45 min):
+            latest_m = float(intraday_state.get("latest_mw", 0.0)) if intraday_state else 0.0
+            if latest_m > 0.0 and b_elev >= 15.0 and block_idx < 4:
+                nudge_tau = float(getattr(config, "SCADA_NUDGE_TAU_MINUTES", 45.0))
+                meter_weight = math.exp(-((block_idx + 1) * 15.0) / max(15.0, nudge_tau))
+                ref_cs = max(10.0, 1000.0 * (math.sin(math.radians(max(0.0, current_solar_elev))) ** 0.95))
+                b_cs = max(10.0, 1000.0 * (math.sin(math.radians(max(0.0, b_elev))) ** 0.95))
+                projected_meter = latest_m * (b_cs / max(1.0, ref_cs))
+                step2 = round((meter_weight * projected_meter) + ((1.0 - meter_weight) * step2), 3)
 
             p["step2_mw"] = step2
             p["step3_mw"] = step2

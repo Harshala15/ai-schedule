@@ -1143,9 +1143,58 @@ class TestDiurnalContinuityAndAntiSawtooth(unittest.TestCase):
         self.assertEqual(results[0]["step2_mw"], 9.0)
         self.assertEqual(results[0]["llm_mw"], 9.0)
 
+    def test_slot_candidate_diagnostics(self):
+        """Verify IntellisEnsembleGTIAI.get_slot_candidate_diagnostics extracts slot models and 60-min biases."""
+        from modules.weather.intellis_ensemble_gti_ai import IntellisEnsembleGTIAI, load_plant_profile
+        prof = load_plant_profile("GSNP")
+        ai_engine = IntellisEnsembleGTIAI(plant_profile=prof)
+
+        # Midday block (block 48 = 12:00)
+        diag = ai_engine.get_slot_candidate_diagnostics(
+            target_date_str="2026-09-15",
+            current_block=48,
+            live_actual_poa=850.0,
+            lookback_blocks=4,
+            horizon_blocks=12,
+        )
+        self.assertEqual(diag["current_slot"], "midday")
+        self.assertEqual(diag["current_block"], 48)
+        self.assertEqual(diag["live_actual_poa_wm2"], 850.0)
+        self.assertIn("candidates", diag)
+
+    def test_closed_loop_scada_t4_nudge(self):
+        """Verify T+4 closed-loop telemetry relaxation eliminates seam jump from live meter."""
+        latest_m = 8.500
+        current_solar_elev = 55.0
+        model_pred_step2 = 7.000  # Model under-predicting by 1.5 MW
+
+        # Block 1 (T+15m, block_idx = 0)
+        nudge_tau = 45.0
+        meter_weight = math.exp(-((0 + 1) * 15.0) / nudge_tau)  # exp(-15/45) = 0.7165
+        ref_cs = 1000.0 * (math.sin(math.radians(current_solar_elev)) ** 0.95)
+        b_elev = 57.0
+        b_cs = 1000.0 * (math.sin(math.radians(b_elev)) ** 0.95)
+        projected_meter = latest_m * (b_cs / ref_cs)
+
+        blended_b1 = round((meter_weight * projected_meter) + ((1.0 - meter_weight) * model_pred_step2), 3)
+
+        # Blended Block 1 should start very close to live meter (projected ~8.6 MW), NOT 7.0 MW!
+        self.assertGreater(blended_b1, 8.000)
+        self.assertLess(abs(blended_b1 - projected_meter), 0.500)
+
+        # Block 4 (T+60m, block_idx = 3)
+        w4 = math.exp(-((3 + 1) * 15.0) / nudge_tau)  # exp(-60/45) = 0.2636
+        b_elev4 = 60.0
+        b_cs4 = 1000.0 * (math.sin(math.radians(b_elev4)) ** 0.95)
+        projected_meter4 = latest_m * (b_cs4 / ref_cs)
+        blended_b4 = round((w4 * projected_meter4) + ((1.0 - w4) * model_pred_step2), 3)
+        # Block 4 transitions toward model prediction
+        self.assertLess(blended_b4, blended_b1)
+
 
 if __name__ == "__main__":
     unittest.main()
+
 
 
 

@@ -474,7 +474,12 @@ class IntellisEnsembleGTIAI:
                         poa_arr[b_idx] = max(0.0, float(poa_val))
 
             if np.max(poa_arr) <= 0.0:
-                poa_arr = mw_arr / max(1e-6, self.profile.transfer_ratio)
+                b_idx = np.arange(96)
+                noon_dist = np.abs(b_idx - 48.5) * 0.25
+                cos_elev = np.maximum(0.0, np.cos(noon_dist * (np.pi / 12.0)))
+                est_cell = 25.0 + 10.0 * (cos_elev ** 0.8) + (cos_elev * 900.0 * 0.031)
+                temp_factor = np.clip(1.0 - 0.004 * (est_cell - 25.0), 0.82, 1.05)
+                poa_arr = mw_arr / max(1e-6, self.profile.transfer_ratio * temp_factor)
 
             return mw_arr, poa_arr
         except Exception:
@@ -628,6 +633,7 @@ class IntellisEnsembleGTIAI:
         today_regime = self.classify_weather_regime(today_mean_gti_sum, cs_daylight_sum)
 
         model_weighted_mse: dict[str, float] = {k: 0.0 for k in canonical_keys}
+        model_weighted_bias: dict[str, float] = {k: 0.0 for k in canonical_keys}
         model_weight_sums: dict[str, float] = {k: 0.0 for k in canonical_keys}
 
         valid_days_evaluated = []
@@ -637,7 +643,12 @@ class IntellisEnsembleGTIAI:
                 continue
 
             if np.max(meter_poa) <= 0.0:
-                meter_poa = meter_mw / max(1e-6, self.profile.transfer_ratio)
+                b_idx = np.arange(96)
+                noon_dist = np.abs(b_idx - 48.5) * 0.25
+                cos_elev = np.maximum(0.0, np.cos(noon_dist * (np.pi / 12.0)))
+                est_cell = 25.0 + 10.0 * (cos_elev ** 0.8) + (cos_elev * 900.0 * 0.031)
+                temp_factor = np.clip(1.0 - 0.004 * (est_cell - 25.0), 0.82, 1.05)
+                meter_poa = meter_mw / max(1e-6, self.profile.transfer_ratio * temp_factor)
 
             day_meter_sum = float(np.sum(meter_poa[b_start:b_end]))
             day_regime = self.classify_weather_regime(day_meter_sum, cs_daylight_sum)
@@ -667,7 +678,9 @@ class IntellisEnsembleGTIAI:
                 gti_96 = self.extract_member_96block_gti(weather_d, k, d_str)
                 errs = meter_poa[b_start:b_end] - gti_96[b_start:b_end]
                 mse = float(np.mean(errs ** 2))
+                bias = float(np.mean(errs))
                 model_weighted_mse[k] += w_d * mse
+                model_weighted_bias[k] += w_d * bias
                 model_weight_sums[k] += w_d
 
         records = []
@@ -675,7 +688,11 @@ class IntellisEnsembleGTIAI:
             if model_weight_sums[k] <= 0.0:
                 continue
             rmse_poa = math.sqrt(model_weighted_mse[k] / model_weight_sums[k])
+            bias_poa = abs(model_weighted_bias[k] / model_weight_sums[k])
             rmse_mw = rmse_poa * self.profile.transfer_ratio
+            bias_mw = bias_poa * self.profile.transfer_ratio
+            # Composite loss penalizes both dispersion (RMSE) and persistent directional drift (Bias)
+            composite_loss = (rmse_poa + 0.40 * bias_poa) * self.profile.transfer_ratio
 
             k_lower = k.lower()
             if "icon" in k_lower:
@@ -699,7 +716,10 @@ class IntellisEnsembleGTIAI:
                 "label": label,
                 "family": family,
                 "rmse_poa_wm2": round(rmse_poa, 2),
+                "bias_poa_wm2": round(bias_poa, 2),
                 "rmse_mw": round(rmse_mw, 3),
+                "bias_mw": round(bias_mw, 3),
+                "composite_loss": round(composite_loss, 4),
             })
 
         if not records:
@@ -717,7 +737,7 @@ class IntellisEnsembleGTIAI:
                 avail = canonical_keys[:6]
             return avail, {k: round(1.0 / len(avail), 4) for k in avail}, pd.DataFrame()
 
-        df_rank = pd.DataFrame(records).sort_values("rmse_mw")
+        df_rank = pd.DataFrame(records).sort_values("composite_loss")
 
         # Tri-Agency Diversity Selection
         top_icon = df_rank[df_rank["family"] == "ICON"].head(icon_quota)
@@ -731,7 +751,7 @@ class IntellisEnsembleGTIAI:
         selected_df = pd.concat(selected_parts)
         selected_keys = selected_df["key"].tolist()
 
-        score_col = "rmse_mw" if "rmse_mw" in selected_df.columns else "mae_mw"
+        score_col = "composite_loss" if "composite_loss" in selected_df.columns else "rmse_mw"
         raw_w = [1.0 / max(1e-4, row[score_col]) for _, row in selected_df.iterrows()]
         norm_w = [round(w / sum(raw_w), 4) for w in raw_w]
         weights_map = {k: w for k, w in zip(selected_keys, norm_w)}
@@ -778,6 +798,71 @@ class IntellisEnsembleGTIAI:
                 )
             slot_results[slot_name] = (keys, weights)
         return slot_results
+
+    def get_slot_candidate_diagnostics(
+        self,
+        target_date_str: str,
+        current_block: int,
+        live_actual_poa: float,
+        lookback_blocks: int = 4,
+        horizon_blocks: int = 12,
+    ) -> dict[str, Any]:
+        """
+        Extract top-performing candidate models for the current diurnal slot along with
+        their real-time tracking error (last 60 minutes) against live SCADA meter ground truth.
+        Used by the LLM via OpenRouter for dynamic model consensus arbitration.
+        """
+        if current_block < 24 or current_block > 75:
+            slot_name = "night"
+        elif current_block <= 40:
+            slot_name = "morning"
+        elif current_block <= 56:
+            slot_name = "midday"
+        else:
+            slot_name = "afternoon"
+
+        slot_selections = self.benchmark_and_select_slot_models(target_date_str)
+        slot_keys, base_weights = slot_selections.get(slot_name, ([], {}))
+
+        weather = self.fetch_ensemble_weather(target_date_str)
+        cs_poa = self.compute_clearsky_poa_96block(target_date_str)
+
+        start_eval = max(0, current_block - lookback_blocks)
+        end_eval = current_block
+
+        candidates = []
+        for k in slot_keys:
+            m_gti_96 = self.extract_member_96block_gti(weather, k, target_date_str)
+            bias_val = round(float(m_gti_96[current_block]) - live_actual_poa, 1) if (0 <= current_block < 96) else 0.0
+
+            h_end = min(96, current_block + horizon_blocks)
+            future_gti = [round(float(v), 1) for v in m_gti_96[current_block:h_end]]
+
+            k_lower = k.lower()
+            if "icon" in k_lower:
+                family = "ICON"
+            elif "ecmwf" in k_lower or "ifs" in k_lower:
+                family = "ECMWF"
+            elif "gefs" in k_lower or "gfs" in k_lower:
+                family = "GEFS"
+            else:
+                family = "GEM"
+
+            candidates.append({
+                "model_key": k,
+                "family": family,
+                "base_weight": base_weights.get(k, 0.20),
+                "last_60min_bias_wm2": bias_val,
+                "forecast_gti_next_blocks": future_gti,
+            })
+
+        return {
+            "current_slot": slot_name,
+            "current_block": current_block,
+            "live_actual_poa_wm2": round(live_actual_poa, 1),
+            "clearsky_poa_wm2": round(float(cs_poa[current_block]), 1) if current_block < 96 else 0.0,
+            "candidates": candidates,
+        }
 
     # -------------------------------------------------------------------------
     # 7. Diurnal 3-Slot Clearness Index (Kt) Blending

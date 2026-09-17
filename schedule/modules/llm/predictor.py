@@ -267,6 +267,16 @@ def _summarize_current_situation(feature_row: dict) -> str:
         if brightness_key in feature_row and feature_row[brightness_key] is not None:
             lines.append(f"{layer.capitalize()} layer bright-pixel %: {feature_row[brightness_key]}")
 
+    slot_diag = feature_row.get("slot_candidates_diagnostics")
+    if slot_diag and isinstance(slot_diag, dict):
+        lines.append(f"\n--- TOP SLOT-RANKED MODELS (Diurnal Slot: {str(slot_diag.get('current_slot', 'N/A')).upper()}) ---")
+        lines.append(f"Live Inverted Ground POA: {slot_diag.get('live_actual_poa_wm2', 0.0)} W/m² | ClearSky POA: {slot_diag.get('clearsky_poa_wm2', 0.0)} W/m²")
+        for c in slot_diag.get("candidates", []):
+            lines.append(
+                f"  • {c.get('family', 'MODEL')} ({c.get('model_key', '')}): 60-min live bias = {c.get('last_60min_bias_wm2', 0.0):+.1f} W/m² | "
+                f"Base 7-day weight = {c.get('base_weight', 0.20):.2f} | Next blocks GTI = {c.get('forecast_gti_next_blocks', [])[:4]}"
+            )
+
     return "\n".join(lines) if lines else "(no readable feature summary available)"
 
 
@@ -437,12 +447,17 @@ def _parse_llm_response(raw_text: str, anchor_predictions: list) -> list:
             "block_number": anchor["block_number"],
             "anchor_mw": anchor["anchor_mw"],
             "llm_mw": adjusted_mw,
-                "confidence": (item or {}).get("confidence", "Low"),
-                "reasoning": (item or {}).get(
+            "confidence": (item or {}).get("confidence", "Low"),
+            "reasoning": (item or {}).get(
                 "reasoning",
                 "LLM adjustment unavailable for this block -- using scaffold unchanged."
             ),
         }
+        if item:
+            for extra_k in ("predicted_gti", "kt", "winning_model", "model_weights"):
+                if extra_k in item:
+                    result[extra_k] = item[extra_k]
+
         for key in (
             "base_anchor_mw",
             "live_residual_factor",
@@ -776,6 +791,10 @@ def _parse_stepwise_llm_response(raw_text: str, base_predictions: list) -> list:
                 "Weather and solar irradiance adjust the physical baseline.",
             ),
         }
+        if item:
+            for extra_k in ("predicted_gti", "kt", "winning_model", "model_weights"):
+                if extra_k in item:
+                    result[extra_k] = item[extra_k]
         results.append(result)
     return results
 
