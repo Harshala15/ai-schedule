@@ -316,52 +316,37 @@ def fetch_dual_stream_weather_fusion(
             is_confirmed_rain = (rain_votes >= 2) or (max(p1, p2, p3) >= 2.5 and cloud_votes >= 2)
             is_confirmed_heavy_cloud = (cloud_votes >= 2 and max(active_vals) < 550.0)
 
-            if len(sorted_gtis) == 3:
-                d_low_mid = sorted_gtis[1] - sorted_gtis[0]
-                d_mid_high = sorted_gtis[2] - sorted_gtis[1]
+            if len(active_vals) >= 2:
+                # Continuous Multi-Stream Fusion with Gaussian Soft Outlier Dampening
+                # Avoids artificial block-to-block step cliffs caused by hard threshold rules
+                base_weights = {"S1": 0.40, "S2": 0.35, "S3": 0.25}
+                weights = {}
+                for k_stream, val in streams_dict.items():
+                    # Distance from median
+                    dist = abs(val - med_val)
+                    # Gaussian dampening for distant outliers (scale = 120 W/m2)
+                    soft_factor = math.exp(-((dist / 120.0) ** 2))
+                    weights[k_stream] = base_weights.get(k_stream, 0.33) * soft_factor
 
-                # Rule A: Upper Pair Consensus (e.g. 640 and 675 W/m2 vs 417 W/m2):
-                # When two models agree on high/clear irradiance and neither has heavy rain, discard the low pessimistic outlier!
-                is_upper_pair_agreement = (d_mid_high <= 95.0) and (sorted_gtis[1] > sorted_gtis[0] + 80.0)
+                tot_w = sum(weights.values())
+                if tot_w > 0.001:
+                    weighted_gti = sum(weights[k] * streams_dict[k] for k in weights) / tot_w
+                else:
+                    weighted_gti = med_val
 
-                if is_upper_pair_agreement and not (rain_votes >= 2):
-                    gti_fused = round((sorted_gtis[1] + sorted_gtis[2]) / 2.0, 1)
-                    regime = "UPPER CONSENSUS (Pessimistic Outlier Rejected)"
-                    conf = "High Confidence (Upper Pair Agreement)"
-                elif is_confirmed_rain:
-                    # Confirmed storm/rain by multiple streams: take conservative lower envelope
-                    gti_fused = round((sorted_gtis[0] * 0.60 + sorted_gtis[1] * 0.40), 1)
+                if is_confirmed_rain:
+                    # Multi-stream rain confirmed: smooth attenuation towards conservative envelope
+                    gti_fused = round(min(weighted_gti, sorted_gtis[0] * 0.70 + sorted_gtis[1] * 0.30), 1)
                     regime = "RAIN / CLOUD CONFIRMED (Multi-Stream Consensus)"
                     conf = "Confirmed Rain Attenuation"
-                elif is_confirmed_heavy_cloud and sorted_gtis[0] < sorted_gtis[1] - 100.0:
-                    # Heavy cloud confirmed across models: reject high ungrounded spike
-                    gti_fused = round((sorted_gtis[0] * 0.50 + sorted_gtis[1] * 0.50), 1)
-                    regime = "OVERCAST CONSENSUS (High Outlier Rejected)"
+                elif is_confirmed_heavy_cloud:
+                    gti_fused = round(min(weighted_gti, (sorted_gtis[0] + sorted_gtis[1]) / 2.0), 1)
+                    regime = "OVERCAST CONSENSUS (Cloud Damped)"
                     conf = "Heavy Cloud Attenuation"
-                elif d_low_mid <= 85.0 and sorted_gtis[2] > sorted_gtis[1] + 85.0:
-                    # Lower pair agrees (e.g. 350 and 380 W/m2 vs 650 W/m2): discard the high outlier!
-                    gti_fused = round((sorted_gtis[0] + sorted_gtis[1]) / 2.0, 1)
-                    regime = "LOWER CONSENSUS (Spurious High Outlier Rejected)"
-                    conf = "Moderate Confidence (Lower Pair Agreement)"
-                elif delta_spread <= 65.0:
-                    # All three streams agree closely
-                    gti_fused = round(sum(sorted_gtis) / 3.0, 1)
-                    regime = "HIGH AGREEMENT (Tri-Stream Mean)"
-                    conf = "High Confidence"
                 else:
-                    # Dispersed models: use robust statistical median
-                    gti_fused = round(med_val, 1)
-                    regime = "ROBUST MEDIAN CONSENSUS"
-                    conf = "Model Spread (Robust Median)"
-            elif len(sorted_gtis) == 2:
-                if is_confirmed_rain:
-                    gti_fused = round(min(sorted_gtis), 1)
-                    regime = "DUAL STREAM RAIN DAMPENED"
-                    conf = "Rain Attenuation"
-                else:
-                    gti_fused = round((sorted_gtis[0] + sorted_gtis[1]) / 2.0, 1)
-                    regime = "DUAL STREAM MEAN"
-                    conf = "Dual Stream Consensus"
+                    gti_fused = round(weighted_gti, 1)
+                    regime = "CONTINUOUS MULTI-STREAM FUSION"
+                    conf = "High Confidence (Smooth Ensemble Blend)"
             else:
                 gti_fused = round(sorted_gtis[0], 1)
                 regime = "SINGLE ACTIVE STREAM"

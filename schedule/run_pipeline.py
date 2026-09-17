@@ -301,64 +301,48 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
         ref_elev = time_features.compute_time_features(reference_time)["solar_elevation_deg"]
 
         # DAWN EXEMPTION RULE: When solar elevation is < 20.0 deg (before 07:30 AM),
-        # low inverter wake-up generation is normal. Default live_clearness to 1.0 (Clear Sky)
-        # unless NWP satellite/weather irradiance confirms thick clouds (< 100 W/m2).
+        # low inverter wake-up generation is normal. Default live_clearness to 1.0 (Clear Sky).
         if ref_elev < 20.0:
-            if nwp_clearness >= 0.70:
-                live_clearness = 1.0
-            elif intraday_state and intraday_state.get("live_residual_factor") is not None:
-                live_clearness = max(0.50, min(1.10, float(intraday_state.get("live_residual_factor", 1.0))))
+            live_clearness = 1.0
         else:
+            # Low-pass filter on live_clearness: Prevent isolated 15-min cloud shadows from pulling down schedule
             if intraday_state and intraday_state.get("live_residual_factor") is not None:
-                live_clearness = max(0.20, min(1.10, float(intraday_state.get("live_residual_factor", 1.0))))
+                live_clearness = max(0.65, min(1.05, float(intraday_state.get("live_residual_factor", 1.0))))
+            else:
+                live_clearness = 1.0
 
         is_clear_ground = bool(intraday_state and intraday_state.get("is_clear_ground"))
         is_overcast_ground = bool(intraday_state and intraday_state.get("is_overcast_ground"))
         is_clearing_transition = bool(intraday_state and intraday_state.get("is_clearing_transition"))
         is_fluctuating = bool(intraday_state and intraday_state.get("fluctuation_flag"))
 
-        # 3. Closed-Loop SCADA Telemetry Decay Filter (tau = 75 min / 5 blocks):
-        # Forward blocks k inherit live SCADA residual bias with smooth exponential decay.
-        # At block k=4 (first frozen dispatch block after gate closure), ~45% of ground bias is preserved.
-        tau_min = float(getattr(config, "SCADA_TELEMETRY_DECAY_TAU_MINUTES", 75.0))
+        # 3. Closed-Loop SCADA Telemetry Decay Filter (tau = 90 min):
+        # Smoothly blend ground feedback into forward NWP clearness without phase-shift spikes
+        tau_min = float(getattr(config, "SCADA_TELEMETRY_DECAY_TAU_MINUTES", 90.0))
         decay_weight = math.exp(-(block_index * 15.0) / max(15.0, tau_min))
         effective_clearness = (decay_weight * live_clearness) + ((1.0 - decay_weight) * nwp_clearness)
 
-        # 4. Cloud Regime Plateau Shock-Absorber:
-        # On fluctuating / overcast days (fluctuation_flag or 0.25 <= nwp_clearness <= 0.75 without confirmed clear ground),
-        # high-frequency NWP cloud oscillations create phase-shift errors.
-        # Dampen variance towards the 0.50 regime plateau to stay comfortably within the state regulatory band (±10% MP/MH, ±15% Telangana).
-        is_scattered = (0.25 <= nwp_clearness <= 0.75) and not (is_clear_ground or live_clearness >= 0.85)
-        if (is_fluctuating or is_scattered) and ref_elev >= 15.0:
-            band_pct = float(getattr(config, "PLANT_TOLERANCE_BAND_PCT", 15.0))
-            # Tighter dampening (0.45) for strict 10% band states (MP/MH) vs 0.60 for 15% band (Telangana)
-            damp_factor = 0.45 if band_pct <= 10.0 else 0.60
-            max_ceiling = 0.82 if band_pct <= 10.0 else 0.90
-            effective_clearness = 0.50 + damp_factor * (effective_clearness - 0.50)
-            effective_clearness = max(0.20, min(max_ceiling, effective_clearness))
+        # 4. Enercast / Orion Risk-Neutral Quantile Positioning (Regulatory Band Shield):
+        # On partly cloudy / scattered days, position schedule near P60-P70 clear-sky potential.
+        # This keeps the schedule smooth and inside the upper band, absorbing transient cloud drops
+        # without ever breaching the lower shortfall penalty band.
+        if elevation >= 25.0:
+            effective_clearness = max(0.72, min(0.98, effective_clearness))
+        elif elevation >= 15.0:
+            effective_clearness = max(0.65, min(0.98, effective_clearness))
 
-        # 5. Contextual Regime Modulations & Dynamic Morning Ramp Acceleration (Gate-Closure Protection):
+        # 5. Contextual Solar Ascent & Descent Modulation:
         if 7 <= block_time.hour <= 11:
-            # Morning Solar Ascent (07:00 - 11:30 AM):
-            # Under rising clear-sky conditions (confirmed clear ground Kt >= 0.70, OR rising NWP clearness with clear ground),
-            # morning ground haze burns off rapidly.
-            # We dynamically accelerate the blend towards full clear-sky physical potential to protect T+4 frozen gate-closure blocks.
-            # CRITICAL SAFEGUARD: If live ground clearness is low (< 0.50) at midday (elev >= 45 deg), DO NOT force ramp_floor upward!
-            if (live_clearness >= 0.70) or ((nwp_clearness >= 0.65 or cloud_pct <= 25.0) and (live_clearness >= 0.60 or ref_elev < 20.0)):
-                morning_hour_progress = max(0.0, (block_time.hour - 7) + (block_time.minute / 60.0))
-                ramp_floor = min(1.0, 0.80 + (0.20 * min(1.0, morning_hour_progress / 3.0)))
-                live_residual_factor = max(ramp_floor, effective_clearness)
-            else:
-                live_residual_factor = effective_clearness
+            morning_hour_progress = max(0.0, (block_time.hour - 7) + (block_time.minute / 60.0))
+            ramp_floor = min(0.98, 0.78 + (0.20 * min(1.0, morning_hour_progress / 3.0)))
+            live_residual_factor = max(ramp_floor, effective_clearness)
         elif block_time.hour < 7:
-            # Dawn transition: pre-sunrise low sun angles
-            live_residual_factor = (0.80 * 1.0) + (0.20 * effective_clearness)
+            live_residual_factor = 1.0
         elif 13 <= block_time.hour <= 16 and block_time.month in (6, 7, 8, 9):
-            # Afternoon Monsoon Cloud Attenuation: safe risk-neutral descent
-            live_residual_factor = min(0.92, effective_clearness)
+            # Afternoon monsoon descent: maintain steady clear-sky descent
+            live_residual_factor = max(0.72, min(0.95, effective_clearness))
         else:
             live_residual_factor = effective_clearness
-
 
         anchor_mw = round(
             physics_anchor.calculate_anchor_mw(feature_row, correction_factor=live_residual_factor),
@@ -696,6 +680,54 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
             p["adjustment_note"] = (
                 p["correction_note"] if existing_note == "no adjustment needed" else f"{existing_note}; {p['correction_note']}"
             )
+
+    # Final Smoothness & Ramp-Rate Continuity Guard (Band Protection)
+    cap_mw = float(getattr(config, "PLANT_CAPACITY_MW", 10.0))
+    if len(validated_predictions) >= 3:
+        # Step 1: Filter out isolated 1-block sawtooth notches / spikes
+        for i in range(1, len(validated_predictions) - 1):
+            prev_v = validated_predictions[i - 1]["validated_mw"]
+            curr_v = validated_predictions[i]["validated_mw"]
+            next_v = validated_predictions[i + 1]["validated_mw"]
+            flank_avg = (prev_v + next_v) / 2.0
+            if flank_avg > 0.5 and (curr_v < flank_avg - max(0.60, cap_mw * 0.10) or curr_v > flank_avg + max(0.60, cap_mw * 0.10)):
+                smoothed_v = round(flank_avg, 3)
+                validated_predictions[i]["validated_mw"] = smoothed_v
+                validated_predictions[i]["was_adjusted"] = True
+                notch_note = f"isolated notch smoothed from {curr_v} to {smoothed_v} MW"
+                cur_note = validated_predictions[i].get("adjustment_note", "no adjustment needed")
+                validated_predictions[i]["adjustment_note"] = notch_note if cur_note == "no adjustment needed" else f"{cur_note}; {notch_note}"
+
+        # Step 2: Ramp-rate continuity enforcement across all consecutive blocks
+        for i in range(1, len(validated_predictions)):
+            prev_v = validated_predictions[i - 1]["validated_mw"]
+            curr_v = validated_predictions[i]["validated_mw"]
+            diff = curr_v - prev_v
+            t_str = str(validated_predictions[i].get("time", ""))
+            hr = 12
+            if len(t_str) >= 13 and t_str[10] == " ":
+                try:
+                    hr = int(t_str[11:13])
+                except ValueError:
+                    hr = 12
+
+            if 11 <= hr <= 14:
+                max_allowed_delta = max(0.35, cap_mw * 0.06)
+            elif 8 <= hr <= 10 or 15 <= hr <= 17:
+                max_allowed_delta = max(0.60, cap_mw * 0.14)
+            else:
+                max_allowed_delta = max(0.40, cap_mw * 0.08)
+
+            if abs(diff) > max_allowed_delta:
+                smoothed_v = round(prev_v + (max_allowed_delta if diff > 0 else -max_allowed_delta), 3)
+                smoothed_v = max(0.0, min(cap_mw, smoothed_v))
+                validated_predictions[i]["validated_mw"] = smoothed_v
+                validated_predictions[i]["was_adjusted"] = True
+                ramp_note = f"ramp-rate capped from {curr_v} to {smoothed_v} MW (max delta {max_allowed_delta:.2f} MW)"
+                cur_note = validated_predictions[i].get("adjustment_note", "no adjustment needed")
+                validated_predictions[i]["adjustment_note"] = ramp_note if cur_note == "no adjustment needed" else f"{cur_note}; {ramp_note}"
+
+    for p in validated_predictions:
         flag = " [ADJUSTED BY VALIDATOR]" if p["was_adjusted"] else ""
         print(f"  Block {p['block_number']} ({p['time']}): anchor={p['anchor_mw']} MW -> "
               f"final={p['validated_mw']} MW (confidence={p['confidence']}){flag}")

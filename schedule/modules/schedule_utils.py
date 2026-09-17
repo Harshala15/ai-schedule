@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import datetime as dt
+import math
 import re
 from pathlib import Path
 
@@ -390,6 +391,31 @@ def write_current_final_schedule(
         if "intellis_gti" not in row or not str(row.get("intellis_gti", "")).strip():
             row["intellis_gti"] = "0.0"
 
+    is_wind = getattr(config, "is_wind_plant", lambda: False)()
+    if not is_wind:
+        # Seam continuity clamping against last frozen block (solar plants)
+        cap_mw = float(getattr(config, "PLANT_CAPACITY_MW", 10.0))
+        band_pct = float(getattr(config, "PLANT_TOLERANCE_BAND_PCT", 10.0))
+        max_step = round(cap_mw * (band_pct / 100.0), 3)
+
+        for i in range(1, len(frozen_rows)):
+            prev_row = frozen_rows[i - 1]
+            curr_row = frozen_rows[i]
+            prev_dt = _row_dt(prev_row)
+            curr_dt = _row_dt(curr_row)
+            if prev_dt is not None and curr_dt is not None and prev_dt < freeze_from <= curr_dt:
+                try:
+                    prev_mw = float(prev_row.get("intellis_mw", 0.0) or 0.0)
+                    curr_mw = float(curr_row.get("intellis_mw", 0.0) or 0.0)
+                    diff = curr_mw - prev_mw
+                    if abs(diff) > max_step:
+                        smoothed_mw = round(prev_mw + (max_step if diff > 0 else -max_step), 3)
+                        curr_row["intellis_mw"] = str(smoothed_mw)
+                        curr_row["schedule_mw"] = str(smoothed_mw)
+                except (ValueError, TypeError):
+                    pass
+
+
     def _row_block_number(row: dict) -> int | None:
         raw = row.get("Block", "")
         try:
@@ -555,6 +581,7 @@ def write_full_block_schedule_from_llm_schedule(
                     continue
 
     # Overlay current-final schedule
+    input_daylight_blocks = []
     if input_csv_path.exists():
         with open(input_csv_path, "r", newline="", encoding="utf-8-sig") as handle:
             for row in csv.DictReader(handle):
@@ -574,8 +601,163 @@ def write_full_block_schedule_from_llm_schedule(
                         "intellis_mw": mw,
                         "time_interval": row.get("Time Interval (15 minute interval)", ""),
                     }
+                    if 28 <= b <= 72 and mw > 0.02:
+                        input_daylight_blocks.append(b)
                 except (ValueError, TypeError):
                     continue
+
+    is_wind = getattr(config, "is_wind_plant", lambda: False)() or getattr(config, "PLANT_TYPE", "") == "wind" or (getattr(config, "PLANT_NAME", "") or "").upper() == "CHANDAWASA"
+    if not is_wind:
+        dc_cap = float(getattr(config, "PLANT_DC_CAPACITY_MW", getattr(config, "PLANT_CAPACITY_MW", 10.0)))
+        ac_cap = float(getattr(config, "PLANT_CAPACITY_MW", 10.0))
+        pr = float(getattr(config, "PERFORMANCE_RATIO", 0.78))
+
+        if input_daylight_blocks:
+            max_populated_daylight_block = max(input_daylight_blocks)
+        else:
+            active_ai_daylight_blocks = [b for b, d in schedule_by_block.items() if 28 <= b <= 72 and float(d.get("intellis_mw", 0.0)) > 0.02]
+            max_populated_daylight_block = max(active_ai_daylight_blocks, default=27)
+
+        if max_populated_daylight_block < 72:
+            clearness_ratios = []
+            for b, d in schedule_by_block.items():
+                mw = float(d.get("intellis_mw", 0.0))
+                if 28 <= b <= max_populated_daylight_block and mw > 0.01:
+                    b_hour = (b - 1) * 0.25
+                    h_from_noon = abs(b_hour - 12.25)
+                    if h_from_noon < 6.0:
+                        elev_sin = math.cos((h_from_noon / 6.0) * (math.pi / 2.0))
+                        clear_theoretical = dc_cap * pr * (elev_sin ** 1.05)
+                        if clear_theoretical > 0.1:
+                            clearness_ratios.append(min(1.0, mw / clear_theoretical))
+
+            implied_clearness = max(0.20, min(1.0, sum(clearness_ratios) / len(clearness_ratios))) if clearness_ratios else 0.85
+            clamped_mos = max(0.85, min(1.15, implied_clearness))
+
+            for block in range(max_populated_daylight_block + 1, 74):
+                block_hour = (block - 1) * 0.25
+                b_hour_int = int(block_hour)
+                b_min_int = int(round((block_hour - b_hour_int) * 60))
+                b_time_str = f"{b_hour_int:02d}:{b_min_int:02d}"
+
+                try:
+                    from modules.weather import time_features
+                    block_dt = dt.datetime.strptime(f"{target_date_str} {b_time_str}", "%Y-%m-%d %H:%M")
+                    elev = time_features.compute_time_features(block_dt)["solar_elevation_deg"]
+                except Exception:
+                    h_from_noon = abs(block_hour - 12.25)
+                    elev = max(0.0, 90.0 - (h_from_noon * 15.0)) if h_from_noon < 6.0 else 0.0
+
+                if elev < 3.0:
+                    synth_mw = 0.0
+                elif elev < 7.5:
+                    synth_mw = round(min(0.20, ac_cap * 0.04), 3)
+                else:
+                    raw_sine = math.sin(math.radians(max(0.0, elev)))
+                    clearsky_mw = min(ac_cap, dc_cap * pr * (raw_sine ** 1.05))
+                    clearsky_gti = max(10.0, 1000.0 * (raw_sine ** 0.95))
+
+                    w_entry = weather_fusion_map.get(b_time_str) if weather_fusion_map else None
+                    if not w_entry and weather_fusion_map:
+                        w_entry = weather_fusion_map.get(f"{b_hour_int:02d}:00")
+
+                    if w_entry:
+                        gti_fused = float(w_entry.get("gti_fused") or w_entry.get("gti_stream1", 0.0))
+                        cloud_pct = float(w_entry.get("cloud_pct", 0.0))
+                        precip_mm = float(w_entry.get("precip_mm", 0.0))
+                        cape_val = float(w_entry.get("cape_j_kg", 0.0))
+                        temp_derate = float(w_entry.get("temp_derate_multiplier", 1.0))
+                        if gti_fused > 20.0 and clearsky_gti > 20.0:
+                            nwp_clearness = max(0.15, min(1.02, gti_fused / clearsky_gti))
+                        else:
+                            nwp_clearness = max(0.20, min(1.0, 1.0 - (0.75 * cloud_pct / 100.0)))
+                    else:
+                        nwp_clearness = implied_clearness
+                        precip_mm = 0.0
+                        cape_val = 0.0
+                        temp_derate = 1.0
+
+                    blocks_ahead = block - max_populated_daylight_block
+                    damping_factor = math.exp(-0.12 * blocks_ahead)
+                    damped_mos = 1.0 + (clamped_mos - 1.0) * damping_factor
+                    effective_clearness = max(0.15, min(1.05, nwp_clearness * damped_mos))
+                    synth_mw = clearsky_mw * effective_clearness * temp_derate
+
+                    if elev >= 8.0:
+                        diffuse_factor = min(1.0, math.sin(math.radians(elev)) / math.sin(math.radians(60.0)))
+                        diffuse_floor = round(ac_cap * 0.25 * diffuse_factor, 3)
+                        synth_mw = max(diffuse_floor, synth_mw)
+
+                    if cape_val >= 1200 and (precip_mm >= 0.15 or (w_entry and w_entry.get("cloud_pct", 0.0) >= 60.0)):
+                        cape_severity = min(1.0, (cape_val - 1200.0) / 800.0)
+                        attenuation_mult = 1.0 - (0.65 * cape_severity)
+                        synth_mw = min(synth_mw, clearsky_mw * attenuation_mult)
+
+                    prev_block_mw = schedule_by_block.get(block - 1, {}).get("intellis_mw")
+                    if block >= 50 and prev_block_mw is not None:
+                        synth_mw = min(synth_mw, prev_block_mw)
+
+                    if getattr(config, "PLANT_NAME", "").upper() == "OSEPL" and elev >= 8.0:
+                        opt_under_offset = min(1.20, max(0.40, synth_mw * 0.06))
+                        synth_mw = max(0.0, synth_mw - opt_under_offset)
+
+                final_block_mw = round(max(0.0, min(ac_cap, synth_mw)), 3)
+                schedule_by_block[block] = {
+                    "intellis_mw": final_block_mw if final_block_mw > 0.02 else 0.0,
+                    "intellis_gti": round(final_block_mw / max(0.001, getattr(config, "TRANSFER_RATIO", 0.01)), 1) if final_block_mw > 0.02 else 0.0,
+                    "time_interval": f"{b_time_str} - {b_time_str}",
+                }
+
+        # 4-Pass Diurnal Continuity & Anti-Sawtooth Filter
+        band_pct = float(getattr(config, "PLANT_TOLERANCE_BAND_PCT", 10.0))
+        max_step = round(ac_cap * (band_pct / 100.0), 3)
+
+        # Pass 1: Multi-pass anti-jitter moving average across daylight blocks
+        for _ in range(3):
+            temp_sched = {b: float(d.get("intellis_mw", 0.0)) for b, d in schedule_by_block.items()}
+            for b in range(25, 73):
+                prev_v = temp_sched.get(b - 1, 0.0)
+                curr_v = temp_sched.get(b, 0.0)
+                next_v = temp_sched.get(b + 1, 0.0)
+                if curr_v > 0.02 or prev_v > 0.02 or next_v > 0.02:
+                    smoothed = round(0.20 * prev_v + 0.60 * curr_v + 0.20 * next_v, 3)
+                    schedule_by_block.setdefault(b, {})["intellis_mw"] = smoothed
+
+        # Pass 2: Monotonic Solar Ascent (Morning Blocks 25 to 48: 06:15 - 12:00 IST)
+        prev_mw = float(schedule_by_block.get(24, {}).get("intellis_mw", 0.0))
+        for b in range(25, 49):
+            curr_mw = float(schedule_by_block.get(b, {}).get("intellis_mw", 0.0))
+            if curr_mw < prev_mw - 0.15:
+                curr_mw = prev_mw - 0.15
+            if curr_mw > prev_mw + max_step:
+                curr_mw = prev_mw + max_step
+            final_val = round(max(0.0, min(ac_cap, curr_mw)), 3)
+            schedule_by_block.setdefault(b, {})["intellis_mw"] = final_val if final_val > 0.02 else 0.0
+            prev_mw = schedule_by_block[b]["intellis_mw"]
+
+        # Pass 3: Monotonic Solar Descent (Afternoon Blocks 50 to 73: 12:15 - 18:15 IST)
+        prev_mw = float(schedule_by_block.get(49, {}).get("intellis_mw", prev_mw))
+        for b in range(50, 74):
+            curr_mw = float(schedule_by_block.get(b, {}).get("intellis_mw", 0.0))
+            if curr_mw > prev_mw:
+                curr_mw = prev_mw
+            if prev_mw - curr_mw > max_step:
+                curr_mw = prev_mw - max_step
+            final_val = round(max(0.0, min(ac_cap, curr_mw)), 3)
+            schedule_by_block.setdefault(b, {})["intellis_mw"] = final_val if final_val > 0.02 else 0.0
+            prev_mw = schedule_by_block[b]["intellis_mw"]
+
+        # Pass 4: Global Regulatory Tolerance Band Clamping across ALL blocks
+        prev_mw = float(schedule_by_block.get(1, {}).get("intellis_mw", 0.0))
+        for b in range(2, total_blocks + 1):
+            if 24 <= b <= 74:
+                curr_mw = float(schedule_by_block.get(b, {}).get("intellis_mw", 0.0))
+                diff = curr_mw - prev_mw
+                if abs(diff) > max_step:
+                    curr_mw = prev_mw + max_step * (1.0 if diff > 0 else -1.0)
+                final_val = round(max(0.0, min(ac_cap, curr_mw)), 3)
+                schedule_by_block.setdefault(b, {})["intellis_mw"] = final_val if final_val > 0.02 else 0.0
+            prev_mw = float(schedule_by_block.get(b, {}).get("intellis_mw", 0.0))
 
     # Plant regulatory parameters
     cap_mw = float(getattr(config, "PLANT_CAPACITY_MW", 10.0))

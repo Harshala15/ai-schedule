@@ -1969,19 +1969,30 @@ def summarize_intraday_state(actuals_csv_path, reference_time: datetime.datetime
     recent_humidity_values = [item.get("humidity") for item in recent if item.get("humidity") is not None]
 
     ratios = []
+    ac_cap = float(getattr(config, "PLANT_CAPACITY_MW", 10.0))
+    pr = float(getattr(config, "PERFORMANCE_RATIO", 0.78))
+
     for item in rows:
         ts = item["timestamp"]
         mw = item["active_power_mw"]
         elevation = time_features.compute_time_features(ts)["solar_elevation_deg"]
-        if elevation <= 0:
+        if elevation <= 3.0:
             continue
-        clear_sky_mw = config.PLANT_CAPACITY_MW * math.sin(math.radians(elevation)) * config.PERFORMANCE_RATIO
-        if clear_sky_mw > 0.05:
-            ratios.append(mw / clear_sky_mw)
+        # Theoretical clear-sky geometric potential with AC capacity ceiling
+        clear_sky_potential = ac_cap * math.sin(math.radians(elevation)) * pr
+        clear_sky_capped = min(ac_cap, clear_sky_potential)
+        if clear_sky_capped > 0.05:
+            # Inverter clipping safeguard: if plant is near full AC generation, lock Kt to 1.0
+            if mw >= ac_cap * 0.90 and elevation >= 40.0:
+                ratios.append(1.0)
+            else:
+                ratios.append(min(1.15, mw / clear_sky_capped))
 
-    whole_day_ratio = sum(ratios) / len(ratios) if ratios else None
-    recent_ratio = sum(ratios[-4:]) / len(ratios[-4:]) if ratios else None
-    ratio_for_state = recent_ratio if recent_ratio is not None else whole_day_ratio
+    whole_day_ratio = float(np.median(ratios)) if ratios else None
+    # 60-Minute Rolling Median Clearness Index (immune to isolated 15-min transient cloud drops)
+    recent_ratios_window = ratios[-4:] if len(ratios) >= 4 else ratios
+    recent_median_ratio = float(np.median(recent_ratios_window)) if recent_ratios_window else None
+    ratio_for_state = recent_median_ratio if recent_median_ratio is not None else whole_day_ratio
 
     trend_label = "rising" if recent_delta_mw > 0.05 else ("falling" if recent_delta_mw < -0.05 else "roughly stable")
     choppy = avg_abs_step > CHOPPY_AVG_STEP_MW
@@ -1995,26 +2006,24 @@ def summarize_intraday_state(actuals_csv_path, reference_time: datetime.datetime
         live_residual_factor = 1.0
     elif is_dawn and not (recent_ghi_values and max(recent_ghi_values) < 30.0 and ratio_for_state < 0.20):
         # DAWN EXEMPTION RULE: Solar elevation < 20 deg (before 07:30 AM) exhibits low inverter wake-up ratios.
-        # Default to clear sunrise / morning ramp with 1.0 residual factor unless thick storm/overcast is confirmed.
         regime = "clear sunrise / morning ramp"
         live_residual_factor = 1.0
     else:
-        if choppy and ratio_for_state < 0.55:
+        if choppy and ratio_for_state < 0.45:
             regime = "unstable cloudy"
-        elif choppy and ratio_for_state < 0.80:
+        elif choppy and ratio_for_state < 0.75:
             regime = "broken-cloud transition"
-        elif ratio_for_state >= 0.85 and trend_label == "rising":
+        elif ratio_for_state >= 0.80 and trend_label in ("rising", "roughly stable"):
             regime = "clear / strengthening"
-        elif ratio_for_state >= 0.70:
+        elif ratio_for_state >= 0.65:
             regime = "steady moderate"
         else:
             regime = "weak cloudy"
 
-        base_factor = 0.55 + (0.45 * ratio_for_state)
-        trend_adjustment = max(-0.08, min(0.08, recent_delta_mw / max(config.PLANT_CAPACITY_MW * 0.20, 0.25) * 0.05))
-        live_residual_factor = max(0.50, min(1.10, base_factor + trend_adjustment))
-        if choppy:
-            live_residual_factor = max(0.50, min(1.10, live_residual_factor * 0.97))
+        # Risk-Asymmetric Base Factor: Damps transient dips to stay inside regulatory band
+        base_factor = 0.65 + (0.35 * ratio_for_state)
+        trend_adjustment = max(-0.05, min(0.05, recent_delta_mw / max(ac_cap * 0.20, 0.25) * 0.03))
+        live_residual_factor = max(0.60, min(1.05, base_factor + trend_adjustment))
 
     today_max_mw = max([item["active_power_mw"] for item in rows]) if rows else 0.0
     morning_ratios = ratios[:len(ratios)//2] if len(ratios) >= 4 else ratios

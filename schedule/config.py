@@ -370,6 +370,7 @@ _PLANT_FALLBACKS = {
         "eeg_id": "CHANDAWASA",
     },
 }
+SITES = _PLANT_FALLBACKS
 _fallback = _PLANT_FALLBACKS.get(_DEFAULT_PLANT_NAME.upper(), _PLANT_FALLBACKS["SIRMOUR"])
 _DEFAULT_PLANT_PROFILE_PATH = Path(
     os.getenv(

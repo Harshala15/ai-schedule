@@ -980,8 +980,9 @@ class IntellisEnsembleGTIAI:
         freeze_lag_blocks = 6 if is_90min_site else 3
         actionable_block = current_block + freeze_lag_blocks + 1
 
-        # Theoretical clear-sky power for the plant at current block
-        cs_curr_mw = cs_poa[curr_idx] * self.profile.transfer_ratio
+        # Theoretical clear-sky power for the plant at current block (bounded by AC inverter limit)
+        cs_theoretical = cs_poa[curr_idx] * self.profile.transfer_ratio
+        cs_curr_mw = min(self.profile.ac_capacity_mw, cs_theoretical)
 
         # Early morning inverter wakeup guardrail:
         # Before 07:15 AM (block 30) or during low sun angles (<10% capacity),
@@ -989,19 +990,31 @@ class IntellisEnsembleGTIAI:
         # Do not allow early dawn transient to pull down forward 08:30-10:00 schedule.
         if current_block < 30 or cs_curr_mw < (0.10 * self.profile.ac_capacity_mw):
             kt_obs = 0.85
+        elif live_meter_mw >= (0.88 * self.profile.ac_capacity_mw):
+            # Inverter clipping ceiling: plant generating at max inverter rating
+            kt_obs = 1.00
         elif cs_curr_mw > 0.3:
-            kt_obs = max(0.15, min(1.05, live_meter_mw / cs_curr_mw))
+            kt_obs = max(0.65, min(1.05, live_meter_mw / cs_curr_mw))
         else:
-            kt_obs = 0.85 if live_meter_mw > 0.2 else 0.50
+            kt_obs = 0.85 if live_meter_mw > 0.2 else 0.65
 
-        # Anti-Trench Smoothing: blend with recent meter history to prevent single-cloud dips
+        # Anti-Trench 60-min Rolling Window: Use rolling median of recent meter values
+        # to filter out transient cloud shadow dips (< 15-30 min)
         if recent_meter_mw_list and len(recent_meter_mw_list) >= 2:
-            prior_idx = curr_idx - 1
-            if prior_idx >= 0:
-                prior_cs = cs_poa[prior_idx] * self.profile.transfer_ratio
-                if prior_cs > 0.3:
-                    prior_kt = max(0.15, min(1.05, recent_meter_mw_list[-2] / prior_cs))
-                    kt_obs = 0.60 * kt_obs + 0.40 * prior_kt
+            kts = []
+            lookback_blocks = min(len(recent_meter_mw_list), 4)  # 60 minutes
+            for offset in range(lookback_blocks):
+                hist_idx = curr_idx - offset
+                hist_mw = recent_meter_mw_list[-1 - offset]
+                if hist_idx >= 0:
+                    hist_cs = min(self.profile.ac_capacity_mw, cs_poa[hist_idx] * self.profile.transfer_ratio)
+                    if hist_cs > 0.3:
+                        if hist_mw >= (0.88 * self.profile.ac_capacity_mw):
+                            kts.append(1.00)
+                        else:
+                            kts.append(max(0.65, min(1.05, hist_mw / hist_cs)))
+            if kts:
+                kt_obs = float(np.median(kts))
 
         updated_blocks = []
         tot_pen = 0.0
@@ -1025,19 +1038,26 @@ class IntellisEnsembleGTIAI:
                 fcst_kt = min(1.05, fcst_gti / max(15.0, cs_poa[b_idx]))
 
                 eff_kt = decay * kt_obs + (1.0 - decay) * fcst_kt
+                # Ensure daytime clearness does not drop into penalty band during daytime
+                if 28 <= b_dict["block"] <= 68:
+                    eff_kt = max(0.70, eff_kt)
 
                 target_poa = eff_kt * cs_poa[b_idx]
                 raw_mw = target_poa * self.profile.transfer_ratio
 
-                # Risk-Adjusted Peak Buffer:
-                # When meteorological models predict cloud cover (fcst_kt < 0.65),
-                # do not force forward peak hours to 100% clear-sky ceiling.
-                # Capping at 62% AC capacity provides a resilient buffer inside the 10% tolerance band.
-                if fcst_kt < 0.65 and b_dict["block"] >= 40:
-                    raw_mw = min(raw_mw, 0.62 * self.profile.ac_capacity_mw)
-
                 adj_mw = min(self.profile.ac_capacity_mw, max(0.0, raw_mw))
                 adj_mw = round(adj_mw, 2)
+                if b_dict["block"] < 24 or b_dict["block"] > 76:
+                    adj_mw = 0.0
+
+                # Ramp continuity against previous block
+                if updated_blocks:
+                    prev_adj = updated_blocks[-1]["intellis_mw"]
+                    hr = (b_dict["block"] * 15) // 60
+                    max_delta = max(0.35, self.profile.ac_capacity_mw * 0.06) if 11 <= hr <= 14 else max(0.50, self.profile.ac_capacity_mw * 0.12)
+                    if abs(adj_mw - prev_adj) > max_delta:
+                        adj_mw = round(prev_adj + (max_delta if adj_mw > prev_adj else -max_delta), 2)
+                        adj_mw = min(self.profile.ac_capacity_mw, max(0.0, adj_mw))
                 if b_dict["block"] < 24 or b_dict["block"] > 76:
                     adj_mw = 0.0
 

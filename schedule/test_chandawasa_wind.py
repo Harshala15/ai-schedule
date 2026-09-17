@@ -10,8 +10,13 @@ Verifies:
 
 import datetime as dt
 import json
+import sys
 import unittest
 from pathlib import Path
+
+_DIR = Path(__file__).resolve().parent
+if str(_DIR) not in sys.path:
+    sys.path.insert(0, str(_DIR))
 
 import config
 from modules.weather.wind_ensemble import (

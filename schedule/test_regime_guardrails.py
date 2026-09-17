@@ -953,8 +953,9 @@ class TestDiurnalContinuityAndAntiSawtooth(unittest.TestCase):
             )
 
             df_res = pd.read_csv(curr_final_csv)
-            b36_mw = float(df_res.loc[df_res["Block"] == 36, "Step 2 Weather Adjustment MW"].values[0])
-            b37_mw = float(df_res.loc[df_res["Block"] == 37, "Step 2 Weather Adjustment MW"].values[0])
+            col = "Step 2 Weather Adjustment MW" if "Step 2 Weather Adjustment MW" in df_res.columns else ("schedule_mw" if "schedule_mw" in df_res.columns else "intellis_mw")
+            b36_mw = float(df_res.loc[df_res["Block"] == 36, col].values[0])
+            b37_mw = float(df_res.loc[df_res["Block"] == 37, col].values[0])
 
             # Sirmour: 5.1 MW, 10% band = 0.510 MW max step
             step_diff = abs(b37_mw - b36_mw)

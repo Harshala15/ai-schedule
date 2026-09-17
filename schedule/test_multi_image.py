@@ -26,16 +26,46 @@ except ImportError:  # pragma: no cover - optional if you only want local captur
     boto3 = None
     ClientError = Exception
 
-from config import (
-    SITES,
-    PLANT_NAME, PLANT_LAT, PLANT_LON, ZOOM_LEVEL, VIEWPORT_WIDTH, VIEWPORT_HEIGHT,
-    LAYERS, RECORD_ANIMATION_VIDEO, ANIMATION_LAYER,
-    VIDEO_DIR, STORAGE_STATE_PATH, SCREENSHOT_DIR, RUN_INTERVAL_SECONDS,
-    LAMBDA_GATED_VIDEO_SITES, REVISION_TIMES, LAMBDA_CAPTURE_OFFSET_MINUTES,
-    LAMBDA_CAPTURE_WINDOW_MINUTES,
-    S3_BUCKET_NAME, S3_REGION, S3_PREFIX, AUTO_CREATE_S3_BUCKET,
-    OUTPUT_ROOT, IS_LAMBDA, PLANT_ID, SITE_ID, PLANT_CAPACITY_MW,
-)
+try:
+    from config import (
+        SITES,
+        PLANT_NAME, PLANT_LAT, PLANT_LON, ZOOM_LEVEL, VIEWPORT_WIDTH, VIEWPORT_HEIGHT,
+        LAYERS, RECORD_ANIMATION_VIDEO, ANIMATION_LAYER,
+        VIDEO_DIR, STORAGE_STATE_PATH, SCREENSHOT_DIR, RUN_INTERVAL_SECONDS,
+        LAMBDA_GATED_VIDEO_SITES, REVISION_TIMES, LAMBDA_CAPTURE_OFFSET_MINUTES,
+        LAMBDA_CAPTURE_WINDOW_MINUTES,
+        S3_BUCKET_NAME, S3_REGION, S3_PREFIX, AUTO_CREATE_S3_BUCKET,
+        OUTPUT_ROOT, IS_LAMBDA, PLANT_ID, SITE_ID, PLANT_CAPACITY_MW,
+    )
+except ImportError:
+    import config
+    SITES = getattr(config, "SITES", {})
+    PLANT_NAME = getattr(config, "PLANT_NAME", "SIRMOUR")
+    PLANT_LAT = getattr(config, "PLANT_LAT", 24.56)
+    PLANT_LON = getattr(config, "PLANT_LON", 75.09)
+    ZOOM_LEVEL = getattr(config, "ZOOM_LEVEL", 11)
+    VIEWPORT_WIDTH = getattr(config, "VIEWPORT_WIDTH", 1280)
+    VIEWPORT_HEIGHT = getattr(config, "VIEWPORT_HEIGHT", 720)
+    LAYERS = getattr(config, "LAYERS", [])
+    RECORD_ANIMATION_VIDEO = getattr(config, "RECORD_ANIMATION_VIDEO", False)
+    ANIMATION_LAYER = getattr(config, "ANIMATION_LAYER", "clouds")
+    VIDEO_DIR = getattr(config, "VIDEO_DIR", Path("videos"))
+    STORAGE_STATE_PATH = getattr(config, "STORAGE_STATE_PATH", Path("state.json"))
+    SCREENSHOT_DIR = getattr(config, "SCREENSHOT_DIR", Path("screenshots"))
+    RUN_INTERVAL_SECONDS = getattr(config, "RUN_INTERVAL_SECONDS", 900)
+    LAMBDA_GATED_VIDEO_SITES = getattr(config, "LAMBDA_GATED_VIDEO_SITES", set())
+    REVISION_TIMES = getattr(config, "REVISION_TIMES", [])
+    LAMBDA_CAPTURE_OFFSET_MINUTES = getattr(config, "LAMBDA_CAPTURE_OFFSET_MINUTES", 0)
+    LAMBDA_CAPTURE_WINDOW_MINUTES = getattr(config, "LAMBDA_CAPTURE_WINDOW_MINUTES", 15)
+    S3_BUCKET_NAME = getattr(config, "S3_BUCKET_NAME", "test-bucket")
+    S3_REGION = getattr(config, "S3_REGION", "ap-south-1")
+    S3_PREFIX = getattr(config, "S3_PREFIX", "test")
+    AUTO_CREATE_S3_BUCKET = getattr(config, "AUTO_CREATE_S3_BUCKET", False)
+    OUTPUT_ROOT = getattr(config, "OUTPUT_ROOT", Path("output"))
+    IS_LAMBDA = getattr(config, "IS_LAMBDA", False)
+    PLANT_ID = getattr(config, "PLANT_ID", "1")
+    SITE_ID = getattr(config, "SITE_ID", "1")
+    PLANT_CAPACITY_MW = getattr(config, "PLANT_CAPACITY_MW", 10.0)
 
 IST_TIMEZONE = "Asia/Kolkata"
 IST = ZoneInfo(IST_TIMEZONE)

@@ -7,7 +7,7 @@ Updates all 15 Intellis AI Lambda functions to the new v5 container image:
 import time
 import boto3
 
-IMAGE_URI = "608744602858.dkr.ecr.ap-south-1.amazonaws.com/intellis-ai-scheduler:intellis-ai-20260915-v5"
+IMAGE_URI = "608744602858.dkr.ecr.ap-south-1.amazonaws.com/intellis-ai-scheduler:intellis-ai-20260916-v3"
 REGION = "ap-south-1"
 PROFILE = "intellis-608"
 
@@ -27,6 +27,7 @@ SITES = [
     "NANDGAON",
     "GSNP",
     "ZTRIC",
+    "CHANDAWASA",
 ]
 
 
