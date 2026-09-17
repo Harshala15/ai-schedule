@@ -1,6 +1,7 @@
 """Unit and regression test suite for AI Regime-Decided adjustment logic and physical guardrails."""
 
 import unittest
+import json
 import math
 import sys
 import datetime as dt
@@ -1086,8 +1087,65 @@ class TestDiurnalContinuityAndAntiSawtooth(unittest.TestCase):
                     f"Block {i+1} step ({step:.3f} MW) exceeds plant tolerance band {max_allowed_step:.3f} MW"
                 )
 
+    def test_summarize_current_situation_ground_truth(self):
+        """Verify _summarize_current_situation correctly includes inverted POA irradiance, Kt, and clipping."""
+        from modules.llm import predictor as llm_pred
+        feature_row = {
+            "solar_elevation_deg": 52.4,
+            "latest_mw": 9.45,
+            "meter_gti_wm2": 920.5,
+            "meter_kt": 0.985,
+            "is_inverter_clipped": True,
+            "motion_direction_deg": 180,
+            "motion_score": 12,
+            "motion_coverage_end_pct": 5,
+        }
+        summary = llm_pred._summarize_current_situation(feature_row)
+        self.assertIn("Solar elevation: 52.4 deg", summary)
+        self.assertIn("Latest SCADA meter generation: 9.450 MW", summary)
+        self.assertIn("Inverted real ground-truth POA irradiance: 920.5 W/m²", summary)
+        self.assertIn("Live ground clearness index (Kt = Actual / ClearSky): 0.985", summary)
+        self.assertIn("INVERTER AC SATURATION / CLIPPING", summary)
+
+    def test_llm_kt_physical_synthesis(self):
+        """Verify _parse_llm_response extracts Kt and synthesizes physical MW from base_anchor_mw."""
+        from modules.llm import predictor as llm_pred
+        anchor_predictions = [
+            {"time": "2026-09-17 11:30", "block_number": 47, "anchor_mw": 8.0, "base_anchor_mw": 8.0},
+            {"time": "2026-09-17 11:45", "block_number": 48, "anchor_mw": 8.5, "base_anchor_mw": 8.5},
+        ]
+        # LLM returns dimensionless Kt = 0.95
+        raw_json = json.dumps([
+            {"time": "2026-09-17 11:30", "kt": 0.95, "confidence": "High", "reasoning": "Clear sky with slight aerosol"},
+            {"time": "2026-09-17 11:45", "kt": 0.90, "confidence": "High", "reasoning": "Thin cirrus passing"},
+        ])
+        results = llm_pred._parse_llm_response(raw_json, anchor_predictions)
+        self.assertEqual(len(results), 2)
+        # Block 1: 8.0 * 0.95 = 7.60 MW
+        self.assertEqual(results[0]["llm_mw"], 7.60)
+        # Block 2: 8.5 * 0.90 = 7.65 MW
+        self.assertEqual(results[1]["llm_mw"], 7.65)
+
+    def test_stepwise_llm_kt_physical_synthesis(self):
+        """Verify _parse_stepwise_llm_response extracts Kt and correctly anchors step2_mw and llm_mw."""
+        from modules.llm import predictor as llm_pred
+        base_predictions = [
+            {"time": "2026-09-17 12:00", "block_number": 49, "anchor_mw": 9.0},
+        ]
+        raw_json = json.dumps({
+            "predictions": [
+                {"time": "2026-09-17 12:00", "kt": 1.00, "confidence": "High", "reasoning": "Optimal clear sky noon"}
+            ]
+        })
+        results = llm_pred._parse_stepwise_llm_response(raw_json, base_predictions)
+        self.assertEqual(len(results), 1)
+        # 9.0 * 1.00 = 9.00 MW
+        self.assertEqual(results[0]["step2_mw"], 9.0)
+        self.assertEqual(results[0]["llm_mw"], 9.0)
+
 
 if __name__ == "__main__":
     unittest.main()
+
 
 

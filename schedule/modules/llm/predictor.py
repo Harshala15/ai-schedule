@@ -231,10 +231,24 @@ def _summarize_current_situation(feature_row: dict) -> str:
     the LLM's reasoning) are included.
     """
     lines = []
-
     elevation = feature_row.get("solar_elevation_deg")
     if elevation is not None:
         lines.append(f"Solar elevation: {elevation} deg")
+
+    # Inverted real-time ground-truth irradiance and clearness index
+    meter_mw = feature_row.get("latest_mw", feature_row.get("active_power_mw"))
+    gti_meter = feature_row.get("meter_gti_wm2")
+    kt_meter = feature_row.get("meter_kt")
+    is_clipping = feature_row.get("is_inverter_clipped", False)
+
+    if meter_mw is not None:
+        lines.append(f"Latest SCADA meter generation: {meter_mw:.3f} MW")
+    if gti_meter is not None:
+        lines.append(f"Inverted real ground-truth POA irradiance: {gti_meter:.1f} W/m²")
+    if kt_meter is not None:
+        lines.append(f"Live ground clearness index (Kt = Actual / ClearSky): {kt_meter:.3f}")
+    if is_clipping:
+        lines.append("CRITICAL: Plant is currently in INVERTER AC SATURATION / CLIPPING (generation at or near AC ceiling). Real irradiance exceeds inverter limits -- do NOT cut schedule for perceived flatline!")
 
     direction_deg = feature_row.get("motion_direction_deg")
     if direction_deg is not None:
@@ -311,27 +325,32 @@ CRITICAL RULES FOR GRID ACCURACY & PENALTY MINIMIZATION:
    - BOTH Over-forecasting (>+15%) and Under-forecasting (<-15%) trigger severe financial deviation penalties (at plant PPA rate, e.g. Rs. 5.65/kWh in Telangana).
    - DO NOT excessively haircut generation into severe under-forecasting (<-15%). Maintain schedules within the safe +-15% corridor.
    - During clear sky ground conditions, never cut below Step 1 Base. During overcast or rain, attenuate smoothly without over-slashing.
-2. Physical Ramp & Monotonic Geometry (NO SAWTOOTH / JITTER):
+2. Inverter AC Clipping Protection:
+   - When plant generation reaches >= 0.88 * AC Capacity (e.g. at solar noon), the plant is in INVERTER SATURATION.
+   - Flatlining generation at midday is NOT cloud attenuation; real irradiance is >= 850 W/m².
+   - Set Kt = 1.00 and maintain the full plateau; NEVER slash generation during solar noon due to flat SCADA readings.
+3. Multi-NWP Model Consensus Arbitration:
+   - Compare morning SCADA actuals against what ECMWF, ICON, and GEFS predicted.
+   - If morning meter confirms high irradiance, heavily weight the clear-sky models and disregard phantom convective cloud warnings.
+   - Output both "kt" (clearness index 0.0 to 1.05) and "adjusted_mw".
+4. Physical Ramp & Monotonic Geometry (NO SAWTOOTH / JITTER):
    - Morning (06:30 - 11:30): Must be strictly non-decreasing, matching the rising solar trajectory.
-   - Midday Apex (11:45 - 12:30): Smooth parabolic apex without artificial flat tabletop clipping.
-   - Afternoon (12:45 - 17:30): Strictly non-increasing diurnal descent.
-   - Convective / Storm Window Continuity: If high CAPE (>1500 J/kg), rain cells, or storm instability are detected in the weather table, maintain a smooth, contiguous attenuated envelope across all affected 15-min blocks. NEVER create single-block alternating spikes or sawtooth drops.
+   - Midday Apex (11:45 - 13:15): Smooth Enercast-style plateau or dome without artificial dips.
+   - Afternoon (13:30 - 17:30): Strictly non-increasing diurnal descent.
    - Pre-dawn / Post-dusk: If base_mw is 0.0, adjusted_mw MUST be strictly 0.0.
-3. Telemetry Grounding & Horizon Boundary:
-   - Prefer today's same-day actual generation telemetry and clearness trend over historical cases.
-   - Satellite solar radiation is strictly limited to past/current blocks up to the revision cutoff time (t <= T_rev) as a virtual meter proxy. Do NOT consider satellite solar radiation for future forecast blocks (t > T_rev); rely strictly on NWP multi-stream weather models and PVLib solar geometry.
-   - If evidence shows steady clear sky, follow the natural solar curve; if clouds or volatility are detected, attenuate smoothly.
 
 Return ONLY raw JSON, no markdown or prose.
 Array size must be exactly {len(anchor_predictions)}.
 Each object must contain:
 - "time"
-- "adjusted_mw"
-- "confidence"
-- "reasoning"
+- "kt": dimensionless clearness factor (0.00 to 1.05, where 1.0 = clear sky)
+- "predicted_gti": estimated Global Tilted Irradiance in W/m²
+- "adjusted_mw": final schedule generation in MW
+- "confidence": High, Medium, or Low
+- "reasoning": physical justification
 
 Example:
-[{{"time":"2026-09-01 13:15","adjusted_mw":2.85,"confidence":"High","reasoning":"Smooth diurnal afternoon decay tracking conservative lower bound of cloud risk envelope."}}]
+[{{"time":"2026-09-01 13:15","kt":0.92,"predicted_gti":740.0,"adjusted_mw":2.85,"confidence":"High","reasoning":"Smooth diurnal afternoon decay tracking conservative lower bound of cloud risk envelope."}}]
 """
 
 
@@ -363,14 +382,28 @@ def _parse_llm_response(raw_text: str, anchor_predictions: list) -> list:
             return text[:16]
         return text or None
 
-    def _extract_adjusted_mw(item: dict):
-        """Accept a few common JSON field names so minor model formatting changes do not
-        trigger a full fallback."""
+    def _extract_adjusted_mw(item: dict, anchor: dict):
+        """Extract adjusted MW or reconstruct from Kt physical synthesis."""
+        # Check Kt first for physical ground-truth binding
+        for kt_key in ("kt", "clearness_index", "clearness_factor", "clearness_ratio"):
+            if kt_key in item:
+                try:
+                    kt_val = float(item[kt_key])
+                    if 0.05 <= kt_val <= 1.25:
+                        base_val = anchor.get("base_anchor_mw", anchor.get("anchor_mw", 0.0))
+                        if base_val > 0.0:
+                            # Re-synthesize MW from Kt and physical clear-sky base
+                            return round(base_val * min(1.05, kt_val), 3)
+                except (TypeError, ValueError):
+                    pass
+
+        # Check explicit MW fields
         for key in ("adjusted_mw", "llm_mw", "forecast_mw", "predicted_mw", "adjusted_value", "value", "mw"):
             if key not in item:
                 continue
             try:
-                return float(item[key])
+                val = float(item[key])
+                return val
             except (TypeError, ValueError):
                 continue
         return None
@@ -394,7 +427,7 @@ def _parse_llm_response(raw_text: str, anchor_predictions: list) -> list:
     results = []
     for anchor in anchor_predictions:
         item = by_time.get(_normalize_time_label(anchor["time"]))
-        adjusted_mw = _extract_adjusted_mw(item) if item else None
+        adjusted_mw = _extract_adjusted_mw(item, anchor) if item else None
         if adjusted_mw is None:
             adjusted_mw = anchor["anchor_mw"]
             item = None
@@ -608,9 +641,14 @@ CRITICAL FORECAST & AI ADJUSTMENT RULES (NO FIXED WEIGHTS):
    - Physical Diffuse Floor: In India during daylight hours (solar elevation >= 45 deg), diffuse irradiance physically yields at least 25-35% of capacity; generation never drops below this unless torrential rain is confirmed on site.
    - Upper Ceiling: Step 2 MW must never exceed plant maximum AC export limit of {cap_mw:.2f} MW.
 
-4. Strict Horizon Boundary (Zero Satellite Radiation for Future Blocks):
-   - Satellite solar radiation (GTI / Virtual Meter) is strictly used as an intraday telemetry fallback UP TO the revision cutoff time (t <= T_rev).
-   - For ALL future forecast blocks (t > T_rev), DO NOT consider or extrapolate satellite solar radiation. Future blocks must strictly rely on astronomical solar geometry (PVLib clear-sky envelope), multi-stream Numerical Weather Prediction (ECMWF, 91-Member Ensemble, 5-Agency Consensus + CAPE), and verified live ground SCADA telemetry momentum.
+5. Inverter AC Clipping Protection & Enercast Midday Stability:
+   - When generation reaches >= 0.88 * Plant AC Capacity ({cap_mw * 0.88:.2f} MW), inverters are operating at full capacity.
+   - Flatlining generation at solar noon is an electrical AC inverter saturation artifact, NOT cloud attenuation!
+   - Set Kt = 1.00 and maintain the full convex plateau between 11:30 and 13:30; NEVER slash midday generation for perceived flatlining.
+   - Under scattered cloud uncertainty, mimic Enercast's proven regulatory discipline by positioning schedules near 85-90% of clear sky to stay within the ±{tol_band_mw:.2f} MW 0% penalty safe band.
+
+6. Output Fields:
+   - Return both "kt" (clearness factor 0.00 to 1.05) and "llm_mw" for each block.
 
 Return ONLY raw JSON, no markdown or prose.
 Array size must be exactly {len(base_predictions)}.
@@ -629,11 +667,13 @@ Return a valid JSON object formatted with a "predictions" array:
   "predictions": [
     {{
       "time": "2026-08-21 15:45",
+      "kt": 0.92,
+      "predicted_gti": 650.0,
       "step1_mw": 4.2,
       "step2_mw": 3.8,
       "llm_mw": 3.8,
       "confidence": "Medium",
-      "reasoning": "ECMWF weather irradiance (563 W/m2) and live SCADA meter trend adjust the clear-sky baseline downward."
+      "reasoning": "ECMWF weather irradiance and live SCADA meter trend adjust the clear-sky baseline downward."
     }}
   ]
 }}
@@ -700,6 +740,15 @@ def _parse_stepwise_llm_response(raw_text: str, base_predictions: list) -> list:
         step1_mw = _extract_numeric(item, ("step1_mw", "meter_base_mw", "base_mw", "adjusted_mw"))
         step2_mw = _extract_numeric(item, ("step2_mw", "weather_mw", "video_mw", "llm_mw", "forecast_mw", "predicted_mw", "adjusted_value", "value", "mw"))
         llm_mw = _extract_numeric(item, ("llm_mw", "step2_mw", "final_mw", "forecast_mw", "predicted_mw", "adjusted_value", "value", "mw"))
+
+        # Physical Kt validation: if Kt is present, verify grounding
+        kt_val = _extract_numeric(item, ("kt", "clearness_index", "clearness_factor", "clearness_ratio"))
+        if kt_val is not None and 0.05 <= kt_val <= 1.25 and base["anchor_mw"] > 0.0:
+            phys_mw = round(base["anchor_mw"] * min(1.05, kt_val), 3)
+            if step2_mw is None:
+                step2_mw = phys_mw
+            if llm_mw is None:
+                llm_mw = phys_mw
 
         if step1_mw is None:
             step1_mw = base["anchor_mw"]

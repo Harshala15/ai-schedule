@@ -293,12 +293,29 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
         feature_row["precipitation"] = precip_mm
         feature_row["cloud_cover"] = cloud_pct
 
+        # Calculate Inverted Ground-Truth POA irradiance and Inverter Clipping status
+        ac_cap = float(getattr(config, "PLANT_CAPACITY_MW", 10.0))
+        dc_cap = float(getattr(config, "PLANT_DC_CAPACITY_MW", ac_cap))
+        pr_val = float(getattr(config, "PERFORMANCE_RATIO", 0.78))
+        xfer_ratio = (dc_cap * pr_val) / 1000.0 if dc_cap > 0 else (ac_cap * pr_val) / 1000.0
+        latest_m = float(intraday_state.get("latest_mw", 0.0)) if intraday_state else 0.0
+        ref_elev = time_features.compute_time_features(reference_time)["solar_elevation_deg"]
+
+        if latest_m > 0.0 and xfer_ratio > 0.0:
+            feature_row["meter_gti_wm2"] = round(latest_m / max(1e-6, xfer_ratio * temp_derate), 1)
+            feature_row["meter_kt"] = round(latest_m / max(0.05, clearsky_gti * xfer_ratio), 3)
+            feature_row["is_inverter_clipped"] = bool(latest_m >= ac_cap * 0.88 and ref_elev >= 35.0)
+            feature_row["latest_mw"] = latest_m
+        else:
+            feature_row["meter_gti_wm2"] = None
+            feature_row["meter_kt"] = None
+            feature_row["is_inverter_clipped"] = False
+
         if feature_columns is None:
             feature_columns = feature_builder.get_feature_columns(feature_row)
         # 2. Live Clearness from latest recorded meter reading at revision time:
         #    LiveClearness = min(1.0, Meter_rev_time / ClearSky_rev_time)
         live_clearness = 1.0
-        ref_elev = time_features.compute_time_features(reference_time)["solar_elevation_deg"]
 
         # DAWN EXEMPTION RULE: When solar elevation is < 20.0 deg (before 07:30 AM),
         # low inverter wake-up generation is normal. Default live_clearness to 1.0 (Clear Sky).
