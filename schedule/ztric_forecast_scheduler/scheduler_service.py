@@ -331,8 +331,16 @@ def _weather_report(contract: dict[str, Any], target_dt: dt.datetime) -> dict[st
         return {"source": "openmeteo_ensemble_error", "prompt_text": f"Open-Meteo ensemble unavailable: {exc}", "rows": []}
 
 
-def _weather_factor_by_block(weather: dict[str, Any], clear_poa: dict[int, float]) -> dict[int, float]:
-    factors: dict[int, float] = {}
+def _weather_factor_by_block(
+    weather: dict[str, Any],
+    clear_poa: dict[int, float],
+    *,
+    target_date: str,
+    latitude: float,
+    longitude: float,
+) -> dict[int, float]:
+    hourly_times: list[str] = []
+    hourly_gti: list[float] = []
     for row in weather.get("rows") or []:
         hour_label = str(row.get("hour_label") or "")
         try:
@@ -342,11 +350,23 @@ def _weather_factor_by_block(weather: dict[str, Any], clear_poa: dict[int, float
         gti = _float_value(row.get("global_tilted_irradiance_instant"), default=math.nan)
         if math.isnan(gti):
             continue
-        for offset in range(4):
-            block = ((hour * 60 + minute + offset * 15) // 15) + 1
-            if 1 <= block <= 96:
-                poa = clear_poa.get(block, 0.0)
-                factors[block] = max(0.15, min(1.15, gti / poa)) if poa > 30 else 0.0
+        hourly_times.append(f"{target_date} {hour:02d}:{minute:02d}")
+        hourly_gti.append(float(gti))
+
+    day_start = dt.datetime.strptime(target_date, "%Y-%m-%d")
+    target_15min = [day_start + dt.timedelta(minutes=(block - 1) * 15) for block in range(1, 97)]
+    interpolated_gti = openmeteo_ensemble.interpolate_15min_clearsky_index(
+        hourly_times,
+        hourly_gti,
+        target_15min,
+        latitude=latitude,
+        longitude=longitude,
+    )
+
+    factors: dict[int, float] = {}
+    for block, gti in enumerate(interpolated_gti, start=1):
+        poa = clear_poa.get(block, 0.0)
+        factors[block] = max(0.15, min(1.15, float(gti) / poa)) if poa > 30 else 0.0
     return factors
 
 
@@ -401,7 +421,15 @@ def _generate_asset_schedules(
             capacity_dc_mw=capacity_dc,
             timezone=settings.DEFAULT_TIMEZONE,
         )
-        weather_factors = _weather_factor_by_block(weather, clear_poa)
+        latitude = float(contract.get("latitude") or 18.557968)
+        longitude = float(contract.get("longitude") or 76.859083)
+        weather_factors = _weather_factor_by_block(
+            weather,
+            clear_poa,
+            target_date=target_date,
+            latitude=latitude,
+            longitude=longitude,
+        )
         meter_key = _latest_meter_key(bucket, raw_day_prefix, asset)
         meter_values: dict[int, float] = {}
         meter_error = ""
