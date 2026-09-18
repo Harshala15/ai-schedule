@@ -31,6 +31,8 @@ import sys
 import datetime
 from pathlib import Path
 
+import numpy as np
+
 import config
 from modules.storage import state_sync
 
@@ -1992,6 +1994,7 @@ def summarize_intraday_state(actuals_csv_path, reference_time: datetime.datetime
     # 60-Minute Rolling Median Clearness Index (immune to isolated 15-min transient cloud drops)
     recent_ratios_window = ratios[-4:] if len(ratios) >= 4 else ratios
     recent_median_ratio = float(np.median(recent_ratios_window)) if recent_ratios_window else None
+    recent_ratio = recent_median_ratio
     ratio_for_state = recent_median_ratio if recent_median_ratio is not None else whole_day_ratio
 
     trend_label = "rising" if recent_delta_mw > 0.05 else ("falling" if recent_delta_mw < -0.05 else "roughly stable")
