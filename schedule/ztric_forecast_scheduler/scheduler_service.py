@@ -1,10 +1,11 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import csv
 import datetime as dt
 import json
 import math
 import os
+import re
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -472,6 +473,75 @@ def _write_csv(path: Path, fieldnames: list[str], rows: list[dict[str, Any]]) ->
         writer.writerows(rows)
 
 
+def _read_csv_rows(path: Path) -> list[dict[str, Any]]:
+    with path.open("r", newline="", encoding="utf-8-sig") as handle:
+        return list(csv.DictReader(handle))
+
+
+def _snapshot_run_time_from_name(name: str) -> str | None:
+    match = re.search(r"_(\d{8})t(\d{6})\.csv$", name)
+    if not match:
+        return None
+    hhmmss = match.group(2)
+    return f"{hhmmss[0:2]}:{hhmmss[2:4]}"
+
+
+def _effective_block_from_run_time(target_date: str, run_time: str) -> int:
+    effective_dt = schedule_utils.freeze_from_datetime(target_date, run_time, block_minutes=15)
+    return _block_from_time(effective_dt)
+
+
+def _build_frozen_latest_rows(
+    bucket: str,
+    schedule_prefix: str,
+    target_date: str,
+    generated_root: Path,
+    snapshot_csv: Path,
+    snapshot_block: int,
+    fieldnames: list[str],
+    current_rows: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[int]]:
+    day_prefix = f"{schedule_prefix.rstrip('/')}/{target_date}/"
+    candidates: list[tuple[int, str, Path]] = [(snapshot_block, snapshot_csv.name, snapshot_csv)]
+
+    for obj in storage.list_objects(bucket, day_prefix):
+        name = Path(obj.key).name
+        if name == snapshot_csv.name or not re.fullmatch(r"schedule_from_\d+_\d{8}t\d{6}\.csv", name):
+            continue
+        run_time = _snapshot_run_time_from_name(name)
+        if not run_time:
+            continue
+        local_path = generated_root / "_s3_snapshots" / name
+        try:
+            storage.download_file(bucket, obj.key, local_path)
+        except Exception:
+            continue
+        candidates.append((_effective_block_from_run_time(target_date, run_time), name, local_path))
+
+    candidates.sort(key=lambda item: (item[0], item[1]))
+    rows_by_snapshot: dict[str, dict[int, dict[str, Any]]] = {}
+    for _, name, path in candidates:
+        try:
+            rows_by_snapshot[name] = {int(row.get("block", 0)): row for row in _read_csv_rows(path)}
+        except Exception:
+            rows_by_snapshot[name] = {}
+
+    current_by_block = {int(row.get("block", 0)): row for row in current_rows}
+    stitched_rows: list[dict[str, Any]] = []
+    stitched_effective_blocks: list[int] = []
+    earliest = candidates[0]
+
+    for block in range(1, 97):
+        applicable = [candidate for candidate in candidates if candidate[0] <= block]
+        chosen = applicable[-1] if applicable else earliest
+        effective_block, name, _ = chosen
+        row = rows_by_snapshot.get(name, {}).get(block) or current_by_block.get(block) or {}
+        stitched_rows.append({field: row.get(field, "") for field in fieldnames})
+        if effective_block not in stitched_effective_blocks:
+            stitched_effective_blocks.append(effective_block)
+
+    return stitched_rows, stitched_effective_blocks
+
 def _round_capacity_safe(value: float, decimals: int) -> float:
     factor = 10 ** decimals
     return math.floor((max(float(value), 0.0) + 1e-9) * factor) / factor
@@ -523,7 +593,7 @@ def run_schedule_job(
 ) -> dict[str, Any]:
     target_date, target_time, target_dt = schedule_utils.parse_target_datetime(event)
     effective_dt = schedule_utils.freeze_from_datetime(target_date, target_time, block_minutes=15)
-    snapshot_block = max(1, min(96, ((effective_dt.hour * 60 + effective_dt.minute) // 15)))
+    snapshot_block = max(1, min(96, ((effective_dt.hour * 60 + effective_dt.minute) // 15) + 1))
     snapshot_stamp = f"{target_date.replace('-', '')}t{target_dt.strftime('%H%M%S')}"
 
     contract = _load_contract_config()
@@ -549,7 +619,17 @@ def run_schedule_job(
     summary_json = generated_root / "multiple_generator_formula_summary.json"
 
     _write_csv(snapshot_csv, fieldnames, rows)
-    _write_csv(latest_csv, fieldnames, rows)
+    frozen_rows, stitched_effective_blocks = _build_frozen_latest_rows(
+        bucket=bucket,
+        schedule_prefix=schedule_prefix,
+        target_date=target_date,
+        generated_root=generated_root,
+        snapshot_csv=snapshot_csv,
+        snapshot_block=snapshot_block,
+        fieldnames=fieldnames,
+        current_rows=rows,
+    )
+    _write_csv(latest_csv, fieldnames, frozen_rows)
 
     metadata = {
         "status": "ok",
@@ -568,6 +648,8 @@ def run_schedule_job(
         "latest_metadata_key": f"{schedule_prefix.rstrip('/')}/{target_date}/{latest_metadata.name}",
         "summary_key": f"{schedule_prefix.rstrip('/')}/{target_date}/{summary_json.name}",
         "rows": len(rows),
+        "latest_rows": len(frozen_rows),
+        "stitched_effective_blocks": stitched_effective_blocks,
         "contract": contract,
         "asset_inputs": asset_inputs,
         "weather_summary": weather.get("prompt_text") or weather.get("summary") or "",
