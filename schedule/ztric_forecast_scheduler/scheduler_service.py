@@ -320,11 +320,13 @@ def _clear_sky_curve(
 
 def _weather_report(contract: dict[str, Any], target_dt: dt.datetime) -> dict[str, Any]:
     try:
+        # Request 24-hour weather window from start of target date to cover all 96 blocks
+        day_start = target_dt.replace(hour=0, minute=0, second=0, microsecond=0)
         return openmeteo_ensemble.fetch_openmeteo_ensemble_calibrated_summary(
             latitude=float(contract.get("latitude") or 18.557968),
             longitude=float(contract.get("longitude") or 76.859083),
-            reference_time=target_dt,
-            hours_ahead=12,
+            reference_time=day_start,
+            hours_ahead=24,
             timezone=settings.DEFAULT_TIMEZONE,
             plant_name="ZTRIC",
         )
@@ -376,25 +378,46 @@ def _build_asset_schedule(
     asset: dict[str, Any],
     meter_values: dict[int, float],
     clear_mw: dict[int, float],
+    clear_poa: dict[int, float],
     weather_factors: dict[int, float],
     cutoff_block: int,
+    tau_blocks: float = 8.0,
 ) -> dict[int, float]:
     capacity = float(asset["capacity_ac_mw"])
     schedule: dict[int, float] = {}
-    recent_blocks = [block for block in sorted(meter_values) if block <= cutoff_block and clear_mw.get(block, 0.0) > 0.05]
-    if recent_blocks:
-        ratios = [meter_values[block] / max(clear_mw.get(block, 0.0), 0.05) for block in recent_blocks[-4:]]
-        meter_factor = max(0.2, min(1.2, sum(ratios) / len(ratios)))
-    else:
-        meter_factor = 1.0
 
+    # 1. Unadjusted base forecast (physical clear sky * ensemble weather clearness index)
+    base_forecast: dict[int, float] = {}
+    for block in range(1, 97):
+        wf = weather_factors.get(block, 1.0)
+        base_forecast[block] = min(max(clear_mw.get(block, 0.0) * wf, 0.0), capacity)
+
+    # 2. Compute live SCADA adjustment factor only from high-sun blocks (POA >= 200 W/m2)
+    # This prevents early dawn inverter cut-in & cosine losses from poisoning afternoon blocks
+    valid_blocks = [
+        block for block in sorted(meter_values)
+        if block <= cutoff_block and clear_poa.get(block, 0.0) >= 200.0 and base_forecast.get(block, 0.0) > 0.1
+    ]
+
+    if valid_blocks:
+        # Ratio of actual generation to the unadjusted base forecast (realized performance factor)
+        ratios = [meter_values[block] / max(base_forecast[block], 0.05) for block in valid_blocks[-4:]]
+        live_factor = max(0.5, min(1.3, sum(ratios) / len(ratios)))
+    else:
+        live_factor = 1.0
+
+    # 3. Build 96-block schedule with exponential persistence decay back to ensemble baseline
     for block in range(1, 97):
         if block <= cutoff_block and block in meter_values:
-            value = meter_values[block]
+            schedule[block] = min(max(meter_values[block], 0.0), capacity)
+        elif block <= cutoff_block:
+            schedule[block] = base_forecast[block]
         else:
-            weather_factor = weather_factors.get(block, 1.0)
-            value = clear_mw.get(block, 0.0) * weather_factor * meter_factor
-        schedule[block] = min(max(value, 0.0), capacity)
+            delta_b = block - cutoff_block
+            decay = math.exp(-delta_b / tau_blocks)
+            blended_factor = 1.0 + (live_factor - 1.0) * decay
+            schedule[block] = min(max(base_forecast[block] * blended_factor, 0.0), capacity)
+
     return schedule
 
 
@@ -445,6 +468,7 @@ def _generate_asset_schedules(
             asset=asset,
             meter_values=meter_values,
             clear_mw=clear_mw,
+            clear_poa=clear_poa,
             weather_factors=weather_factors,
             cutoff_block=cutoff_block,
         )
@@ -543,8 +567,7 @@ def _build_frozen_latest_rows(
     return stitched_rows, stitched_effective_blocks
 
 def _round_capacity_safe(value: float, decimals: int) -> float:
-    factor = 10 ** decimals
-    return math.floor((max(float(value), 0.0) + 1e-9) * factor) / factor
+    return round(max(float(value), 0.0), decimals)
 
 
 def _build_rows(

@@ -47,8 +47,8 @@ def _nearest_configured_capture_time(now: dt.datetime, max_drift_minutes: int = 
 def parse_target_datetime(event: dict | None) -> tuple[str, str, dt.datetime]:
     now = dt.datetime.now(IST)
     event = event or {}
-    target_date = event.get("target_date") or now.strftime("%Y-%m-%d")
-    target_time = event.get("target_time") or _nearest_configured_capture_time(now)
+    target_date = event.get("target_date") or event.get("date") or now.strftime("%Y-%m-%d")
+    target_time = event.get("target_time") or event.get("time") or _nearest_configured_capture_time(now)
     target_dt = dt.datetime.strptime(f"{target_date} {target_time}", "%Y-%m-%d %H:%M")
     return target_date, target_time, target_dt
 
@@ -693,13 +693,8 @@ def write_full_block_schedule_from_llm_schedule(
                         attenuation_mult = 1.0 - (0.65 * cape_severity)
                         synth_mw = min(synth_mw, clearsky_mw * attenuation_mult)
 
-                    prev_block_mw = schedule_by_block.get(block - 1, {}).get("intellis_mw")
-                    if block >= 50 and prev_block_mw is not None:
-                        synth_mw = min(synth_mw, prev_block_mw)
-
                     if getattr(config, "PLANT_NAME", "").upper() == "OSEPL" and elev >= 8.0:
-                        opt_under_offset = min(1.20, max(0.40, synth_mw * 0.06))
-                        synth_mw = max(0.0, synth_mw - opt_under_offset)
+                        synth_mw = round(synth_mw * 0.97, 3)
 
                 final_block_mw = round(max(0.0, min(ac_cap, synth_mw)), 3)
                 schedule_by_block[block] = {
@@ -723,19 +718,21 @@ def write_full_block_schedule_from_llm_schedule(
                     smoothed = round(0.20 * prev_v + 0.60 * curr_v + 0.20 * next_v, 3)
                     schedule_by_block.setdefault(b, {})["intellis_mw"] = smoothed
 
-        # Pass 2: Monotonic Solar Ascent (Morning Blocks 25 to 48: 06:15 - 12:00 IST)
+        # Pass 2: Morning Continuity Guard (Blocks 25 to 48: 06:15 - 12:00 IST)
+        # Enforces regulatory rate-of-change continuity without artificial morning sag
         prev_mw = float(schedule_by_block.get(24, {}).get("intellis_mw", 0.0))
         for b in range(25, 49):
             curr_mw = float(schedule_by_block.get(b, {}).get("intellis_mw", 0.0))
-            if curr_mw < prev_mw - 0.15:
-                curr_mw = prev_mw - 0.15
             if curr_mw > prev_mw + max_step:
                 curr_mw = prev_mw + max_step
+            elif prev_mw - curr_mw > max_step:
+                curr_mw = prev_mw - max_step
             final_val = round(max(0.0, min(ac_cap, curr_mw)), 3)
             schedule_by_block.setdefault(b, {})["intellis_mw"] = final_val if final_val > 0.02 else 0.0
             prev_mw = schedule_by_block[b]["intellis_mw"]
 
         # Pass 3: Monotonic Solar Descent (Afternoon Blocks 50 to 73: 12:15 - 18:15 IST)
+        # Enforces smooth diurnal solar decay and suppresses afternoon spikes
         prev_mw = float(schedule_by_block.get(49, {}).get("intellis_mw", prev_mw))
         for b in range(50, 74):
             curr_mw = float(schedule_by_block.get(b, {}).get("intellis_mw", 0.0))
@@ -761,10 +758,15 @@ def write_full_block_schedule_from_llm_schedule(
 
     # Plant regulatory parameters
     cap_mw = float(getattr(config, "PLANT_CAPACITY_MW", 10.0))
-    ppa = float(getattr(config, "PPA_RATE_INR_PER_KWH", 6.97))
-    reg = str(getattr(config, "PENALTY_REGULATION", "Madhya Pradesh")).lower()
-    band_pct = 0.15 if any(s in reg for s in ["maharashtra", "merc", "karnataka", "telangana"]) else 0.10
-    tol_mw = round(cap_mw * band_pct, 3)
+    prof_dict = getattr(config, "PLANT_PROFILE", {}) or {}
+    if prof_dict.get("tolerance_band_mw") is not None:
+        tol_mw = float(prof_dict["tolerance_band_mw"])
+        band_pct = float(prof_dict.get("band_percentage", tol_mw / max(1e-6, cap_mw)))
+    else:
+        reg = str(getattr(config, "PENALTY_REGULATION", "Madhya Pradesh")).lower()
+        band_pct = 0.15 if any(s in reg for s in ["merc", "karnataka", "telangana"]) and "jewli" not in str(getattr(config, "PLANT_NAME", "")).lower() else 0.10
+        tol_mw = round(cap_mw * band_pct, 3)
+    ppa = float(prof_dict.get("ppa_rate_inr_per_kwh", getattr(config, "PLANT_PPA_RATE_INR_PER_KWH", 2.44) or 2.44))
 
     # Attempt to load meter actuals if present
     meter_by_block: dict[int, float] = {}

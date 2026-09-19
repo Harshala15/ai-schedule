@@ -310,8 +310,13 @@ def _store_ecmwf_weather_report(target_date: str, target_time: str, weather_repo
 
 def _clip_meter_to_cutoff(source_csv: Path, destination_csv: Path, cutoff_dt: dt.datetime) -> tuple[Path, int, int]:
     """Write a meter CSV trimmed to the revision cutoff."""
-    with open(source_csv, "r", newline="", encoding="utf-8") as handle:
-        reader = csv.DictReader(handle)
+    with open(source_csv, "r", newline="", encoding="utf-8", errors="ignore") as handle:
+        lines = []
+        for line in handle:
+            if not lines and not line.strip():
+                continue
+            lines.append(line)
+        reader = csv.DictReader(lines)
         fieldnames = list(reader.fieldnames or [])
         column_profile = daily_feedback.PLANT_ACTUAL_METER_COLUMNS.get(  # type: ignore[attr-defined]
             (config.PLANT_NAME or "").strip().upper(),
@@ -592,16 +597,18 @@ def run_schedule_job(
 
     if config.is_wind_plant():
         from modules.weather.wind_ensemble import calculate_wind_schedule_96block, WindTurbineProfile
-        wind_prof = WindTurbineProfile(
-            plant_name=config.PLANT_NAME,
-            rated_capacity_mw=config.PLANT_CAPACITY_MW,
-            hub_height_m=getattr(config, "PLANT_PROFILE", {}).get("hub_height_m", 100.0),
-        )
+        wind_prof = WindTurbineProfile.from_plant_profile(getattr(config, "PLANT_PROFILE", {}) or config.PLANT_NAME)
+        snapshot_block = ((target_dt.hour * 60 + target_dt.minute) // config.BLOCK_MINUTES) + 1
         wind_sched = calculate_wind_schedule_96block(
             config.PLANT_LAT,
             config.PLANT_LON,
             target_date,
             profile=wind_prof,
+            scada_actuals=selection.meter_path,
+            current_block=snapshot_block,
+            enable_slot_selection=True,
+            enable_bias_correction=True,
+            enable_telemetry_blending=True,
         )
         snapshot_source = work_output_dir / f"{config.PLANT_NAME}_energy_generation_{target_date}.csv"
         fieldnames = ["Block", "Time Interval (15 minute interval)", "intellis_gti", "intellis_mw", "schedule_mw"]
@@ -650,7 +657,15 @@ def run_schedule_job(
     latest_metadata = generated_root / f"{target_date}_latest_metadata.json"
 
     shutil.copyfile(snapshot_source, snapshot_csv)
-    _download_previous_current_final_schedule(bucket, schedule_prefix, target_date, current_final_csv)
+    # If revision 1 of the day is run with force, do not seed from stale uncalibrated runs
+    is_first_revision = target_time in ("00:00", "01:15") and str(event.get("force", "")).lower() in ("1", "true", "yes")
+    if is_first_revision:
+        if current_final_csv.exists():
+            current_final_csv.unlink(missing_ok=True)
+        if latest_csv.exists():
+            latest_csv.unlink(missing_ok=True)
+    else:
+        _download_previous_current_final_schedule(bucket, schedule_prefix, target_date, current_final_csv)
     snapshot_rows, preserved_rows, merged_rows = _merge_latest_schedule(snapshot_source, latest_csv)
     shutil.copyfile(latest_csv, snapshot_csv)
     current_final_rows = _write_current_final_schedule(latest_csv, current_final_csv, target_date, target_time)

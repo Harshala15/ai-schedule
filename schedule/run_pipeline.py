@@ -239,6 +239,25 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
     live_anchor_predictions = []
     feature_columns = None
 
+    # Extract top slot-ranked models and live 60-min tracking errors for LLM prompt (computed once per revision)
+    slot_diagnostics = None
+    try:
+        from modules.weather.intellis_ensemble_gti_ai import IntellisEnsembleGTIAI, load_plant_profile
+        prof = load_plant_profile(getattr(config, "PLANT_NAME", "GSNP"))
+        ensemble_ai = IntellisEnsembleGTIAI(plant_profile=prof)
+        target_d_str = reference_time.strftime("%Y-%m-%d")
+        curr_b = (reference_time.hour * 4) + (reference_time.minute // 15) + 1
+        latest_m_rev = float(intraday_state.get("latest_mw", 0.0)) if intraday_state else 0.0
+        dc_cap_val = float(getattr(config, "PLANT_DC_CAPACITY_MW", getattr(config, "PLANT_CAPACITY_MW", 10.0)))
+        pr_val_calc = float(getattr(config, "PERFORMANCE_RATIO", 0.78))
+        xfer_calc = (dc_cap_val * pr_val_calc) / 1000.0 if dc_cap_val > 0 else 0.015
+        live_poa_calc = (latest_m_rev / max(1e-6, xfer_calc)) if latest_m_rev > 0.0 else 500.0
+        slot_diagnostics = ensemble_ai.get_slot_candidate_diagnostics(
+            target_d_str, curr_b, live_poa_calc, lookback_blocks=4, horizon_blocks=num_blocks or config.NUM_FORECAST_BLOCKS
+        )
+    except Exception:
+        slot_diagnostics = None
+
     for block_index, block_time in enumerate(block_times):
         block_time_feats = time_features.compute_time_features(block_time)
         if stepwise_live_only:
@@ -311,19 +330,7 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
             feature_row["meter_kt"] = None
             feature_row["is_inverter_clipped"] = False
 
-        # Extract top slot-ranked models and live 60-min tracking errors for LLM prompt
-        try:
-            from modules.weather.intellis_ensemble_gti_ai import IntellisEnsembleGTIAI, load_plant_profile
-            prof = load_plant_profile(getattr(config, "PLANT_NAME", "GSNP"))
-            ensemble_ai = IntellisEnsembleGTIAI(plant_profile=prof)
-            target_d_str = reference_time.strftime("%Y-%m-%d")
-            curr_b = (reference_time.hour * 4) + (reference_time.minute // 15) + 1
-            live_poa = float(feature_row.get("meter_gti_wm2") or (clearsky_gti * 0.90))
-            feature_row["slot_candidates_diagnostics"] = ensemble_ai.get_slot_candidate_diagnostics(
-                target_d_str, curr_b, live_poa, lookback_blocks=4, horizon_blocks=num_blocks or config.NUM_FORECAST_BLOCKS
-            )
-        except Exception:
-            feature_row["slot_candidates_diagnostics"] = None
+        feature_row["slot_candidates_diagnostics"] = slot_diagnostics
 
         if feature_columns is None:
             feature_columns = feature_builder.get_feature_columns(feature_row)
@@ -525,16 +532,11 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
 
             # 4. OSEPL PLANT-SPECIFIC RECEIVABLE OPTIMIZATION GUARDRAIL:
             if config.PLANT_NAME.upper() == "OSEPL" and b_elev >= 7.5:
-                band_mw = cap_mw * 0.10  # 2.0 MW for OSEPL
-                opt_under_offset = min(1.20, max(0.40, step2 * 0.06))
-                step2_opt = round(max(0.0, step2 - opt_under_offset), 3)
-
-                latest_m = float(intraday_state.get("latest_mw", 0.0)) if intraday_state else 0.0
-                if latest_m > 0.5 and step2_opt > latest_m:
-                    step2_opt = round(max(latest_m - (band_mw * 0.85), latest_m * 0.96), 3)
-
-                step2 = step2_opt
-                p["reasoning"] = (p.get("reasoning", "") + f" [OSEPL Receivable Optimization: Biased below meter ({step2:.3f} MW) to maximize surplus receivables]").strip()
+                # Under Maharashtra INTER/CERC regulations, a subtle 3% conservative positioning
+                # within the 10% band avoids shortfall penalties while maximizing surplus receivables.
+                # Note: Applies proportionally to the block's physical potential, NOT raw morning SCADA.
+                step2 = round(max(0.0, step2 * 0.97), 3)
+                p["reasoning"] = (p.get("reasoning", "") + f" [OSEPL Receivable Optimization: Proportional band positioning ({step2:.3f} MW)]").strip()
 
             # 5. CLOSED-LOOP SCADA TELEMETRY RELAXATION (T+4 NUDGE, tau = 45 min):
             # Smoothly connects Block 1 (T+15 min) to real measured SCADA generation,
@@ -611,9 +613,7 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
                 step2 = round(max(0.0, min(cap_mw, step2)), 3)
 
             if config.PLANT_NAME.upper() == "OSEPL" and b_elev >= 7.5:
-                band_mw = cap_mw * 0.10
-                opt_under_offset = min(1.20, max(0.40, step2 * 0.06))
-                step2 = round(max(0.0, step2 - opt_under_offset), 3)
+                step2 = round(max(0.0, step2 * 0.97), 3)
 
             # 5. CLOSED-LOOP SCADA TELEMETRY RELAXATION (T+4 NUDGE, tau = 45 min):
             latest_m = float(intraday_state.get("latest_mw", 0.0)) if intraday_state else 0.0

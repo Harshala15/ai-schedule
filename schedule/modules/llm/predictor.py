@@ -50,6 +50,29 @@ def _llm_chunk_size(anchor_predictions: list) -> int:
 
 def _env_flag(name: str, default: str = "false") -> bool:
     return os.getenv(name, default).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _is_llm_disabled_for_plant() -> tuple[bool, str]:
+    """Check if LLM execution is explicitly disabled for the active plant.
+
+    Hard Mandate: For JEWLI wind power plant, do NOT use LLM under any circumstances
+    until the user explicitly commands it via USE_LLM_JEWLI=true and ENABLE_JEWLI_LLM=true.
+    """
+    plant = (getattr(config, "PLANT_NAME", "") or os.getenv("PLANT_NAME", "") or os.getenv("SITE_ID", "")).strip().upper()
+
+    # Strict Guardrail: Do NOT use LLM for Jewli until explicitly instructed
+    if plant == "JEWLI":
+        allow_jewli = _env_flag("USE_LLM_JEWLI", "false") and _env_flag("ENABLE_JEWLI_LLM", "false")
+        if not allow_jewli:
+            return True, "JEWLI"
+        return False, ""
+
+    if config.is_wind_plant(plant):
+        if not _env_flag("USE_LLM_FOR_WIND", "false"):
+            return True, plant or "WIND"
+
+    return False, ""
+
 def _llm_max_retries() -> int:
     """Return max OpenRouter HTTP attempts per key/model for one schedule run."""
     raw = os.getenv("OPENROUTER_MAX_RETRIES", "1").strip()
@@ -318,23 +341,55 @@ def _build_prompt(anchor_predictions: list, feature_row: dict, retrieved_cases_t
             f"{intraday_state_text.strip()}"
         )
 
-    return f"""
-Adjust the {prompt_subject} for the next {len(anchor_predictions)} blocks.
-Keep changes grounded in the physical and telemetry evidence below.
+    plant_name = str(getattr(config, "PLANT_NAME", "PLANT")).upper()
+    prof_dict = getattr(config, "PLANT_PROFILE", {}) or {}
+    cap_mw = float(getattr(config, "PLANT_CAPACITY_MW", 10.0))
+    band_pct = float(prof_dict.get("band_percentage", 0.10 if plant_name == "JEWLI" else 0.15))
+    tol_mw = round(cap_mw * band_pct, 2)
+    reg_name = str(prof_dict.get("penalty_regulation", "Maharashtra (MERC)" if plant_name == "JEWLI" else "State CERC"))
+    tariff_val = float(prof_dict.get("ppa_rate_inr_per_kwh", 3.275 if plant_name == "JEWLI" else 5.65))
 
-Current situation:
-{_summarize_current_situation(feature_row)}
-{chr(10).join(sections)}
+    is_wind = getattr(config, "is_wind_plant", lambda p: False)(plant_name)
 
-Base forecast blocks:
-{blocks_text}
+    if is_wind:
+        rules_and_format = f"""CRITICAL RULES FOR WIND GRID ACCURACY & MERC PENALTY MINIMIZATION:
+1. Two-Sided Penalty Band Mandate (+-{band_pct*100:.0f}% of Capacity = +-{tol_mw} MW):
+   - Under {reg_name} regulations for {plant_name}, deviations within +-{band_pct*100:.0f}% of plant capacity (+-{tol_mw} MW) carry ZERO penalty.
+   - BOTH Over-forecasting (>+{tol_mw} MW) and Under-forecasting (<-{tol_mw} MW) trigger severe financial deviation penalties (PPA tariff Rs. {tariff_val:.3f}/kWh).
+   - ZERO-PENALTY SAFE CORRIDOR: Keep forecasts strictly within [Actual - {tol_mw} MW, Actual + {tol_mw} MW].
+   - DO NOT excessively haircut generation into severe under-forecasting (<-{tol_mw} MW).
+   - DO NOT inflate generation into severe over-forecasting (>+{tol_mw} MW).
+2. 24-Hour Continuous Operation & Nocturnal Low-Level Jet (NO NIGHT ZEROING):
+   - Wind power is continuous 24/7. NEVER zero out night forecast blocks.
+   - Nocturnal LLJ (20:00 - 05:30): Strongest winds of the day; generation is high (50.0 to 95.0 MW).
+   - Morning Thermal Decoupling (05:30 - 08:30): Solar heating erodes inversion; generation descends from ~70 MW to ~15 MW.
+   - Daytime Thermal Lull (08:30 - 18:15): Convective mixing dampens winds; output is 0.5 to 7.0 MW.
+   - Evening Transition Ramp (18:15 - 19:45): Rapid surge jumping from ~4 MW to >65 MW in 30-45 minutes. Align ramp timing precisely to avoid crossing the +-{tol_mw} MW corridor.
+3. Hub-Height Aerodynamics (133.5m) & Power Curve Response:
+   - 28x Siemens Gamesa SG 3.6-145 (Rated 11.5 m/s, Cut-in 3.0 m/s, Cut-out 25.0 m/s).
+   - Wind power rises cubically between 3.0 and 11.5 m/s, and plateaus at rated capacity 100.8 MW.
+   - Surface winds underestimate hub-height winds due to vertical shear.
+4. Ramp Smoothness & Telemetry Anchor:
+   - Anchor the earliest forecast blocks tightly to latest SCADA meter telemetry.
+   - Prevent unrealistic sawtooth jumping between adjacent 15-minute blocks.
 
-CRITICAL RULES FOR GRID ACCURACY & PENALTY MINIMIZATION:
-1. Two-Sided Penalty Band Mandate (+-15% of Available Capacity):
-   - Under Telangana (TSERC) and CERC regulations, deviations within +-15% of plant capacity carry ZERO penalty.
-   - BOTH Over-forecasting (>+15%) and Under-forecasting (<-15%) trigger severe financial deviation penalties (at plant PPA rate, e.g. Rs. 5.65/kWh in Telangana).
-   - DO NOT excessively haircut generation into severe under-forecasting (<-15%). Maintain schedules within the safe +-15% corridor.
-   - During clear sky ground conditions, never cut below Step 1 Base. During overcast or rain, attenuate smoothly without over-slashing.
+Return ONLY raw JSON, no markdown or prose.
+Array size must be exactly {len(anchor_predictions)}.
+Each object must contain:
+- "time"
+- "adjusted_mw": final schedule generation in MW
+- "confidence": High, Medium, or Low
+- "reasoning": physical justification referencing MERC +-{tol_mw} MW corridor
+
+Example:
+[{{"time":"2026-09-18 20:30","adjusted_mw":64.50,"confidence":"High","reasoning":"Nocturnal LLJ strengthening aligned with 133.5m ECMWF wind speed, centered comfortably inside MERC +-{tol_mw} MW safe corridor."}}]"""
+    else:
+        rules_and_format = f"""CRITICAL RULES FOR GRID ACCURACY & PENALTY MINIMIZATION:
+1. Two-Sided Penalty Band Mandate (+-{band_pct*100:.0f}% of Capacity = +-{tol_mw} MW):
+   - Under {reg_name} regulations for {plant_name}, deviations within +-{band_pct*100:.0f}% of plant capacity (+-{tol_mw} MW) carry ZERO penalty.
+   - BOTH Over-forecasting (>+{band_pct*100:.0f}%) and Under-forecasting (<-{band_pct*100:.0f}%) trigger severe financial deviation penalties (at tariff Rs. {tariff_val:.2f}/kWh).
+   - DO NOT excessively haircut generation into severe under-forecasting (<-{band_pct*100:.0f}%). Maintain schedules strictly within the safe [Actual - {tol_mw} MW, Actual + {tol_mw} MW] corridor.
+   - During clear sky / steady wind conditions, never deviate wildly from physical base. Attenuate smoothly without over-slashing.
 2. Inverter AC Clipping Protection:
    - When plant generation reaches >= 0.88 * AC Capacity (e.g. at solar noon), the plant is in INVERTER SATURATION.
    - Flatlining generation at midday is NOT cloud attenuation; real irradiance is >= 850 W/m².
@@ -360,7 +415,20 @@ Each object must contain:
 - "reasoning": physical justification
 
 Example:
-[{{"time":"2026-09-01 13:15","kt":0.92,"predicted_gti":740.0,"adjusted_mw":2.85,"confidence":"High","reasoning":"Smooth diurnal afternoon decay tracking conservative lower bound of cloud risk envelope."}}]
+[{{"time":"2026-09-01 13:15","kt":0.92,"predicted_gti":740.0,"adjusted_mw":2.85,"confidence":"High","reasoning":"Smooth diurnal afternoon decay tracking conservative lower bound of cloud risk envelope."}}]"""
+
+    return f"""
+Adjust the {prompt_subject} for the next {len(anchor_predictions)} blocks.
+Keep changes grounded in the physical and telemetry evidence below.
+
+Current situation:
+{_summarize_current_situation(feature_row)}
+{chr(10).join(sections)}
+
+Base forecast blocks:
+{blocks_text}
+
+{rules_and_format}
 """
 
 
@@ -540,6 +608,15 @@ def predict_with_llm(anchor_predictions: list, feature_row: dict, retrieved_case
     reasoning string -- the pipeline always produces a full set of
     predictions.
     """
+    disabled, disabled_plant = _is_llm_disabled_for_plant()
+    if disabled:
+        print(f"  [INFO] LLM explicitly disabled for {disabled_plant} -- using calibrated physical wind ensemble forecast.")
+        base_predictions = fallback_anchor_predictions or anchor_predictions
+        return _fallback_predictions(
+            base_predictions,
+            f"Calibrated physical wind ensemble forecast (LLM disabled for {disabled_plant}).",
+        )
+
     if not _load_openrouter_api_keys():
         print("  [WARN] No OpenRouter API keys configured -- skipping LLM adjustment, using fallback values for all blocks.")
         base_predictions = fallback_anchor_predictions or anchor_predictions
@@ -805,6 +882,15 @@ def predict_stepwise_with_llm(base_predictions: list, feature_row: dict, step1_i
                               fallback_base_predictions: list | None = None,
                               prompt_subject: str = "Bhupalpally revision forecast") -> list:
     """Single-call Bhupalpally path that returns step1/step2/step3/LLM outputs together."""
+    disabled, disabled_plant = _is_llm_disabled_for_plant()
+    if disabled:
+        print(f"  [INFO] LLM explicitly disabled for {disabled_plant} -- using calibrated physical wind ensemble forecast.")
+        base = fallback_base_predictions or base_predictions
+        return _fallback_predictions(
+            base,
+            f"Physical calibrated wind ensemble forecast (LLM disabled for {disabled_plant}).",
+        )
+
     if not _load_openrouter_api_keys():
         print("  [WARN] No OpenRouter API keys configured -- skipping stepwise LLM adjustment, using meter base values.")
         base = fallback_base_predictions or base_predictions

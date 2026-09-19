@@ -1,0 +1,114 @@
+{
+  "plant_name": "JEWLI",
+  "plant_type": "WIND",
+  "capacity_mw": 100.8,
+  "ac_capacity_mw": 100.8,
+  "dc_capacity_mw": 100.8,
+  "location": {
+    "site": "Jewali / Jewli",
+    "district": "Dharashiv (Osmanabad)",
+    "state": "Maharashtra",
+    "country": "India",
+    "latitude": 17.87562,
+    "longitude": 76.36388,
+    "elevation_m": 645.0,
+    "terrain": "Deccan Plateau undulating elevated ridge"
+  },
+  "asset_specifications": {
+    "turbine_manufacturer": "Siemens Gamesa Renewable Energy",
+    "turbine_model": "SG 3.6-145",
+    "num_turbines": 28,
+    "individual_turbine_capacity_kw": 3600.0,
+    "rotor_diameter_m": 145.0,
+    "swept_area_m2": 16513.0,
+    "hub_height_m": 133.5,
+    "aerodynamic_cut_in_ms": 3.0,
+    "aerodynamic_rated_ms": 11.5,
+    "aerodynamic_cut_out_ms": 25.0,
+    "power_curve_characteristics": "Cubic rise (P ~ v^2.8) between 3.0 and 11.5 m/s, flat plateau at 100.8 MW between 11.5 and 25.0 m/s"
+  },
+  "regulatory_framework": {
+    "authority": "Maharashtra Electricity Regulatory Commission (MERC)",
+    "regulation_name": "MERC (Forecasting, Scheduling and Deviation Settlement for Solar and Wind Generation) Regulations",
+    "state": "Maharashtra",
+    "ppa_rate_inr_per_kwh": 3.275,
+    "tolerance_band_percentage": 10.0,
+    "tolerance_band_mw": 10.08,
+    "two_sided_mandate": true,
+    "mechanics": {
+      "safe_corridor": "[Actual_MW - 10.08 MW, Actual_MW + 10.08 MW]",
+      "over_forecast_rule": "If Schedule > Actual + 10.08 MW, generator pays DSM penalty on excess deviation (Schedule - Actual - 10.08 MW)",
+      "under_forecast_rule": "If Schedule < Actual - 10.08 MW, generator pays DSM penalty on shortfall deviation (Actual - Schedule - 10.08 MW)",
+      "symmetric_penalty": "Both over-predicting and under-predicting beyond 10.08 MW trigger financial penalties.",
+      "calculation_formula": "Penalty (INR) = Deviation_MW * 1000 kW/MW * 0.25 hours * Rs 3.275/kWh * Slab_Multiplier",
+      "slabs": [
+        {
+          "deviation_percentage": "<= 10% (<= 10.08 MW)",
+          "deviation_mw_range": "0.00 to 10.08 MW",
+          "penalty_multiplier": 0.0,
+          "penalty_rate_inr_kwh": 0.0,
+          "classification": "Zero Penalty Corridor"
+        },
+        {
+          "deviation_percentage": "10% to 15% (10.08 to 15.12 MW)",
+          "deviation_mw_range": "10.08 to 15.12 MW",
+          "penalty_multiplier": 0.10,
+          "penalty_rate_inr_kwh": 0.3275,
+          "classification": "Slab 1"
+        },
+        {
+          "deviation_percentage": "15% to 25% (15.12 to 25.20 MW)",
+          "deviation_mw_range": "15.12 to 25.20 MW",
+          "penalty_multiplier": 0.20,
+          "penalty_rate_inr_kwh": 0.6550,
+          "classification": "Slab 2"
+        },
+        {
+          "deviation_percentage": "> 25% (> 25.20 MW)",
+          "deviation_mw_range": "> 25.20 MW",
+          "penalty_multiplier": 0.30,
+          "penalty_rate_inr_kwh": 0.9825,
+          "classification": "Slab 3"
+        }
+      ]
+    },
+    "scheduler_directive": "Maintain schedule strictly within Actual ± 10.08 MW. Never over-cut forecast to create shortfall penalty; never inflate forecast to create excess penalty."
+  },
+  "empirical_diurnal_regimes": {
+    "regime_1_nocturnal_low_level_jet": {
+      "time_window_ist": "20:00 to 05:30",
+      "meteorological_driver": "Deccan Plateau nocturnal boundary layer stabilization and Low-Level Jet (LLJ)",
+      "generation_range_mw": "50.0 to 95.0 MW (peaking up to 94.95 MW)",
+      "generation_behavior": "Strong, continuous, steady nocturnal generation. Night is prime power generation period.",
+      "scheduling_rule": "NEVER set night blocks to 0.0 MW. Keep schedule anchored to 55-90 MW based on NWP hub-height winds."
+    },
+    "regime_2_morning_breakdown": {
+      "time_window_ist": "05:30 to 08:30",
+      "meteorological_driver": "Solar sunrise and initial boundary layer convective mixing eroding the nocturnal inversion",
+      "generation_range_mw": "Steep decay from ~70 MW down to ~15 MW",
+      "generation_behavior": "Rapid downward ramp as surface warming decouples the nocturnal jet.",
+      "scheduling_rule": "Track downward ramp step-by-step. Do not lag the decay to prevent severe over-forecasting penalties."
+    },
+    "regime_3_daytime_thermal_lull": {
+      "time_window_ist": "08:30 to 18:15",
+      "meteorological_driver": "Intense solar heating, deep turbulent boundary layer friction dissipating wind velocity",
+      "generation_range_mw": "0.5 to 7.0 MW (with calm periods near 0 MW and auxiliary power draw -100 to -350 kW)",
+      "generation_behavior": "Low generation floor throughout daylight hours.",
+      "scheduling_rule": "Keep schedule tight between 1.0 and 5.0 MW during midday calm. Never predict phantom daytime wind surges unless confirmed by multiple NWPs."
+    },
+    "regime_4_evening_transition_ramp": {
+      "time_window_ist": "18:15 to 19:45",
+      "meteorological_driver": "Ground radiative cooling, thermal boundary layer collapse, and sudden onset of nocturnal LLJ",
+      "generation_range_mw": "Violent upward surge jumping from ~4.0 MW to >65.0 MW within 30 to 45 minutes",
+      "generation_behavior": "Steepest ramp of the 24-hour cycle.",
+      "scheduling_rule": "CRITICAL RISK WINDOW. Timing error of even 1-2 blocks (15-30 min) incurs massive DSM penalties (either >10 MW excess or >10 MW shortfall). Monitor 17:30-18:00 SCADA telemetry to detect exact ramp initiation."
+    }
+  },
+  "operational_rules": [
+    "Rule 1: Maharashtra MERC 10% (10.08 MW) Two-Sided Band Mandate. Zero penalty corridor is [Actual - 10.08 MW, Actual + 10.08 MW]. Avoid both excess (>+10.08 MW) and shortfall (<-10.08 MW).",
+    "Rule 2: 24-Hour Continuous Operation. Wind produces power day and night. Nighttime is peak production (50-95 MW). Solar zeroing rules strictly forbidden.",
+    "Rule 3: Vertical Wind Shear Scaling. Hub height 133.5m is significantly windier than 10m surface or 100m NWP outputs. Scale winds using Hellmann power-law alpha = 0.143.",
+    "Rule 4: Evening Ramp Timing. Anticipate the 18:15-19:30 surge. Anchor revisions to SCADA mast anemometer trends.",
+    "Rule 5: Auxiliary Consumption Awareness. Dead calm conditions may register negative generation (-0.1 to -0.35 MW) due to turbine auxiliary consumption and transformer excitation."
+  ]
+}

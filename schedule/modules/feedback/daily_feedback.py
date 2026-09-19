@@ -170,6 +170,39 @@ PLANT_ACTUAL_METER_COLUMNS = {
             "Active Power (kW)",
         ),
     },
+    "JEWLI": {
+        "timestamp": ("Timestamp", "TimeStamp", "timestamp", "datetime", "DateTime", "time"),
+        "power": (
+            "Total Active Power_Jewli",
+            "Active Power (MW)",
+            "Active Power (kW)",
+            "Active Power-Avg MFM-OUT (KW)",
+            "metered_mw",
+            "MW",
+        ),
+    },
+    "CHANDAWASA": {
+        "timestamp": ("Timestamp", "TimeStamp", "timestamp", "datetime", "DateTime", "block_end", "block_start"),
+        "power": (
+            "Active Power (kW)",
+            "Active Power (MW)",
+            "Active Power-Avg MFM-OUT (KW)",
+            "Total Active Power",
+            "metered_mw",
+            "MW",
+        ),
+    },
+    "CHANDWASA": {
+        "timestamp": ("Timestamp", "TimeStamp", "timestamp", "datetime", "DateTime", "block_end", "block_start"),
+        "power": (
+            "Active Power (kW)",
+            "Active Power (MW)",
+            "Active Power-Avg MFM-OUT (KW)",
+            "Total Active Power",
+            "metered_mw",
+            "MW",
+        ),
+    },
 }
 
 
@@ -239,12 +272,12 @@ def _load_actual_readings(actual_csv_path: str) -> dict:
             tuple(dict.fromkeys((POWER_COLUMN_MW, *power_candidates))),
         )
         if timestamp_column is None or power_column is None:
-            raise SystemExit(
-                f"Expected meter columns for plant {plant or 'UNKNOWN'} were not found. "
+            print(
+                f"  [WARN] Expected meter columns for plant {plant or 'UNKNOWN'} were not found. "
                 f"Timestamp candidates: {timestamp_candidates}; power candidates: {power_candidates}. "
-                f"Available columns: {reader.fieldnames}\n"
-                f"Update PLANT_ACTUAL_METER_COLUMNS at the top of this script to match the plant export."
+                f"Available columns: {reader.fieldnames}. Skipping actual readings load."
             )
+            return {}
         for row in reader:
             raw_ts = (row.get(timestamp_column) or "").strip()
             normalized = _normalize_timestamp(raw_ts)
@@ -966,26 +999,39 @@ def _normalize_timestamp(raw_ts: str) -> str:
     returns it re-formatted as "%Y-%m-%d %H:%M:%S" (the format the rest of
     the pipeline expects) -- or None if raw_ts matches none of them."""
     raw_ts = (raw_ts or "").strip()
-    if "T" in raw_ts and "." in raw_ts:
+    if not raw_ts:
+        return None
+
+    clean_ts = raw_ts
+    if clean_ts.endswith("Z") or clean_ts.endswith("z"):
+        clean_ts = clean_ts[:-1]
+    # Strip ISO-8601 timezone offsets like +00:00 or +05:30
+    match = re.match(r"^(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(?::\d{2})?(?:\.\d+)?)(?:[+-]\d{2}:?\d{2})?$", clean_ts)
+    if match:
+        clean_ts = match.group(1)
+
+    if "T" in clean_ts and "." in clean_ts:
         # e.g. 2026-09-04T00:00:02.000 -> 2026-09-04 00:00:02
         try:
-            head, dot, frac = raw_ts.partition(".")
-            clean_ts = head.replace("T", " ")
-            return datetime.datetime.strptime(clean_ts, "%Y-%m-%d %H:%M:%S").strftime("%Y-%m-%d %H:%M:%S")
+            head, dot, frac = clean_ts.partition(".")
+            clean_space = head.replace("T", " ")
+            return datetime.datetime.strptime(clean_space, "%Y-%m-%d %H:%M:%S").strftime("%Y-%m-%d %H:%M:%S")
         except Exception:
             pass
-    elif "T" in raw_ts:
-        raw_ts_space = raw_ts.replace("T", " ")
+    elif "T" in clean_ts:
+        clean_space = clean_ts.replace("T", " ")
         for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
             try:
-                return datetime.datetime.strptime(raw_ts_space, fmt).strftime("%Y-%m-%d %H:%M:%S")
+                return datetime.datetime.strptime(clean_space, fmt).strftime("%Y-%m-%d %H:%M:%S")
             except ValueError:
                 pass
-    for fmt in _TIMESTAMP_FORMATS:
-        try:
-            return datetime.datetime.strptime(raw_ts, fmt).strftime("%Y-%m-%d %H:%M:%S")
-        except ValueError:
-            continue
+
+    for ts_to_try in (clean_ts, raw_ts):
+        for fmt in _TIMESTAMP_FORMATS:
+            try:
+                return datetime.datetime.strptime(ts_to_try, fmt).strftime("%Y-%m-%d %H:%M:%S")
+            except ValueError:
+                continue
     return None
 
 
@@ -1760,6 +1806,21 @@ def _build_llm_context_summary(context: dict) -> list[str]:
         lines.append(f"Regime summary: {recent['regime_summary']}.")
     if recent.get("correction_hint"):
         lines.append(f"Correction hint: {recent['correction_hint']}")
+
+    reg = context.get("regulatory_framework")
+    if isinstance(reg, dict):
+        reg_name = reg.get("regulation_name", reg.get("authority", "Grid Regulation"))
+        tol_mw = reg.get("tolerance_band_mw")
+        tol_pct = reg.get("tolerance_band_pct")
+        if tol_mw is not None:
+            lines.append(f"Regulatory mandate ({reg_name}): Strict ±{tol_pct or 10.0:.0f}% (±{tol_mw:.2f} MW) two-sided band. Zero penalty corridor: [Actual - {tol_mw:.2f} MW, Actual + {tol_mw:.2f} MW].")
+        for r in reg.get("rules", [])[:3]:
+            lines.append(f"- {r}")
+
+    dossier = context.get("behavioral_dossier")
+    if isinstance(dossier, dict):
+        for k, v in dossier.items():
+            lines.append(f"Behavioral regime ({k}): {v}")
 
     for entry in entries[-config.CONTEXT_WINDOW_DAYS:]:
         lines.append(

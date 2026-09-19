@@ -36,6 +36,7 @@ SITE_PACKAGES = {
     "GSNP": "bhupalpally_forecast_scheduler",
     "CHANDAWASA": "bhupalpally_forecast_scheduler",
     "CHANDWASA": "bhupalpally_forecast_scheduler",
+    "JEWLI": "bhupalpally_forecast_scheduler",
     "ZTRIC": "ztric_forecast_scheduler",
 }
 
@@ -58,6 +59,7 @@ SERVICE_MODULES = {
     "GSNP": "bhupalpally_forecast_scheduler.scheduler_service",
     "CHANDAWASA": "bhupalpally_forecast_scheduler.scheduler_service",
     "CHANDWASA": "bhupalpally_forecast_scheduler.scheduler_service",
+    "JEWLI": "bhupalpally_forecast_scheduler.scheduler_service",
     "ZTRIC": "ztric_forecast_scheduler.scheduler_service",
 }
 
@@ -119,6 +121,10 @@ def lambda_handler(event, context):
 
     import config
     config.load_plant_profile(site_id)
+
+    if site_id == "JEWLI":
+        os.environ.setdefault("USE_LLM_FOR_WIND", "false")
+        os.environ.setdefault("USE_LLM_JEWLI", "false")
 
     package = importlib.import_module(package_name)
     settings = importlib.import_module(f"{package_name}.settings")

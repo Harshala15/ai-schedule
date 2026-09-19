@@ -71,6 +71,7 @@ schedule/meter_data/
 schedule/meter_history/
 schedule/state/
 schedule/generated/
+generated/
 schedule/feedback_analysis/
 schedule/pvlib_summary/
 schedule/plant_performance/

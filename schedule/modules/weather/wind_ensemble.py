@@ -27,6 +27,10 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 import numpy as np
+try:
+    import pandas as pd
+except ImportError:
+    pd = None
 
 import config
 
@@ -56,6 +60,61 @@ class WindTurbineProfile:
     park_derate_factor: float = 0.89  # wake loss (0.94) * electrical (0.98) * availability (0.97)
     standard_air_density: float = 1.225  # kg/m³ at sea level / 15°C
     empirical_multipliers: list[float] | None = None
+
+    @classmethod
+    def from_plant_profile(cls, profile: dict[str, Any] | str | None = None) -> WindTurbineProfile:
+        """Dynamically instantiate WindTurbineProfile from plant profile JSON or active configuration."""
+        profile_dict = {}
+        if isinstance(profile, str):
+            try:
+                import config
+                profile_dict = config.load_plant_profile(profile)
+            except Exception:
+                pass
+            if not profile_dict:
+                try:
+                    prof_path = Path(__file__).parent.parent.parent / "plant_profiles" / f"{profile.upper()}.json"
+                    if prof_path.exists():
+                        profile_dict = json.loads(prof_path.read_text(encoding="utf-8"))
+                except Exception:
+                    pass
+        elif isinstance(profile, dict):
+            profile_dict = profile
+
+        if not profile_dict:
+            profile_dict = getattr(config, "PLANT_PROFILE", {}) or {}
+
+        plant_name = profile_dict.get("plant_name") or getattr(config, "PLANT_NAME", "CHANDAWASA")
+        cap = float(
+            profile_dict.get("capacity_mw")
+            or profile_dict.get("ac_capacity_mw")
+            or getattr(config, "PLANT_CAPACITY_MW", 10.0)
+        )
+        hub_h = float(profile_dict.get("hub_height_m") or 80.0)
+        mfr = profile_dict.get("turbine_manufacturer") or ("Siemens Gamesa" if "JEWLI" in plant_name.upper() else "Gamesa")
+        model = profile_dict.get("turbine_model") or ("SG 3.6-145" if "JEWLI" in plant_name.upper() else "G114/2000")
+        rotor_d = float(profile_dict.get("rotor_diameter_m") or (145.0 if "JEWLI" in plant_name.upper() else 114.0))
+        n_turb = int(profile_dict.get("num_turbines") or max(1, int(round(cap / 3.6 if "JEWLI" in plant_name.upper() else cap / 2.0))))
+        v_in = float(profile_dict.get("v_cut_in") or 3.0)
+        v_rat = float(profile_dict.get("v_rated") or (11.5 if "JEWLI" in plant_name.upper() else 10.5))
+        v_out = float(profile_dict.get("v_cut_out") or 25.0)
+        ramp_exp = float(profile_dict.get("ramp_exponent") or 2.8)
+        derate = float(profile_dict.get("park_derate_factor") or (0.90 if "JEWLI" in plant_name.upper() else 0.89))
+
+        return cls(
+            plant_name=plant_name,
+            rated_capacity_mw=cap,
+            turbine_manufacturer=mfr,
+            turbine_model=model,
+            rotor_diameter_m=rotor_d,
+            num_turbines=n_turb,
+            hub_height_m=hub_h,
+            v_cut_in=v_in,
+            v_rated=v_rat,
+            v_cut_out=v_out,
+            ramp_exponent=ramp_exp,
+            park_derate_factor=derate,
+        )
 
 
 def load_site_calibrated_multipliers(plant_name: str) -> list[float] | None:
@@ -91,6 +150,33 @@ def compute_air_density(surface_pressure_hpa: float, temperature_c: float) -> fl
     return round(p_pa / (287.05 * t_k), 4)
 
 
+# Empirical gross power curve table for Siemens Gamesa SG 3.6-145 (145m rotor, 133.5m hub)
+# Power fractions relative to rated capacity before park derate factor
+SG_3_6_145_GROSS_CURVE = [
+    (0.0, 0.000),
+    (2.5, 0.000),
+    (3.0, 0.004),
+    (3.5, 0.024),
+    (4.0, 0.075),
+    (4.5, 0.125),
+    (5.0, 0.175),
+    (5.5, 0.222),
+    (6.0, 0.295),
+    (6.5, 0.365),
+    (7.0, 0.455),
+    (7.5, 0.550),
+    (8.0, 0.660),
+    (8.5, 0.770),
+    (9.0, 0.880),
+    (9.5, 0.960),
+    (10.0, 1.000),
+    (11.5, 1.000),
+    (25.0, 1.000),
+]
+_SG_V_VALS = [p[0] for p in SG_3_6_145_GROSS_CURVE]
+_SG_F_VALS = [p[1] for p in SG_3_6_145_GROSS_CURVE]
+
+
 def turbine_power_curve(
     v_hub_ms: float,
     air_density: float = 1.225,
@@ -108,7 +194,15 @@ def turbine_power_curve(
 
     if v_eff < prof.v_cut_in or v_eff >= prof.v_cut_out:
         return 0.0
-    elif prof.v_cut_in <= v_eff < prof.v_rated:
+
+    # Specific empirical curve for Siemens Gamesa SG 3.6-145 (e.g. JEWLI)
+    is_sg145 = "145" in str(prof.turbine_model) or "JEWLI" in str(prof.plant_name).upper()
+    if is_sg145:
+        frac = float(np.interp(v_eff, _SG_V_VALS, _SG_F_VALS))
+        gross_mw = prof.rated_capacity_mw * frac
+        return min(prof.rated_capacity_mw, max(0.0, gross_mw))
+
+    if prof.v_cut_in <= v_eff < prof.v_rated:
         norm_v = (v_eff - prof.v_cut_in) / max(0.1, (prof.v_rated - prof.v_cut_in))
         gross_mw = prof.rated_capacity_mw * (norm_v ** prof.ramp_exponent)
         return min(prof.rated_capacity_mw, max(0.0, gross_mw))
@@ -159,8 +253,9 @@ def fetch_wind_ensemble_weather(
             "temperature_2m",
             "surface_pressure",
         ],
-        "models": "ecmwf_ifs025_ensemble,icon_seamless,gfs_seamless",
+        "models": "ecmwf_ifs025_ensemble,icon_seamless,gfs_seamless,gem_seamless,bom_access_global_ensemble,cma_grapes_global,jma_seamless",
         "timezone": timezone,
+        "wind_speed_unit": "ms",
     }
 
     if DEFAULT_API_KEY:
@@ -190,15 +285,226 @@ def fetch_wind_ensemble_weather(
             return {}
 
 
+WIND_SLOTS = {
+    "nocturnal_jet": {"description": "20:00 to 05:30", "blocks": list(range(81, 97)) + list(range(1, 23))},
+    "morning_decay": {"description": "05:30 to 08:30", "blocks": list(range(23, 35))},
+    "daytime_lull": {"description": "08:30 to 18:15", "blocks": list(range(35, 74))},
+    "evening_ramp": {"description": "18:15 to 20:00", "blocks": list(range(74, 81))},
+}
+
+DEFAULT_SLOT_CHAMPIONS = {
+    "nocturnal_jet": [
+        "member18_ecmwf_ifs025_ensemble", "member21_ecmwf_ifs025_ensemble", "member28_ecmwf_ifs025_ensemble",
+        "member13_ecmwf_ifs025_ensemble", "member40_ecmwf_ifs025_ensemble"
+    ],
+    "morning_decay": [
+        "member09_ecmwf_ifs025_ensemble", "member50_ecmwf_ifs025_ensemble", "member36_ecmwf_ifs025_ensemble",
+        "member18_ecmwf_ifs025_ensemble", "member27_ecmwf_ifs025_ensemble"
+    ],
+    "daytime_lull": [
+        "member03_ncep_gefs_seamless", "member10_ncep_gefs_seamless", "member28_ncep_gefs_seamless",
+        "member05_ncep_gefs_seamless", "member02_ncep_gefs_seamless"
+    ],
+    "evening_ramp": [
+        "member24_ecmwf_ifs025_ensemble", "member43_ecmwf_ifs025_ensemble", "member07_ncep_gefs_seamless",
+        "member25_ecmwf_ifs025_ensemble", "member46_ecmwf_ifs025_ensemble"
+    ],
+}
+
+
+def get_wind_slot_for_block(b: int) -> str:
+    for s_name, s_info in WIND_SLOTS.items():
+        if b in s_info["blocks"]:
+            return s_name
+    return "nocturnal_jet"
+
+
+def extract_scada_wind_telemetry(scada_source: Any) -> tuple[dict[int, float], dict[int, float]]:
+    """Extract actual wind speed (m/s) and active power (MW) per block from SCADA source."""
+    ws_by_block: dict[int, float] = {}
+    mw_by_block: dict[int, float] = {}
+
+    df = None
+    if isinstance(scada_source, (str, Path)):
+        p = Path(scada_source)
+        if p.exists():
+            try:
+                if pd is not None:
+                    df = pd.read_csv(p)
+            except Exception:
+                pass
+    elif pd is not None and isinstance(scada_source, pd.DataFrame):
+        df = scada_source
+    elif isinstance(scada_source, list):
+        if pd is not None:
+            try:
+                df = pd.DataFrame(scada_source)
+            except Exception:
+                pass
+        else:
+            for idx, item in enumerate(scada_source):
+                b = item.get("block", idx + 1)
+                ws = item.get("wind_speed_hub_m_s", item.get("wind_speed", item.get("Wind Speed_Jewli")))
+                mw = item.get("actual_mw", item.get("active_power_mw", item.get("power_mw")))
+                if ws is not None:
+                    ws_by_block[b] = float(ws)
+                if mw is not None:
+                    mw_by_block[b] = float(mw)
+            return ws_by_block, mw_by_block
+
+    if df is None or len(df) == 0:
+        return ws_by_block, mw_by_block
+
+    # Check for turbine nacelle columns first (highest fidelity hub height)
+    turbine_cols = [c for c in df.columns if c.startswith("Wind Speed_TPJ")]
+    has_turbines = len(turbine_cols) >= 5
+
+    # Check for single mast / plant wind speed
+    mast_col = None
+    for c in ["Wind Speed_Jewli", "wind_speed", "WindSpeed", "WS_Jewli", "ws_actual"]:
+        if c in df.columns:
+            mast_col = c
+            break
+
+    # Check for power column
+    p_col = None
+    for c in ["Total Active Power_Jewli", "active_power_mw", "active_power", "Power_Jewli", "power_mw", "Jewli  - Meter data (live) (kW)"]:
+        if c in df.columns:
+            p_col = c
+            break
+
+    # Check for timestamp column to accurately map rows to 15-min blocks
+    ts_col = None
+    for c in ["Timestamp", "TimeStamp", "timestamp", "DateTime", "TIME", "Time", "Datetime"]:
+        if c in df.columns:
+            ts_col = c
+            break
+
+    block_mw_lists: dict[int, list[float]] = {}
+    block_ws_lists: dict[int, list[float]] = {}
+
+    for idx, row in df.iterrows():
+        b = None
+        if ts_col and pd.notnull(row[ts_col]):
+            norm_ts = str(row[ts_col]).strip()
+            if norm_ts.endswith("Z") or norm_ts.endswith("z"):
+                norm_ts = norm_ts[:-1]
+            match_ts = re.match(r"^(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(?::\d{2})?(?:\.\d+)?)(?:[+-]\d{2}:?\d{2})?$", norm_ts)
+            if match_ts:
+                norm_ts = match_ts.group(1).replace("T", " ")
+            try:
+                row_dt = pd.to_datetime(norm_ts)
+                b = ((row_dt.hour * 60 + row_dt.minute) // 15) + 1
+            except Exception:
+                b = idx + 1
+        else:
+            b = idx + 1
+
+        if b is None or b < 1 or b > 96:
+            continue
+
+        # Power
+        if p_col and pd.notnull(row[p_col]):
+            val = float(row[p_col])
+            if val > 500.0:  # If in kW, convert to MW
+                val /= 1000.0
+            block_mw_lists.setdefault(b, []).append(val)
+
+        # Wind Speed
+        if has_turbines:
+            vals = [float(row[c]) for c in turbine_cols if pd.notnull(row[c])]
+            if vals:
+                if len(vals) > 6:
+                    sorted_v = sorted(vals)
+                    vals = sorted_v[2:-2]  # Trimmed mean
+                block_ws_lists.setdefault(b, []).append(float(np.mean(vals)))
+        elif mast_col and pd.notnull(row[mast_col]):
+            raw_ws = float(row[mast_col])
+            block_ws_lists.setdefault(b, []).append(raw_ws * 2.108)  # Empirical shear factor for ~10m mast -> 133.5m hub
+
+    for b, vals in block_mw_lists.items():
+        if vals:
+            mw_by_block[b] = float(np.mean(vals))
+    for b, vals in block_ws_lists.items():
+        if vals:
+            ws_by_block[b] = float(np.mean(vals))
+
+    return ws_by_block, mw_by_block
+
+
+def apply_dynamic_bias_and_telemetry_blending(
+    model_speeds_96: np.ndarray,
+    scada_speeds: dict[int, float],
+    current_block: int,
+    lookback_blocks: int = 8,
+    decay_tau: float = 8.0,
+) -> np.ndarray:
+    """
+    Apply real-time rolling bias correction and short-term SCADA telemetry momentum blending.
+    """
+    calibrated_speeds = model_speeds_96.copy()
+    if not scada_speeds or current_block <= 0:
+        return calibrated_speeds
+
+    # 1. Populate historical blocks with actual SCADA telemetry
+    for b in range(1, current_block + 1):
+        if b in scada_speeds:
+            calibrated_speeds[b - 1] = scada_speeds[b]
+
+    # 2. Calculate recency-weighted rolling bias over lookback window
+    eval_start = max(1, current_block - lookback_blocks + 1)
+    biases = []
+    weights = []
+    for step_i, b in enumerate(range(eval_start, current_block + 1)):
+        if b in scada_speeds:
+            mod_v = model_speeds_96[b - 1]
+            act_v = scada_speeds[b]
+            biases.append(mod_v - act_v)
+            weights.append(math.exp(step_i * 0.4))
+
+    if biases and weights:
+        w_arr = np.array(weights) / sum(weights)
+        live_bias = float(np.sum(np.array(biases) * w_arr))
+    else:
+        live_bias = 0.0
+
+    # Latest observed SCADA speed for momentum anchoring
+    latest_scada_v = scada_speeds.get(current_block, calibrated_speeds[current_block - 1])
+
+    # 3. Apply exponentially decaying bias correction to future blocks
+    total_b = len(calibrated_speeds)
+    for b in range(current_block + 1, total_b + 1):
+        horizon_step = b - current_block
+        horizon_decay = math.exp(-horizon_step / decay_tau)
+        calibrated_speeds[b - 1] = max(0.0, model_speeds_96[b - 1] - (live_bias * horizon_decay))
+
+    # 4. Apply short-term SCADA momentum blending to immediate upcoming blocks
+    blend_weights = [0.70, 0.45, 0.20]
+    for step_idx, w_scada in enumerate(blend_weights):
+        target_b = current_block + step_idx + 1
+        if target_b <= total_b:
+            w_model = 1.0 - w_scada
+            blended_v = (w_scada * latest_scada_v) + (w_model * calibrated_speeds[target_b - 1])
+            calibrated_speeds[target_b - 1] = max(0.0, round(blended_v, 2))
+
+    return np.round(calibrated_speeds, 2)
+
+
 def calculate_wind_schedule_96block(
     latitude: float,
     longitude: float,
     target_date_str: str,
     profile: WindTurbineProfile | None = None,
+    scada_actuals: Any = None,
+    current_block: int | None = None,
+    enable_slot_selection: bool = True,
+    enable_bias_correction: bool = True,
+    enable_telemetry_blending: bool = True,
 ) -> dict[str, Any]:
     """
     Calculate full 96-block 24-hour wind schedule using Jensen's-Inequality-safe
-    multi-member power curve ensembling.
+    multi-member power curve ensembling, slot-based model selection, rolling bias correction,
+    and SCADA telemetry momentum blending.
     """
     prof = profile or WindTurbineProfile()
     weather_payload = fetch_wind_ensemble_weather(
@@ -209,7 +515,6 @@ def calculate_wind_schedule_96block(
     )
 
     hourly = weather_payload.get("hourly", {})
-    times = hourly.get("time", [])
 
     # Find hub-height wind speed columns
     h_prefix = "wind_speed_100m" if prof.hub_height_m >= 90 else "wind_speed_80m"
@@ -221,53 +526,97 @@ def calculate_wind_schedule_96block(
     temps = [float(v) if v is not None else 25.0 for v in hourly.get("temperature_2m", [25.0] * 24)]
     pressures = [float(v) if v is not None else 960.0 for v in hourly.get("surface_pressure", [960.0] * 24)]
 
-    # Compute hourly air densities
     hourly_densities = [
         compute_air_density(pressures[i] if i < len(pressures) else 960.0, temps[i] if i < len(temps) else 25.0)
         for i in range(24)
     ]
 
-    # For each ensemble member, compute 24-hour power output curve
-    member_hourly_mw: list[list[float]] = []
-    member_hourly_speeds: list[list[float]] = []
+    h_indices = np.arange(0, 24, 1.0)
+    b_indices = np.arange(0, 24, 0.25)
+    b_densities = np.interp(b_indices, h_indices, hourly_densities)
 
+    # Wind shear power law adjustment for tall towers (e.g. 133.5m at Jewli)
+    shear_factor = (prof.hub_height_m / 100.0) ** 0.143 if prof.hub_height_m > 100.0 else 1.0
+
+    # Extract 96-block interpolated speeds for each member
+    member_96_speeds: dict[str, np.ndarray] = {}
+    member_hourly_mw: list[list[float]] = []
+
+    hourly_units = weather_payload.get("hourly_units", {})
     for col in wind_cols:
         vals = hourly.get(col, [])
         if not vals:
             continue
-        speeds = [float(v) if v is not None else 0.0 for v in vals[:24]]
+        unit = str(hourly_units.get(col) or hourly_units.get("wind_speed_100m") or hourly_units.get("wind_speed_80m") or "").lower()
+        is_kmh = "km/h" in unit or ("m/s" not in unit and "ms" not in unit and np.mean([v for v in vals if v is not None]) > 14.0)
+        conv = (1.0 / 3.6) if is_kmh else 1.0
+        speeds = [round(float(v) * conv * shear_factor, 2) if v is not None else 0.0 for v in vals[:24]]
         if len(speeds) < 24:
             speeds += [speeds[-1] if speeds else 4.0] * (24 - len(speeds))
+
+        # 96-block interpolation
+        b_speeds_member = np.interp(b_indices, h_indices, speeds)
+        member_name = col.replace("wind_speed_100m_", "").replace("wind_speed_80m_", "")
+        member_96_speeds[member_name] = b_speeds_member
 
         powers = [
             turbine_power_curve(speeds[i], hourly_densities[i], prof)
             for i in range(24)
         ]
-        member_hourly_speeds.append(speeds)
         member_hourly_mw.append(powers)
 
-    if not member_hourly_mw:
-        # Physical synthetic diurnal fallback if API failed completely
-        hourly_speeds = [4.5 + 2.5 * math.sin(2.0 * math.pi * (h + 3) / 24.0) for h in range(24)]
-        hourly_mw = [turbine_power_curve(v, 1.18, prof) for v in hourly_speeds]
-        hourly_densities = [1.18] * 24
+    # Step A: Synthesize 96-block base wind speed
+    if not member_96_speeds:
+        # Fallback synthetic diurnal profile
+        b_speeds_base = np.array([4.5 + 2.5 * math.sin(2.0 * math.pi * (b + 12) / 96.0) for b in range(96)])
+    elif enable_slot_selection and "JEWLI" in prof.plant_name.upper():
+        # Apply slot-based champion model selection
+        b_speeds_base_list = []
+        for b in range(1, 97):
+            slot = get_wind_slot_for_block(b)
+            champions = DEFAULT_SLOT_CHAMPIONS.get(slot, list(member_96_speeds.keys())[:5])
+            slot_vals = [member_96_speeds[k][b - 1] for k in champions if k in member_96_speeds]
+            if not slot_vals:
+                slot_vals = [member_96_speeds[k][b - 1] for k in list(member_96_speeds.keys())[:5]]
+            b_speeds_base_list.append(float(np.mean(slot_vals)))
+        b_speeds_base = np.array(b_speeds_base_list)
     else:
-        # Mean across members of POWER (Jensen's inequality protection)
-        hourly_mw = np.mean(member_hourly_mw, axis=0).tolist()
-        hourly_speeds = np.mean(member_hourly_speeds, axis=0).tolist()
+        # Full ensemble average
+        b_speeds_base = np.mean(list(member_96_speeds.values()), axis=0)
 
-    # Interpolate 24 hourly points to 96 15-minute blocks
-    h_indices = np.arange(0, 24, 1.0)
-    b_indices = np.arange(0, 24, 0.25)
+    # Step B: Parse SCADA actuals and apply Dynamic Rolling Bias + Telemetry Blending
+    ws_scada: dict[int, float] = {}
+    mw_scada: dict[int, float] = {}
+    if scada_actuals is not None:
+        ws_scada, mw_scada = extract_scada_wind_telemetry(scada_actuals)
 
-    b_speeds = np.interp(b_indices, h_indices, hourly_speeds)
-    b_gross_mw = np.interp(b_indices, h_indices, hourly_mw)
-    b_densities = np.interp(b_indices, h_indices, hourly_densities)
+    act_block = current_block
+    if act_block is None and ws_scada:
+        act_block = max(ws_scada.keys())
+    elif act_block is None and mw_scada:
+        act_block = max(mw_scada.keys())
+
+    b_speeds_final = b_speeds_base.copy()
+    if ws_scada and act_block and act_block > 0:
+        if enable_bias_correction or enable_telemetry_blending:
+            b_speeds_final = apply_dynamic_bias_and_telemetry_blending(
+                model_speeds_96=b_speeds_base,
+                scada_speeds=ws_scada,
+                current_block=min(act_block, 96),
+                lookback_blocks=8,
+                decay_tau=8.0,
+            )
+
+    # Step C: Convert final calibrated wind speed through turbine power curve
+    b_gross_mw = np.array([
+        turbine_power_curve(b_speeds_final[b], b_densities[b], prof)
+        for b in range(96)
+    ])
 
     # Apply park derate factor (wake, electrical, availability)
     b_net_mw = np.clip(b_gross_mw * prof.park_derate_factor, 0.0, prof.rated_capacity_mw)
 
-    # Apply site-specific empirical calibration (diurnal transfer function learned from Enercast)
+    # Apply site-specific empirical calibration if defined
     site_mults = prof.empirical_multipliers or load_site_calibrated_multipliers(prof.plant_name)
     if site_mults and len(site_mults) == 96:
         b_net_mw = np.array([round(b_net_mw[b] * site_mults[b], 2) for b in range(96)])
@@ -276,30 +625,37 @@ def calculate_wind_schedule_96block(
 
     blocks_data = []
     for b in range(96):
-        end_min = (b + 1) * 15
+        b_num = b + 1
+        end_min = b_num * 15
         start_min = end_min - 15
         s_hr, s_min = divmod(start_min, 60)
         e_hr, e_min = divmod(end_min, 60)
         t_str = "00:00" if e_hr == 24 else f"{e_hr:02d}:{e_min:02d}"
         t_interval = f"{s_hr:02d}:{s_min:02d} - {t_str if t_str != '00:00' else '24:00'}"
 
-        v_hub = round(float(b_speeds[b]), 2)
+        v_hub = round(float(b_speeds_final[b]), 2)
         mw_val = round(float(b_net_mw[b]), 2)
         rho_val = round(float(b_densities[b]), 3)
 
+        # Actual SCADA generation if block has elapsed
+        actual_mw = mw_scada.get(b_num)
+        sched_val = round(actual_mw, 2) if (act_block and b_num <= act_block and actual_mw is not None) else mw_val
+
         blocks_data.append({
-            "block": b + 1,
+            "block": b_num,
             "time": t_str,
             "time_interval": t_interval,
-            "wind_speed_80m": v_hub,
+            "slot": get_wind_slot_for_block(b_num),
             "wind_speed_hub_m_s": v_hub,
             "wind_speed_100m": v_hub,
             "air_density_kg_m3": rho_val,
-            "intellis_gti": v_hub,  # Canonical compatibility: hub wind speed
-            "intellis_mw": mw_val,
-            "schedule_mw": mw_val,
+            "intellis_gti": v_hub,  # Canonical compatibility
+            "intellis_mw": sched_val,
+            "schedule_mw": sched_val,
             "predicted_mw": mw_val,
-            "dev_mw": 0.0,
+            "actual_mw": round(actual_mw, 2) if actual_mw is not None else None,
+            "actual_ws_m_s": round(ws_scada[b_num], 2) if b_num in ws_scada else None,
+            "dev_mw": round(sched_val - (actual_mw if actual_mw is not None else sched_val), 2),
             "dsm_slab": "0% Safe",
             "block_penalty_inr": 0.0,
             "cumulative_penalty_inr": 0.0,
@@ -315,9 +671,15 @@ def calculate_wind_schedule_96block(
         "target_date": target_date_str,
         "total_blocks": 96,
         "capacity_mw": prof.rated_capacity_mw,
-        "total_ensemble_members": len(member_hourly_mw),
+        "total_ensemble_members": len(member_96_speeds) or len(member_hourly_mw),
         "mean_daily_mw": round(float(np.mean(b_net_mw)), 2),
         "peak_mw": round(float(np.max(b_net_mw)), 2),
+        "calibration_applied": {
+            "slot_selection": enable_slot_selection,
+            "bias_correction": bool(ws_scada and act_block and enable_bias_correction),
+            "telemetry_blending": bool(ws_scada and act_block and enable_telemetry_blending),
+            "current_block": act_block,
+        },
         "revision_schedule": {
             "start_time": "06:00",
             "end_time": "21:00",
@@ -326,3 +688,4 @@ def calculate_wind_schedule_96block(
         },
         "blocks": blocks_data,
     }
+

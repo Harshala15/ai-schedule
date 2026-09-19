@@ -1,0 +1,103 @@
+{
+  "schema_version": 2,
+  "plant_profile": {
+    "plant_name": "JEWLI",
+    "plant_type": "WIND",
+    "capacity_mw": 100.8,
+    "ac_capacity_mw": 100.8,
+    "dc_capacity_mw": 100.8,
+    "maximum_feed_in_ac_kw": 100800.0,
+    "latitude": 17.87562,
+    "longitude": 76.36388,
+    "timezone": "Asia/Kolkata",
+    "block_minutes": 15,
+    "forecast_horizon_blocks": 12,
+    "context_window_days": 7,
+    "num_turbines": 28,
+    "turbine_model": "Siemens Gamesa SG 3.6-145",
+    "rotor_diameter_m": 145.0,
+    "hub_height_m": 133.5,
+    "cut_in_wind_speed_ms": 3.0,
+    "rated_wind_speed_ms": 11.5,
+    "cut_out_wind_speed_ms": 25.0,
+    "ppa_rate_inr_per_kwh": 3.275,
+    "penalty_regulation": "Maharashtra (MERC)",
+    "band_percentage": 0.10,
+    "tolerance_band_mw": 10.08,
+    "two_sided_penalty_mandate": true
+  },
+  "regulatory_framework": {
+    "state": "Maharashtra",
+    "authority": "Maharashtra Electricity Regulatory Commission (MERC)",
+    "regulation_name": "MERC Forecasting, Scheduling and Deviation Settlement (F&S) Regulations",
+    "tolerance_band_pct": 10.0,
+    "tolerance_band_mw": 10.08,
+    "two_sided_mandate": true,
+    "ppa_rate_inr_per_kwh": 3.275,
+    "zero_penalty_corridor": "[Actual_MW - 10.08 MW, Actual_MW + 10.08 MW]",
+    "rules": [
+      "Zero Penalty Corridor: When Schedule is within ±10% of Available Capacity (±10.08 MW of Actuals), deviation penalty is exactly ZERO.",
+      "Over-forecasting (Excess): When Schedule > Actual + 10.08 MW, generator pays DSM penalty on excess deviation (Schedule - Actual - 10.08 MW).",
+      "Under-forecasting (Shortfall): When Schedule < Actual - 10.08 MW, generator ALSO pays DSM penalty on shortfall deviation (Actual - Schedule - 10.08 MW).",
+      "Symmetric Enforcement: BOTH over-predicting and under-predicting are penalized under Maharashtra regulations.",
+      "Penalty Formula: Penalty (INR) = Deviation_Beyond_10.08MW * 1000 kW/MW * 0.25 hours * Rs 3.275/kWh * Slab_Multiplier",
+      "Slab 1 (10% to 15% / 10.08 to 15.12 MW error): Multiplier = 10% of PPA rate = Rs 0.3275/kWh",
+      "Slab 2 (15% to 25% / 15.12 to 25.20 MW error): Multiplier = 20% of PPA rate = Rs 0.6550/kWh",
+      "Slab 3 (> 25% / > 25.20 MW error): Multiplier = 30% of PPA rate = Rs 0.9825/kWh"
+    ],
+    "practical_examples": {
+      "example_safe": "Actual = 60.00 MW. Safe Band = [49.92 MW, 70.08 MW]. Schedule = 68.00 MW -> Error = +8.00 MW (<= 10.08 MW) -> Penalty = Rs 0.00.",
+      "example_over_forecast": "Actual = 60.00 MW. Schedule = 75.00 MW -> Error = +15.00 MW -> Deviation beyond 10% = 15.00 - 10.08 = 4.92 MW -> Penalty = 4,920 kW * 0.25 h * Rs 3.275 * 0.10 = Rs 402.83.",
+      "example_under_forecast": "Actual = 60.00 MW. Schedule = 40.00 MW -> Error = -20.00 MW -> Deviation beyond 10% = 20.00 - 10.08 = 9.92 MW -> Penalty = 5.04 MW in Slab 1 (Rs 412.65) + 4.88 MW in Slab 2 (Rs 799.10) = Rs 1,211.75."
+    }
+  },
+  "behavioral_dossier": {
+    "nocturnal_low_level_jet": "20:00 to 05:30 IST: Strong sustained winds produce 50.0 to 95.0 MW. Night is peak production. Never zero out night blocks.",
+    "morning_decoupling": "05:30 to 08:30 IST: Solar heating breaks inversion; generation steep decay from ~70 MW to ~15 MW.",
+    "daytime_thermal_lull": "08:30 to 18:15 IST: Convective boundary layer mixing causes daytime lull with generation 0.5 to 7.0 MW.",
+    "evening_transition_ramp": "18:15 to 19:45 IST: Rapid up-ramp from ~4 MW to >65 MW in 30-45 minutes. Critical penalty risk window."
+  },
+  "recent_summary": {
+    "window_days": 7,
+    "rolling_mae_mw": 5.42,
+    "rolling_rmse_mw": 7.18,
+    "rolling_bias_mw": 0.35,
+    "bias_direction": "balanced",
+    "correction_hint": "Respect Maharashtra MERC strict 10% (10.08 MW) two-sided tolerance band. Target within [Actual - 10.08 MW, Actual + 10.08 MW]."
+  },
+  "llm_context_summary": [
+    "JEWLI: 100.8 MW Wind plant (28x Siemens Gamesa SG 3.6-145, 133.5m hub height) in Dharashiv, Maharashtra.",
+    "MAHARASHTRA MERC 10% TWO-SIDED PENALTY BAND MANDATE: The tolerance band is strictly ±10% (±10.08 MW).",
+    "ZERO-PENALTY SAFE CORRIDOR: Deviations within [Actual - 10.08 MW, Actual + 10.08 MW] incur Rs. 0 penalty.",
+    "BOTH OVER-FORECASTING (>+10.08 MW) AND UNDER-FORECASTING (<-10.08 MW) ARE PENALIZED at PPA tariff Rs. 3.275/kWh.",
+    "DO NOT excessively haircut schedule into under-forecasting penalty; DO NOT inflate into over-forecasting penalty.",
+    "24-HOUR CONTINUOUS GENERATION: Wind produces continuously. Night generation (20:00 - 05:30) is PEAK (50.0 to 95.0 MW) due to Deccan Low-Level Jet.",
+    "DAYTIME THERMAL LULL: 08:30 to 18:15 generation drops to 0.5 to 7.0 MW due to boundary layer solar mixing.",
+    "EVENING RAMP DETECTION: 18:15 to 19:30 exhibits steep ramp from ~4 MW to >65 MW. Align ramp closely to avoid crossing the ±10.08 MW corridor."
+  ],
+  "entries": [
+    {
+      "date": "2026-09-17",
+      "n_matched_blocks": 96,
+      "summary": "2026-09-17: Night LLJ sustained 58-86 MW; daytime thermal lull 2-6 MW; evening ramp initiated at 18:30 jumping to 72 MW by 19:30. Forecast adhered inside ±10.08 MW MERC band for 91% of blocks.",
+      "lessons": [
+        "Evening ramp started 15 min earlier than GFS forecast; anchor to SCADA 18:00 mast velocity.",
+        "Midday lull floor reached 1.2 MW; keep daytime schedule strictly below 6 MW during calm sunny periods."
+      ],
+      "actual_pattern": {
+        "summary": "Peak 86.4 MW at 02:15; minimum 0.8 MW at 14:30; evening ramp +58 MW between 18:30 and 19:45."
+      }
+    },
+    {
+      "date": "2026-09-16",
+      "n_matched_blocks": 96,
+      "summary": "2026-09-16: Night generation averaged 64.2 MW; daytime lull averaged 4.1 MW; evening ramp surged to 68.5 MW at 19:15. All night blocks remained within safe MERC ±10.08 MW corridor.",
+      "lessons": [
+        "Maintained high night generation without haircutting, avoiding shortfall penalty."
+      ],
+      "actual_pattern": {
+        "summary": "Continuous night generation peaking at 89.2 MW; smooth morning breakdown between 06:00 and 08:00."
+      }
+    }
+  ]
+}
