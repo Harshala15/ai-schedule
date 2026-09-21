@@ -1023,7 +1023,8 @@ def interpolate_15min_clearsky_index(
 
     from modules.weather import time_features
 
-    hourly_pts: list[tuple[float, float]] = []
+    hourly_pts: list[tuple[float, dt.datetime, float]] = []
+    tgt_tz = target_15min_datetimes[0].tzinfo if target_15min_datetimes else None
     for t_str, g_val in zip(hourly_times, hourly_gti):
         try:
             if "T" in t_str:
@@ -1032,7 +1033,11 @@ def interpolate_15min_clearsky_index(
                 dt_obj = dt.datetime.strptime(t_str, "%Y-%m-%d %H:%M")
         except Exception:
             continue
-        hourly_pts.append((dt_obj.timestamp(), float(g_val)))
+        if tgt_tz is not None and dt_obj.tzinfo is None:
+            dt_obj = dt_obj.replace(tzinfo=tgt_tz)
+        elif tgt_tz is None and dt_obj.tzinfo is not None:
+            dt_obj = dt_obj.replace(tzinfo=None)
+        hourly_pts.append((dt_obj.timestamp(), dt_obj, float(g_val)))
 
     if not hourly_pts:
         return [max(0.0, float(hourly_gti[0]))] * len(target_15min_datetimes)
@@ -1041,17 +1046,15 @@ def interpolate_15min_clearsky_index(
     for tgt_dt in target_15min_datetimes:
         tgt_ts = tgt_dt.timestamp()
         if tgt_ts <= hourly_pts[0][0]:
-            interpolated_gti = hourly_pts[0][1]
+            interpolated_gti = hourly_pts[0][2]
         elif tgt_ts >= hourly_pts[-1][0]:
-            interpolated_gti = hourly_pts[-1][1]
+            interpolated_gti = hourly_pts[-1][2]
         else:
             for k in range(len(hourly_pts) - 1):
-                t0, g0 = hourly_pts[k]
-                t1, g1 = hourly_pts[k + 1]
+                t0, dt0, g0 = hourly_pts[k]
+                t1, dt1, g1 = hourly_pts[k + 1]
                 if t0 <= tgt_ts <= t1:
                     fraction = (tgt_ts - t0) / max(1.0, (t1 - t0))
-                    dt0 = dt.datetime.fromtimestamp(t0, tz=tgt_dt.tzinfo or dt.timezone.utc)
-                    dt1 = dt.datetime.fromtimestamp(t1, tz=tgt_dt.tzinfo or dt.timezone.utc)
                     elev0 = time_features.compute_time_features(dt0, latitude, longitude)["solar_elevation_deg"]
                     elev1 = time_features.compute_time_features(dt1, latitude, longitude)["solar_elevation_deg"]
                     elev_tgt = time_features.compute_time_features(tgt_dt, latitude, longitude)["solar_elevation_deg"]

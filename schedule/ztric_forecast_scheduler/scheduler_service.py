@@ -401,8 +401,10 @@ def _build_asset_schedule(
 
     if valid_blocks:
         # Ratio of actual generation to the unadjusted base forecast (realized performance factor)
+        # Allow scaling up to 1.75 so if weather models falsely predict heavy cloud cover (e.g. wf=0.60),
+        # live clear-sky generation (ratio ~ 1.67) can restore the schedule to full capacity.
         ratios = [meter_values[block] / max(base_forecast[block], 0.05) for block in valid_blocks[-4:]]
-        live_factor = max(0.5, min(1.3, sum(ratios) / len(ratios)))
+        live_factor = max(0.4, min(1.75, sum(ratios) / len(ratios)))
     else:
         live_factor = 1.0
 
