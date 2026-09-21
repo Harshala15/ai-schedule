@@ -1218,18 +1218,34 @@ class IntellisEnsembleGTIAI:
             "temp_c": mean_temp,
         }
 
-        # 2. Live SCADA Telemetry Ingestion
+        # 2. Generate 96-block physical schedule
+        sched = self.predict_96block_schedule(target_date_str)
+
+        # 3. Live SCADA Telemetry Ingestion & Real Clearness Ratio Computation
         live_mw = 0.0
         recent_list: list[float] = []
         has_live_scada = False
+        t_hr, t_min = [int(p) for p in target_time_str.split(":")[:2]]
+        curr_block = ((t_hr * 60 + t_min) // 15)
+        curr_idx = curr_block - 1
+
+        site_upper = (self.profile.plant_name or "").upper()
+        is_90min_site = (
+            self.profile.penalty_regulation == "Madhya Pradesh"
+            or site_upper in {
+                "SIRMOUR", "ANJANGOAN", "ANJANGAON", "ANDAD", "BALAKWADA",
+                "BAMKHAL", "CHANDAWASA", "GSNP", "GSPPL", "GUGARIYAKHEDI", "NANDGAON", "SAWDA"
+            }
+        )
+        freeze_lag_blocks = 6 if is_90min_site else 3
+        actionable_block = max(1, curr_block + freeze_lag_blocks + 1)
+
         if live_meter_csv_path and Path(live_meter_csv_path).exists():
             try:
                 norm_meter = load_and_normalize_meter_csv(
                     Path(live_meter_csv_path),
                     meter_config=self.profile.meter_data,
                 )
-                t_hr, t_min = [int(p) for p in target_time_str.split(":")[:2]]
-                curr_block = ((t_hr * 60 + t_min) // 15)
                 day_meter = norm_meter[norm_meter["date"] == target_date_str]
                 if not day_meter.empty:
                     prior_rows = day_meter[day_meter["block"] <= curr_block].sort_values("block")
@@ -1239,6 +1255,24 @@ class IntellisEnsembleGTIAI:
                         has_live_scada = True
             except Exception as exc:
                 print(f"  [WARN] Live meter load failed: {exc}")
+
+        # Compute real clear sky and model residual at revision cutoff
+        cs_poa = self.compute_clearsky_poa_96block(target_date_str)
+        cs_curr_mw = 0.0
+        real_clearness_ratio = 1.0
+        if 0 <= curr_idx < 96:
+            cs_theoretical = cs_poa[curr_idx] * self.profile.transfer_ratio
+            cs_curr_mw = min(self.profile.ac_capacity_mw, cs_theoretical)
+            if cs_curr_mw > 0.3:
+                real_clearness_ratio = round(min(1.25, max(0.0, live_mw / cs_curr_mw)), 2)
+            else:
+                real_clearness_ratio = 1.0 if live_mw > 0.1 else 0.85
+
+        physics_curr_mw = 0.0
+        residual_mw = 0.0
+        if 0 <= curr_idx < 96:
+            physics_curr_mw = round(float(sched["blocks"][curr_idx].get("predicted_mw", 0.0)), 2)
+            residual_mw = round(live_mw - physics_curr_mw, 2)
 
         # Compute solar elevation at revision time
         try:
@@ -1250,11 +1284,13 @@ class IntellisEnsembleGTIAI:
 
         telemetry_ind = {
             "latest_mw": round(live_mw, 2),
+            "physics_predicted_mw": physics_curr_mw,
+            "residual_mw": residual_mw,
             "solar_elevation_deg": round(ref_elev, 1),
-            "clearness_ratio": 1.0,
+            "clearness_ratio": real_clearness_ratio,
         }
 
-        # 3. Consult LLM Strategic Arbiter
+        # 4. Consult LLM Strategic Arbiter
         try:
             from modules.llm.strategic_arbiter import LLMStrategicArbiter
             arbiter = LLMStrategicArbiter(plant_profile=self.profile)
@@ -1278,27 +1314,9 @@ class IntellisEnsembleGTIAI:
                 source="PHYSICS_BASELINE",
             )
 
-        # 4. Generate 96-block physical schedule
-        sched = self.predict_96block_schedule(target_date_str)
-
-        # 5. Apply LLM Quantile Positioning Strategy to daylight blocks
-        if abs(advice.quantile_bias_factor - 1.0) > 0.005:
-            q_factor = advice.quantile_bias_factor
-            for b in sched["blocks"]:
-                if 24 <= b["block"] <= 76:
-                    adj_mw = round(min(self.profile.ac_capacity_mw, max(0.0, float(b["predicted_mw"]) * q_factor)), 2)
-                    b["predicted_mw"] = adj_mw
-                    b["intellis_mw"] = adj_mw
-                    b["schedule_mw"] = adj_mw
-                    if self.profile.transfer_ratio > 0:
-                        b["intellis_gti"] = round(adj_mw / self.profile.transfer_ratio, 1)
-                        b["predicted_gti_wm2"] = b["intellis_gti"]
-
-        # 6. Apply Real-Time SCADA Telemetry Relaxation (skip if equipment trip flagged by LLM)
+        # 5. Apply Real-Time SCADA Telemetry Relaxation (skip if equipment trip flagged by LLM)
         if has_live_scada and not advice.is_trip_or_curtailment:
             try:
-                t_hr, t_min = [int(p) for p in target_time_str.split(":")[:2]]
-                curr_block = ((t_hr * 60 + t_min) // 15)
                 sched = self.apply_intraday_scada_feedback(
                     sched,
                     current_block=curr_block,
@@ -1311,8 +1329,6 @@ class IntellisEnsembleGTIAI:
             # For non-meter sites, use satellite virtual meter up to revision cutoff time
             try:
                 from modules.weather.satellite_virtual_meter import fetch_satellite_96block_profile
-                t_hr, t_min = [int(p) for p in target_time_str.split(":")[:2]]
-                curr_block = ((t_hr * 60 + t_min) // 15)
                 target_dt = dt.datetime.strptime(f"{target_date_str} {target_time_str}", "%Y-%m-%d %H:%M")
                 virt_mw, _ = fetch_satellite_96block_profile(
                     target_date=target_date_str,
@@ -1336,6 +1352,20 @@ class IntellisEnsembleGTIAI:
                     )
             except Exception as exc:
                 print(f"  [WARN] Intraday satellite virtual feedback failed: {exc}; using base meteorological forecast.")
+
+        # 6. Apply LLM Quantile Positioning Strategy STRICTLY to actionable future blocks
+        if abs(advice.quantile_bias_factor - 1.0) > 0.005:
+            q_factor = advice.quantile_bias_factor
+            for b in sched["blocks"]:
+                # NEVER touch past blocks; only adjust forward actionable blocks
+                if b["block"] >= actionable_block and 24 <= b["block"] <= 76:
+                    adj_mw = round(min(self.profile.ac_capacity_mw, max(0.0, float(b["schedule_mw"]) * q_factor)), 2)
+                    b["predicted_mw"] = adj_mw
+                    b["intellis_mw"] = adj_mw
+                    b["schedule_mw"] = adj_mw
+                    if self.profile.transfer_ratio > 0:
+                        b["intellis_gti"] = round(adj_mw / self.profile.transfer_ratio, 1)
+                        b["predicted_gti_wm2"] = b["intellis_gti"]
 
         sched["llm_strategy"] = {
             "regime": advice.regime,

@@ -79,11 +79,12 @@ ATMOSPHERIC & WEATHER INDICATORS:
 - Precipitation Forecast: {weather_indicators.get('precip_mm', 0.0)} mm
 - 2m Ambient Temperature: {weather_indicators.get('temp_c', 28.0)} C
 
-LIVE SCADA TELEMETRY (up to revision time):
-- Latest Meter Generation: {live_telemetry.get('latest_mw', 'N/A')} MW
+LIVE SCADA TELEMETRY & MODEL RESIDUALS (at revision cutoff):
+- Latest SCADA Meter Generation: {live_telemetry.get('latest_mw', 'N/A')} MW
+- Physics Baseline Forecast at this time: {live_telemetry.get('physics_predicted_mw', 'N/A')} MW
+- Tracking Residual (Actual - Physics Baseline): {live_telemetry.get('residual_mw', 'N/A')} MW ({'+' if float(live_telemetry.get('residual_mw', 0) or 0) > 0 else ''}over-performing baseline)
 - Solar Elevation Angle: {live_telemetry.get('solar_elevation_deg', 0.0):.1f} deg
-- Ground Pyranometer POA: {live_telemetry.get('pyranometer_poa_wm2', 'N/A')} W/m2
-- Inverter Wake-up / Clearness Ratio: {live_telemetry.get('clearness_ratio', 1.0):.2f}
+- Real Clearness Ratio (Kt = Actual / ClearSky): {live_telemetry.get('clearness_ratio', 1.0):.2f}
 
 REGULATORY INCENTIVE & RISK INSTRUCTION:
 Under Indian CERC/State DSM rules:
@@ -93,10 +94,10 @@ Under Indian CERC/State DSM rules:
 
 TASKS:
 1. Classify the day's meteorological regime: ["CLEAR_SKY", "PARTLY_CLOUDY", "CONVECTIVE_MONSOON", "OVERCAST"].
-2. Recommend an asymmetric quantile positioning factor:
-   - 1.00 = standard unbiased median.
-   - 0.95 to 0.98 = conservative risk shield (position slightly lower to avoid punitive shortfall penalties on volatile days).
-   - 1.02 to 1.05 = aggressive high-insolation capture.
+2. Recommend an asymmetric quantile positioning factor for ACTIONABLE FUTURE BLOCKS ONLY:
+   - If plant is over-performing (residual > +0.3 MW) with clear sky (Kt >= 0.85): recommend mild aggressive capture (1.02 to 1.05) to track higher actuals.
+   - If plant is under-performing (residual < -0.3 MW) or cloud cover is volatile (Kt < 0.75): recommend conservative risk shield (0.95 to 0.98) to prevent severe shortfall penalties.
+   - If tracking residual is near zero: recommend unbiased 1.00.
 3. Recommend preferred ensemble agency: ["BALANCED", "ECMWF", "ICON", "GEFS"].
 4. Flag if live drop is equipment trip/curtailment vs actual clouds.
 
