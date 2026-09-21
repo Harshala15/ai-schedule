@@ -560,29 +560,16 @@ def run_schedule_job(
         work_output_dir.parent,
     )
 
-    run_pipeline.run_prediction_pipeline(
-        image_map={},
-        video_path=selection.video_path,
-        reference_time=forecast_start_dt,
-        num_blocks=settings.FORECAST_BLOCKS,
-        output_dir=work_output_dir,
-        intraday_actuals_path=selection.meter_path,
-        weather_text="",
-        context_text=selection.context_summary,
-        meter_history_text=meter_history_text,
-        pvlib_text=pvlib_text,
-        plant_performance_text=plant_performance_text,
-    )
-    mirrored_features = _mirror_features_log_to_persistent_store(work_output_dir)
-    if mirrored_features:
-        print(
-            "  [STATE] Mirrored features_log file(s) into the persistent case store: "
-            + ", ".join(str(path.resolve()) for path in mirrored_features)
-        )
-
     snapshot_source = work_output_dir / f"{config.PLANT_NAME}_energy_generation_{target_date}.csv"
-    if not snapshot_source.exists():
-        raise FileNotFoundError(f"Expected schedule output was not produced: {snapshot_source}")
+    from modules.weather.intellis_ensemble_gti_ai import IntellisEnsembleGTIAI, load_plant_profile
+    prof = load_plant_profile(config.PLANT_NAME)
+    ai_engine = IntellisEnsembleGTIAI(plant_profile=prof)
+    ai_engine.generate_revision_schedule_csv(
+        target_date_str=target_date,
+        target_time_str=target_time,
+        output_csv_path=snapshot_source,
+        live_meter_csv_path=selection.meter_path,
+    )
 
     snapshot_block = ((target_dt.hour * 60 + target_dt.minute) // config.BLOCK_MINUTES) + 1
     snapshot_stamp = f"{target_date.replace('-', '')}t{target_dt.strftime('%H%M%S')}"
@@ -593,8 +580,14 @@ def run_schedule_job(
     penalty_csv = generated_root / _penalty_schedule_name(target_date)
     latest_metadata = generated_root / f"{target_date}_latest_metadata.json"
 
-    shutil.copyfile(snapshot_source, snapshot_csv)
-    _download_previous_current_final_schedule(bucket, schedule_prefix, target_date, current_final_csv)
+    force_all = event and (str(event.get("force", "")).lower() in ("1", "true", "yes") or str(event.get("clean_seed", "")).lower() in ("1", "true", "yes"))
+    if force_all:
+        if current_final_csv.exists():
+            current_final_csv.unlink(missing_ok=True)
+        if latest_csv.exists():
+            latest_csv.unlink(missing_ok=True)
+    else:
+        _download_previous_current_final_schedule(bucket, schedule_prefix, target_date, current_final_csv)
     snapshot_rows, preserved_rows, merged_rows = _merge_latest_schedule(snapshot_source, latest_csv)
     shutil.copyfile(latest_csv, snapshot_csv)
     current_final_rows = _write_current_final_schedule(latest_csv, current_final_csv, target_date, target_time)

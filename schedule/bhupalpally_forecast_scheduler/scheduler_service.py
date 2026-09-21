@@ -595,6 +595,7 @@ def run_schedule_job(
         work_output_dir.parent,
     )
 
+    snapshot_source = work_output_dir / f"{config.PLANT_NAME}_energy_generation_{target_date}.csv"
     if config.is_wind_plant():
         from modules.weather.wind_ensemble import calculate_wind_schedule_96block, WindTurbineProfile
         wind_prof = WindTurbineProfile.from_plant_profile(getattr(config, "PLANT_PROFILE", {}) or config.PLANT_NAME)
@@ -610,7 +611,6 @@ def run_schedule_job(
             enable_bias_correction=True,
             enable_telemetry_blending=True,
         )
-        snapshot_source = work_output_dir / f"{config.PLANT_NAME}_energy_generation_{target_date}.csv"
         fieldnames = ["Block", "Time Interval (15 minute interval)", "intellis_gti", "intellis_mw", "schedule_mw"]
         rows_to_write = []
         for b in wind_sched["blocks"]:
@@ -623,27 +623,16 @@ def run_schedule_job(
             })
         shared_schedule_utils.write_csv(snapshot_source, fieldnames, rows_to_write)
     else:
-        run_pipeline.run_prediction_pipeline(
-            image_map={},
-            video_path=selection.video_path,
-            reference_time=forecast_start_dt,
-            num_blocks=settings.FORECAST_BLOCKS,
-            output_dir=work_output_dir,
-            intraday_actuals_path=selection.meter_path,
-            weather_text="",
-            context_text=selection.context_summary,
-            meter_history_text=meter_history_text,
-            pvlib_text=pvlib_text,
-            plant_performance_text=plant_performance_text,
+        from modules.weather.intellis_ensemble_gti_ai import IntellisEnsembleGTIAI, load_plant_profile
+        prof = load_plant_profile(config.PLANT_NAME)
+        ai_engine = IntellisEnsembleGTIAI(plant_profile=prof)
+        ai_engine.generate_revision_schedule_csv(
+            target_date_str=target_date,
+            target_time_str=target_time,
+            output_csv_path=snapshot_source,
+            live_meter_csv_path=selection.meter_path,
         )
-        mirrored_features = _mirror_features_log_to_persistent_store(work_output_dir)
-        if mirrored_features:
-            print(
-                "  [STATE] Mirrored features_log file(s) into the persistent case store: "
-                + ", ".join(str(path.resolve()) for path in mirrored_features)
-            )
 
-    snapshot_source = work_output_dir / f"{config.PLANT_NAME}_energy_generation_{target_date}.csv"
     if not snapshot_source.exists():
         raise FileNotFoundError(f"Expected schedule output was not produced: {snapshot_source}")
 
@@ -657,9 +646,9 @@ def run_schedule_job(
     latest_metadata = generated_root / f"{target_date}_latest_metadata.json"
 
     shutil.copyfile(snapshot_source, snapshot_csv)
-    # If revision 1 of the day is run with force, do not seed from stale uncalibrated runs
-    is_first_revision = target_time in ("00:00", "01:15") and str(event.get("force", "")).lower() in ("1", "true", "yes")
-    if is_first_revision:
+    # If revision is run with force or clean_seed, do not seed from stale uncalibrated runs
+    force_all = event and (str(event.get("force", "")).lower() in ("1", "true", "yes") or str(event.get("clean_seed", "")).lower() in ("1", "true", "yes"))
+    if force_all or (target_time in ("00:00", "01:15") and event and str(event.get("force", "")).lower() in ("1", "true", "yes")):
         if current_final_csv.exists():
             current_final_csv.unlink(missing_ok=True)
         if latest_csv.exists():

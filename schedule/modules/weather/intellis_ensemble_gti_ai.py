@@ -1198,9 +1198,30 @@ class IntellisEnsembleGTIAI:
     ) -> dict[str, Any]:
         """Generate revision schedule CSV directly with intellis_gti and intellis_mw."""
         import csv
-        sched = self.predict_96block_schedule(target_date_str)
 
-        # If live meter data is provided, apply real-time SCADA feedback
+        # 1. Atmospheric Indicators for LLM Strategic Arbiter
+        weather = self.fetch_ensemble_weather(target_date_str)
+        hourly = weather.get("hourly", {})
+        cloud_vals = [float(v) for v in hourly.get("cloud_cover", []) if v is not None]
+        mean_cloud = round(float(np.mean(cloud_vals)), 1) if cloud_vals else 0.0
+        cape_vals = [float(v) for v in hourly.get("cape", []) if v is not None]
+        max_cape = round(float(np.max(cape_vals)), 1) if cape_vals else 0.0
+        precip_vals = [float(v) for v in hourly.get("precipitation", []) if v is not None]
+        tot_precip = round(float(np.sum(precip_vals)), 2) if precip_vals else 0.0
+        temp_vals = [float(v) for v in hourly.get("temperature_2m", []) if v is not None]
+        mean_temp = round(float(np.mean(temp_vals)), 1) if temp_vals else 28.0
+
+        weather_ind = {
+            "cloud_cover_pct": mean_cloud,
+            "cape_j_kg": max_cape,
+            "precip_mm": tot_precip,
+            "temp_c": mean_temp,
+        }
+
+        # 2. Live SCADA Telemetry Ingestion
+        live_mw = 0.0
+        recent_list: list[float] = []
+        has_live_scada = False
         if live_meter_csv_path and Path(live_meter_csv_path).exists():
             try:
                 norm_meter = load_and_normalize_meter_csv(
@@ -1215,15 +1236,78 @@ class IntellisEnsembleGTIAI:
                     if not prior_rows.empty:
                         live_mw = float(prior_rows["metered_mw"].iloc[-1])
                         recent_list = prior_rows["metered_mw"].tolist()
-                        sched = self.apply_intraday_scada_feedback(
-                            sched,
-                            current_block=curr_block,
-                            live_meter_mw=live_mw,
-                            recent_meter_mw_list=recent_list,
-                        )
+                        has_live_scada = True
             except Exception as exc:
-                print(f"  [WARN] Intraday SCADA feedback failed: {exc}; using base meteorological forecast.")
-        elif self.profile.plant_name.upper() in NON_METER_SITES:
+                print(f"  [WARN] Live meter load failed: {exc}")
+
+        # Compute solar elevation at revision time
+        try:
+            from modules.weather import time_features
+            t_dt = dt.datetime.strptime(f"{target_date_str} {target_time_str}", "%Y-%m-%d %H:%M")
+            ref_elev = time_features.compute_time_features(t_dt, self.profile.latitude, self.profile.longitude)["solar_elevation_deg"]
+        except Exception:
+            ref_elev = 30.0
+
+        telemetry_ind = {
+            "latest_mw": round(live_mw, 2),
+            "solar_elevation_deg": round(ref_elev, 1),
+            "clearness_ratio": 1.0,
+        }
+
+        # 3. Consult LLM Strategic Arbiter
+        try:
+            from modules.llm.strategic_arbiter import LLMStrategicArbiter
+            arbiter = LLMStrategicArbiter(plant_profile=self.profile)
+            advice = arbiter.get_strategic_guidance(
+                target_date_str=target_date_str,
+                target_time_str=target_time_str,
+                weather_indicators=weather_ind,
+                live_telemetry=telemetry_ind,
+            )
+            print(f"  [LLM STRATEGY] Regime: {advice.regime} | Risk Quantile: {advice.quantile_bias_factor:.3f} | Agency: {advice.preferred_agency} | Trip Flag: {advice.is_trip_or_curtailment}")
+            print(f"                 Reasoning: {advice.reasoning}")
+        except Exception as arb_err:
+            print(f"  [WARN] LLM Strategic Arbiter invocation skipped: {arb_err}")
+            from modules.llm.strategic_arbiter import StrategicAdvice
+            advice = StrategicAdvice(
+                regime="CLEAR_SKY",
+                quantile_bias_factor=1.0,
+                preferred_agency="BALANCED",
+                is_trip_or_curtailment=False,
+                reasoning="Deterministic physics mode",
+                source="PHYSICS_BASELINE",
+            )
+
+        # 4. Generate 96-block physical schedule
+        sched = self.predict_96block_schedule(target_date_str)
+
+        # 5. Apply LLM Quantile Positioning Strategy to daylight blocks
+        if abs(advice.quantile_bias_factor - 1.0) > 0.005:
+            q_factor = advice.quantile_bias_factor
+            for b in sched["blocks"]:
+                if 24 <= b["block"] <= 76:
+                    adj_mw = round(min(self.profile.ac_capacity_mw, max(0.0, float(b["predicted_mw"]) * q_factor)), 2)
+                    b["predicted_mw"] = adj_mw
+                    b["intellis_mw"] = adj_mw
+                    b["schedule_mw"] = adj_mw
+                    if self.profile.transfer_ratio > 0:
+                        b["intellis_gti"] = round(adj_mw / self.profile.transfer_ratio, 1)
+                        b["predicted_gti_wm2"] = b["intellis_gti"]
+
+        # 6. Apply Real-Time SCADA Telemetry Relaxation (skip if equipment trip flagged by LLM)
+        if has_live_scada and not advice.is_trip_or_curtailment:
+            try:
+                t_hr, t_min = [int(p) for p in target_time_str.split(":")[:2]]
+                curr_block = ((t_hr * 60 + t_min) // 15)
+                sched = self.apply_intraday_scada_feedback(
+                    sched,
+                    current_block=curr_block,
+                    live_meter_mw=live_mw,
+                    recent_meter_mw_list=recent_list,
+                )
+            except Exception as exc:
+                print(f"  [WARN] Intraday SCADA feedback failed: {exc}; using strategic forecast.")
+        elif self.profile.plant_name.upper() in NON_METER_SITES and not has_live_scada:
             # For non-meter sites, use satellite virtual meter up to revision cutoff time
             try:
                 from modules.weather.satellite_virtual_meter import fetch_satellite_96block_profile
@@ -1252,6 +1336,15 @@ class IntellisEnsembleGTIAI:
                     )
             except Exception as exc:
                 print(f"  [WARN] Intraday satellite virtual feedback failed: {exc}; using base meteorological forecast.")
+
+        sched["llm_strategy"] = {
+            "regime": advice.regime,
+            "quantile_bias_factor": advice.quantile_bias_factor,
+            "preferred_agency": advice.preferred_agency,
+            "is_trip_or_curtailment": advice.is_trip_or_curtailment,
+            "reasoning": advice.reasoning,
+            "source": advice.source,
+        }
 
         output_csv_path = Path(output_csv_path)
         output_csv_path.parent.mkdir(parents=True, exist_ok=True)

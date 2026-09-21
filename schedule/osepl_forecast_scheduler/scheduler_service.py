@@ -823,29 +823,16 @@ def run_schedule_job(
         work_output_dir.parent,
     )
 
-    run_pipeline.run_prediction_pipeline(
-        image_map={},
-        video_path=selection.video_path,
-        reference_time=forecast_start_dt,
-        num_blocks=settings.FORECAST_BLOCKS,
-        output_dir=work_output_dir,
-        intraday_actuals_path=selection.meter_path,
-        weather_text="",
-        context_text=selection.context_summary,
-        meter_history_text=meter_history_text,
-        pvlib_text=pvlib_text,
-        plant_performance_text=plant_performance_text,
-    )
-    mirrored_features = _mirror_features_log_to_persistent_store(work_output_dir)
-    if mirrored_features:
-        print(
-            "  [STATE] Mirrored features_log file(s) into the persistent case store: "
-            + ", ".join(str(path.resolve()) for path in mirrored_features)
-        )
-
     snapshot_source = work_output_dir / f"{config.PLANT_NAME}_energy_generation_{target_date}.csv"
-    if not snapshot_source.exists():
-        raise FileNotFoundError(f"Expected schedule output was not produced: {snapshot_source}")
+    from modules.weather.intellis_ensemble_gti_ai import IntellisEnsembleGTIAI, load_plant_profile
+    prof = load_plant_profile(config.PLANT_NAME)
+    ai_engine = IntellisEnsembleGTIAI(plant_profile=prof)
+    ai_engine.generate_revision_schedule_csv(
+        target_date_str=target_date,
+        target_time_str=target_time,
+        output_csv_path=snapshot_source,
+        live_meter_csv_path=selection.meter_path,
+    )
 
     # Apply OSEPL-exclusive settlement optimization strategy
     _apply_osepl_settlement_strategy(snapshot_source)

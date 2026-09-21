@@ -1,18 +1,9 @@
-"""weather_fusion.py
+"""weather_fusion.py (DEPRECATED - Superseded by IntellisEnsembleGTIAI)
 
-Tri-Stream Commercial Weather Architecture:
-Provides 3 explicit, independent weather streams side-by-side for LLM analysis:
-
-1. Stream 1: ECMWF 9 km High-Resolution Deterministic Model (microclimate rain cells & peak shape)
-2. Stream 2: 91-Member Multi-Model Mega-Ensemble (51 ECMWF + 40 DWD ICON, probabilistic P40 cloud bounds)
-3. Stream 3: Open-Meteo Premium Atmospheric & Multi-Agency Engine:
-   - 5-Agency Global Consensus (ECMWF Europe, DWD Germany, NOAA GFS, JMA Japan, CMC Canada)
-   - CAPE Convective Atmospheric Instability (J/kg) for early thunderstorm warning
-   - Physical Cloud Optical Transmissivity Ratio (UV / UV_clear)
-   - Native 15-Minute Sunshine Duration (seconds / fraction)
-   - Sandia Photovoltaic Cell Temperature (T_cell) & Dynamic Silicon Thermal Derating
-   - Run-to-Run Momentum Drift Tracking (Previous Model Runs API)
-   - Real-time CAMS Aerosol Optical Depth (AOD 550nm) & Dust Haze Attenuation
+NOTE: As of September 2026, the 3-weather-stream LLM pipeline has been deprecated
+across all solar plant schedulers in favor of the 143-member Open-Meteo ensemble
+GTI AI engine (`modules.weather.intellis_ensemble_gti_ai.IntellisEnsembleGTIAI`).
+This module is retained strictly for backward compatibility with legacy scripts.
 """
 
 from __future__ import annotations

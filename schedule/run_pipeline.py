@@ -136,40 +136,30 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
     fused_weather_rows = []
     if not weather_text:
         try:
-            from modules.weather import weather_fusion
-            is_volatile = bool(intraday_state and intraday_state.get("fluctuation_flag"))
-            forecast_hours = max(1, int(math.ceil((num_blocks or config.NUM_FORECAST_BLOCKS) * config.BLOCK_MINUTES / 60.0)))
-            raw_az = getattr(config, "PLANT_ORIENTATION_FROM_SOUTH_DEG", getattr(config, "PLANT_ORIENTATION_DEG_FROM_SOUTH", 0.0))
-            w_report = weather_fusion.fetch_dual_stream_weather_fusion(
-                latitude=config.PLANT_LAT,
-                longitude=config.PLANT_LON,
-                reference_time=reference_time,
-                hours_ahead=forecast_hours,
-                tilt=getattr(config, "PLANT_TILT_DEG", 20.0),
-                azimuth=config.to_openmeteo_azimuth(raw_az),
-                plant_name=config.PLANT_NAME,
-                is_volatile=is_volatile,
-            )
-            weather_text = w_report.get("prompt_text", "")
-            fused_weather_rows = w_report.get("fused_rows", [])
-            fused_weather_map = {r.get("hour_label"): r for r in fused_weather_rows if isinstance(r, dict) and r.get("hour_label")}
-
-            # Real-Time Ground Sensor MOS Calibration
-            recent_poa = intraday_state.get("recent_poa_avg") if intraday_state else None
-            if recent_poa and fused_weather_rows:
-                curr_hour_lbl = reference_time.strftime("%H:%M")
-                curr_row = fused_weather_map.get(curr_hour_lbl) or fused_weather_rows[0]
-                model_gti = curr_row.get("gti_fused") or curr_row.get("gti_stream1", 0.0)
-                if model_gti and model_gti > 50.0:
-                    mos_ratio = round(recent_poa / model_gti, 3)
-                    mos_note = f"\n- REAL-TIME GROUND SENSOR CALIBRATION (MOS): Live Ground POA={recent_poa:.1f} W/m2 vs Model GTI={model_gti:.1f} W/m2 (Ratio={mos_ratio:.2f})."
-                    if mos_ratio > 1.08:
-                        mos_note += f" Ground irradiance is outperforming weather models by {(mos_ratio - 1.0) * 100:.1f}%. Suppress negative adjustments and maintain clear-sky ramp."
-                    elif mos_ratio < 0.85:
-                        mos_note += f" Ground clouds are thicker than weather models by {(1.0 - mos_ratio) * 100:.1f}%. Apply ground cloud attenuation factor {mos_ratio:.2f} to forward blocks."
-                    weather_text += mos_note
+            from modules.weather.intellis_ensemble_gti_ai import IntellisEnsembleGTIAI, load_plant_profile
+            prof = load_plant_profile(config.PLANT_NAME)
+            ensemble_ai = IntellisEnsembleGTIAI(plant_profile=prof)
+            target_d_str = reference_time.strftime("%Y-%m-%d")
+            gti_pred = ensemble_ai.predict_96block_schedule(target_d_str)
+            for b in gti_pred.get("blocks", []):
+                t_lbl = b.get("time", "")
+                gti_val = float(b.get("intellis_gti", b.get("predicted_gti_wm2", 0.0)))
+                mw_val = float(b.get("predicted_mw", b.get("intellis_mw", 0.0)))
+                entry = {
+                    "hour_label": t_lbl,
+                    "gti_fused": gti_val,
+                    "gti_stream1": gti_val,
+                    "predicted_mw": mw_val,
+                    "temp_c": 28.0,
+                    "temp_cell_sandia_c": 35.0,
+                    "temp_derate_multiplier": 1.0,
+                    "precip_mm": 0.0,
+                    "cloud_pct": 0.0,
+                }
+                fused_weather_rows.append(entry)
+            weather_text = f"Intellis 143-Ensemble GTI AI Active (DWD ICON + ECMWF IFS + NOAA GEFS). Daytime GTI range: {min([r['gti_fused'] for r in fused_weather_rows if r['gti_fused'] > 10] or [0]):.1f} - {max([r['gti_fused'] for r in fused_weather_rows] or [0]):.1f} W/m2."
         except Exception as w_exc:
-            print(f"  [WARN] Auto-fetching dual-stream weather fusion failed: {w_exc}")
+            print(f"  [WARN] Auto-fetching Intellis GTI AI failed: {w_exc}")
     fused_weather_map = {r.get("hour_label"): r for r in fused_weather_rows if isinstance(r, dict) and r.get("hour_label")}
     def _load_recent_meter_history_payload(text: str) -> dict | None:
         text = (text or "").strip()
