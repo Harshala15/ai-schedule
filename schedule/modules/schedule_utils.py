@@ -662,7 +662,7 @@ def write_full_block_schedule_from_llm_schedule(
                         w_entry = weather_fusion_map.get(f"{b_hour_int:02d}:00")
 
                     if w_entry:
-                        gti_fused = float(w_entry.get("gti_fused") or w_entry.get("gti_stream1", 0.0))
+                        gti_fused = float(w_entry.get("gti_fused") or w_entry.get("intellis_gti", 0.0))
                         cloud_pct = float(w_entry.get("cloud_pct", 0.0))
                         precip_mm = float(w_entry.get("precip_mm", 0.0))
                         cape_val = float(w_entry.get("cape_j_kg", 0.0))

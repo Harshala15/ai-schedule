@@ -112,5 +112,8 @@ schedule/wind_ensemble_cache/
 wind_ensemble_cache/
 *.csv
 *.xlsx
+meter_history/
+plant_performance/
+pvlib_summary/
 
 

@@ -148,7 +148,7 @@ def run_prediction_pipeline(image_map: dict, video_path, reference_time: datetim
                 entry = {
                     "hour_label": t_lbl,
                     "gti_fused": gti_val,
-                    "gti_stream1": gti_val,
+                    "intellis_gti": gti_val,
                     "predicted_mw": mw_val,
                     "temp_c": 28.0,
                     "temp_cell_sandia_c": 35.0,

@@ -319,8 +319,20 @@ def _clear_sky_curve(
 
 
 def _weather_report(contract: dict[str, Any], target_dt: dt.datetime) -> dict[str, Any]:
+    target_date_str = target_dt.strftime("%Y-%m-%d")
     try:
-        # Request 24-hour weather window from start of target date to cover all 96 blocks
+        from modules.weather.intellis_ensemble_gti_ai import IntellisEnsembleGTIAI, load_plant_profile
+        prof = load_plant_profile("ZTRIC")
+        ai_engine = IntellisEnsembleGTIAI(plant_profile=prof)
+        sched = ai_engine.predict_96block_schedule(target_date_str)
+        return {
+            "source": "intellis_ensemble_gti_ai",
+            "schedule": sched,
+            "target_date": target_date_str,
+            "prompt_text": f"IntellisEnsembleGTIAI 20-member multi-agency consensus active for ZTRIC on {target_date_str}.",
+        }
+    except Exception as exc:
+        print(f"  [WARN] IntellisEnsembleGTIAI failed for ZTRIC ({exc}); falling back to openmeteo_ensemble")
         day_start = target_dt.replace(hour=0, minute=0, second=0, microsecond=0)
         return openmeteo_ensemble.fetch_openmeteo_ensemble_calibrated_summary(
             latitude=float(contract.get("latitude") or 18.557968),
@@ -330,8 +342,6 @@ def _weather_report(contract: dict[str, Any], target_dt: dt.datetime) -> dict[st
             timezone=settings.DEFAULT_TIMEZONE,
             plant_name="ZTRIC",
         )
-    except Exception as exc:
-        return {"source": "openmeteo_ensemble_error", "prompt_text": f"Open-Meteo ensemble unavailable: {exc}", "rows": []}
 
 
 def _weather_factor_by_block(
@@ -342,6 +352,18 @@ def _weather_factor_by_block(
     latitude: float,
     longitude: float,
 ) -> dict[int, float]:
+    if weather.get("source") == "intellis_ensemble_gti_ai":
+        factors: dict[int, float] = {}
+        blocks = weather.get("schedule", {}).get("blocks", [])
+        for b_entry in blocks:
+            blk = int(b_entry.get("block", 0))
+            gti = float(b_entry.get("intellis_gti", b_entry.get("predicted_gti_wm2", 0.0)))
+            poa = clear_poa.get(blk, 0.0)
+            factors[blk] = max(0.15, min(1.15, gti / poa)) if poa > 30 else 0.0
+        if len(factors) == 96:
+            return factors
+
+    # Fallback to legacy openmeteo_ensemble if not from IntellisEnsembleGTIAI
     hourly_times: list[str] = []
     hourly_gti: list[float] = []
     for row in weather.get("rows") or []:
@@ -366,7 +388,7 @@ def _weather_factor_by_block(
         longitude=longitude,
     )
 
-    factors: dict[int, float] = {}
+    factors = {}
     for block, gti in enumerate(interpolated_gti, start=1):
         poa = clear_poa.get(block, 0.0)
         factors[block] = max(0.15, min(1.15, float(gti) / poa)) if poa > 30 else 0.0

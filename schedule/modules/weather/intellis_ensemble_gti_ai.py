@@ -239,9 +239,14 @@ class IntellisEnsembleGTIAI:
                 "global_tilted_irradiance",
                 "shortwave_radiation",
                 "direct_normal_irradiance",
+                "diffuse_radiation",
                 "temperature_2m",
                 "wind_speed_10m",
                 "cloud_cover",
+                "cloud_cover_low",
+                "cloud_cover_mid",
+                "cloud_cover_high",
+                "cape",
             ],
             # Query all 4 major global meteorological families
             "models": "icon_seamless,ecmwf_ifs025,gfs025,gem_global",
@@ -620,20 +625,22 @@ class IntellisEnsembleGTIAI:
             for k in all_member_keys
         ])))
 
-        # Multi-family stratified sampling for today's regime (prevents single-agency overcast bias)
+        # Multi-family stratified sampling across all 4 major agencies (5 ICON + 5 ECMWF + 5 GEFS + 5 GEM)
         sample_keys = []
         for fam in ["icon", "ecmwf", "gefs", "gem"]:
             f_keys = [k for k in canonical_keys if fam in k.lower()]
-            sample_keys.extend(f_keys[:2])
+            sample_keys.extend(f_keys[:5])
         if not sample_keys:
-            sample_keys = canonical_keys[:8]
+            sample_keys = canonical_keys[:20]
 
         today_prelim_gti = [self.extract_member_96block_gti(today_weather, k, target_date_str) for k in sample_keys]
-        today_mean_gti_sum = float(np.sum(np.mean(today_prelim_gti, axis=0)[b_start:b_end])) if today_prelim_gti else 0.0
+        # Use robust multi-family median across ensemble members
+        today_mean_gti_sum = float(np.sum(np.median(today_prelim_gti, axis=0)[b_start:b_end])) if today_prelim_gti else 0.0
         today_regime = self.classify_weather_regime(today_mean_gti_sum, cs_daylight_sum)
 
         model_weighted_mse: dict[str, float] = {k: 0.0 for k in canonical_keys}
         model_weighted_bias: dict[str, float] = {k: 0.0 for k in canonical_keys}
+        model_weighted_corr: dict[str, float] = {k: 0.0 for k in canonical_keys}
         model_weight_sums: dict[str, float] = {k: 0.0 for k in canonical_keys}
 
         valid_days_evaluated = []
@@ -654,8 +661,11 @@ class IntellisEnsembleGTIAI:
             day_regime = self.classify_weather_regime(day_meter_sum, cs_daylight_sum)
 
             w_d = math.exp(-offset / max(0.5, tau_decay_days))
-            if use_regime_matching and day_regime == today_regime:
-                w_d *= 1.25  # Balanced regime weighting (avoids overcast confirmation bias)
+            if use_regime_matching:
+                if day_regime == today_regime:
+                    w_d *= 1.50  # Boost matched weather regime
+                else:
+                    w_d *= 0.65  # Soft de-weight for mismatched regime
 
             try:
                 weather_d = self.fetch_ensemble_weather(d_str)
@@ -679,8 +689,18 @@ class IntellisEnsembleGTIAI:
                 errs = meter_poa[b_start:b_end] - gti_96[b_start:b_end]
                 mse = float(np.mean(errs ** 2))
                 bias = float(np.mean(errs))
+
+                # Diurnal shape Pearson correlation
+                s_poa = float(np.std(meter_poa[b_start:b_end]))
+                s_sim = float(np.std(gti_96[b_start:b_end]))
+                if s_poa > 1e-3 and s_sim > 1e-3:
+                    corr_val = float(np.corrcoef(meter_poa[b_start:b_end], gti_96[b_start:b_end])[0, 1])
+                else:
+                    corr_val = 0.5
+
                 model_weighted_mse[k] += w_d * mse
                 model_weighted_bias[k] += w_d * bias
+                model_weighted_corr[k] += w_d * max(0.0, corr_val)
                 model_weight_sums[k] += w_d
 
         records = []
@@ -689,10 +709,12 @@ class IntellisEnsembleGTIAI:
                 continue
             rmse_poa = math.sqrt(model_weighted_mse[k] / model_weight_sums[k])
             bias_poa = abs(model_weighted_bias[k] / model_weight_sums[k])
+            corr_poa = model_weighted_corr[k] / model_weight_sums[k]
             rmse_mw = rmse_poa * self.profile.transfer_ratio
             bias_mw = bias_poa * self.profile.transfer_ratio
-            # Composite loss penalizes both dispersion (RMSE) and persistent directional drift (Bias)
-            composite_loss = (rmse_poa + 0.40 * bias_poa) * self.profile.transfer_ratio
+
+            # 3-Component Composite loss: dispersion (RMSE), directional drift (Bias), and shape match (Pearson)
+            composite_loss = (rmse_poa + 0.40 * bias_poa + 0.15 * (1.0 - corr_poa) * 100.0) * self.profile.transfer_ratio
 
             k_lower = k.lower()
             if "icon" in k_lower:
@@ -717,6 +739,7 @@ class IntellisEnsembleGTIAI:
                 "family": family,
                 "rmse_poa_wm2": round(rmse_poa, 2),
                 "bias_poa_wm2": round(bias_poa, 2),
+                "corr_poa": round(corr_poa, 3),
                 "rmse_mw": round(rmse_mw, 3),
                 "bias_mw": round(bias_mw, 3),
                 "composite_loss": round(composite_loss, 4),
@@ -763,39 +786,18 @@ class IntellisEnsembleGTIAI:
         target_date_str: str,
         lookback_days: int = 5,
     ) -> dict[str, tuple[list[str], dict[str, float]]]:
-        """Benchmark and select top models independently for each diurnal time slot."""
+        """Benchmark and select top models independently for each diurnal time slot (Top 6 per slot)."""
         slot_results = {}
         for slot_name, slot_range in self.DIURNAL_SLOTS.items():
-            if slot_name == "morning":
-                # Morning: 2 GEFS (fast clear-sky ramp) + 2 ICON + 1 ECMWF
-                keys, weights, _ = self.benchmark_and_select_models(
-                    target_date_str,
-                    lookback_days=lookback_days,
-                    icon_quota=2,
-                    ecmwf_quota=1,
-                    gefs_quota=2,
-                    block_range=slot_range,
-                )
-            elif slot_name == "midday":
-                # Midday: 2 ICON (non-hydrostatic convection) + 2 ECMWF + 1 GEFS
-                keys, weights, _ = self.benchmark_and_select_models(
-                    target_date_str,
-                    lookback_days=lookback_days,
-                    icon_quota=2,
-                    ecmwf_quota=2,
-                    gefs_quota=1,
-                    block_range=slot_range,
-                )
-            else:
-                # Afternoon: 2 ECMWF (synoptic clearing) + 2 ICON + 1 GEFS
-                keys, weights, _ = self.benchmark_and_select_models(
-                    target_date_str,
-                    lookback_days=lookback_days,
-                    icon_quota=2,
-                    ecmwf_quota=2,
-                    gefs_quota=1,
-                    block_range=slot_range,
-                )
+            # Tri-Agency Diurnal Tri-Phase Quota: Top 2 ICON + Top 2 ECMWF + Top 2 GEFS = Top 6 per slot
+            keys, weights, _ = self.benchmark_and_select_models(
+                target_date_str,
+                lookback_days=lookback_days,
+                icon_quota=2,
+                ecmwf_quota=2,
+                gefs_quota=2,
+                block_range=slot_range,
+            )
             slot_results[slot_name] = (keys, weights)
         return slot_results
 
@@ -941,7 +943,7 @@ class IntellisEnsembleGTIAI:
         fused_gti[76:] = 0.0
         fused_gti = np.maximum(0.0, fused_gti)
 
-        # Ambient temperature derating from Open-Meteo Premium
+        # Ambient temperature & Wind speed convective derating from Open-Meteo Premium
         hourly = weather.get("hourly", {})
         if "temperature_2m" in hourly and hourly["temperature_2m"]:
             h_t = [float(v) if v is not None else 28.0 for v in hourly["temperature_2m"][:24]]
@@ -949,8 +951,16 @@ class IntellisEnsembleGTIAI:
         else:
             amb_temp = 25.0 + 10.0 * np.sin(np.pi * np.maximum(0, np.arange(96) - 24) / 56.0)
 
-        cell_temp = amb_temp + fused_gti * 0.031
-        temp_factor = np.clip(1.0 - 0.004 * (cell_temp - 25.0), 0.82, 1.06)
+        if "wind_speed_10m" in hourly and hourly["wind_speed_10m"]:
+            h_ws = [float(v) if v is not None else 2.5 for v in hourly["wind_speed_10m"][:24]]
+            wind_speed = np.interp(np.arange(0, 24, 0.25), np.arange(0, 24, 1.0), h_ws)
+        else:
+            wind_speed = np.full(96, 2.5)
+
+        # Faiman / Sandia convective module temperature model
+        # Tcell = Tamb + GTI / (u0 + u1 * WindSpeed), where u0=25.0, u1=1.2 for open-rack modules
+        cell_temp = amb_temp + fused_gti / (25.0 + 1.2 * wind_speed)
+        temp_factor = np.clip(1.0 - 0.0038 * (cell_temp - 25.0), 0.82, 1.06)
 
         # Predicted MW = GTI * transfer_ratio * temp_factor clipped to AC capacity
         pred_mw = np.round(np.clip(fused_gti * self.profile.transfer_ratio * temp_factor, 0.0, self.profile.ac_capacity_mw), 2)
@@ -1070,18 +1080,15 @@ class IntellisEnsembleGTIAI:
         cs_curr_mw = min(self.profile.ac_capacity_mw, cs_theoretical)
 
         # Early morning inverter wakeup guardrail:
-        # Before 07:15 AM (block 30) or during low sun angles (<10% capacity),
-        # inverters exhibit startup latency and horizon shadowing.
-        # Do not allow early dawn transient to pull down forward 08:30-10:00 schedule.
-        if current_block < 30 or cs_curr_mw < (0.10 * self.profile.ac_capacity_mw):
+        if current_block < 28 or cs_curr_mw < (0.05 * self.profile.ac_capacity_mw):
             kt_obs = 0.85
         elif live_meter_mw >= (0.88 * self.profile.ac_capacity_mw):
             # Inverter clipping ceiling: plant generating at max inverter rating
             kt_obs = 1.00
         elif cs_curr_mw > 0.3:
-            kt_obs = max(0.65, min(1.05, live_meter_mw / cs_curr_mw))
+            kt_obs = max(0.15, min(1.05, live_meter_mw / cs_curr_mw))
         else:
-            kt_obs = 0.85 if live_meter_mw > 0.2 else 0.65
+            kt_obs = 0.85 if live_meter_mw > 0.2 else 0.40
 
         # Anti-Trench 60-min Rolling Window: Use rolling median of recent meter values
         # to filter out transient cloud shadow dips (< 15-30 min)
@@ -1097,9 +1104,22 @@ class IntellisEnsembleGTIAI:
                         if hist_mw >= (0.88 * self.profile.ac_capacity_mw):
                             kts.append(1.00)
                         else:
-                            kts.append(max(0.65, min(1.05, hist_mw / hist_cs)))
+                            kts.append(max(0.15, min(1.05, hist_mw / hist_cs)))
             if kts:
                 kt_obs = float(np.median(kts))
+
+        # Pre-Freeze Telemetry Momentum Trend Extrapolation (dKt/dt)
+        # Catches abrupt cloud fronts / sudden clearing 30-45 minutes ahead of gate closure
+        trend_momentum = 0.0
+        if recent_meter_mw_list and len(recent_meter_mw_list) >= 2 and cs_curr_mw > 0.3:
+            prev_idx = max(0, curr_idx - 1)
+            prev_cs = cs_poa[prev_idx] * self.profile.transfer_ratio
+            if prev_cs > 0.3:
+                prev_kt = recent_meter_mw_list[-2] / prev_cs
+                curr_kt = live_meter_mw / cs_curr_mw
+                d_kt = curr_kt - prev_kt
+                # Extrapolate momentum across gate-closure horizon (bounded within safe limits)
+                trend_momentum = max(-0.25, min(0.20, d_kt * 1.5))
 
         updated_blocks = []
         tot_pen = 0.0
@@ -1115,25 +1135,32 @@ class IntellisEnsembleGTIAI:
                     safe_count += 1
                 tot_pen += b_copy.get("block_penalty_inr", 0.0)
             else:
-                # Future actionable blocks: continuous Kt relaxation into meteorological ensemble
+                # Future actionable blocks: continuous Kt relaxation with trend momentum into NWP ensemble
                 delta_blocks = b_idx - (actionable_block - 1)
                 decay = math.exp(-delta_blocks / max(1.0, tau_blocks))
 
                 fcst_gti = b_dict["predicted_gti_wm2"]
                 fcst_kt = min(1.05, fcst_gti / max(15.0, cs_poa[b_idx]))
 
-                eff_kt = decay * kt_obs + (1.0 - decay) * fcst_kt
-                # Ensure daytime clearness does not drop into penalty band during daytime
-                if 28 <= b_dict["block"] <= 68:
-                    eff_kt = max(0.70, eff_kt)
+                # Adaptive relaxation with trend momentum; bounded by physical atmospheric clearness
+                eff_kt = decay * (kt_obs + trend_momentum * decay) + (1.0 - decay) * fcst_kt
+                eff_kt = max(0.15, min(1.05, eff_kt))
 
                 target_poa = eff_kt * cs_poa[b_idx]
-                raw_mw = target_poa * self.profile.transfer_ratio
+                
+                # Dynamic cell temperature derating
+                b_hr = (b_dict["block"] * 15) // 60
+                amb_t = 28.0 + (4.0 if 11 <= b_hr <= 15 else 0.0)
+                cell_t = amb_t + target_poa * 0.031
+                temp_factor = np.clip(1.0 - 0.004 * (cell_t - 25.0), 0.82, 1.06)
+
+                raw_mw = target_poa * self.profile.transfer_ratio * temp_factor
 
                 adj_mw = min(self.profile.ac_capacity_mw, max(0.0, raw_mw))
                 adj_mw = round(adj_mw, 2)
                 if b_dict["block"] < 24 or b_dict["block"] > 76:
                     adj_mw = 0.0
+                    target_poa = 0.0
 
                 # Ramp continuity against previous block
                 if updated_blocks:
@@ -1145,6 +1172,7 @@ class IntellisEnsembleGTIAI:
                         adj_mw = min(self.profile.ac_capacity_mw, max(0.0, adj_mw))
                 if b_dict["block"] < 24 or b_dict["block"] > 76:
                     adj_mw = 0.0
+                    target_poa = 0.0
 
                 m_val = b_dict["meter_mw"]
                 dev = round(m_val - adj_mw, 2)
@@ -1172,9 +1200,8 @@ class IntellisEnsembleGTIAI:
                 b_copy["predicted_mw"] = adj_mw
                 b_copy["intellis_mw"] = adj_mw
                 b_copy["schedule_mw"] = adj_mw
-                if self.profile.transfer_ratio > 0:
-                    b_copy["intellis_gti"] = round(adj_mw / self.profile.transfer_ratio, 1)
-                    b_copy["predicted_gti_wm2"] = b_copy["intellis_gti"]
+                b_copy["intellis_gti"] = round(target_poa, 1)
+                b_copy["predicted_gti_wm2"] = round(target_poa, 1)
                 b_copy["dev_mw"] = dev
                 b_copy["dsm_slab"] = slab
                 b_copy["block_penalty_inr"] = round(blk_pen, 2)
@@ -1290,32 +1317,8 @@ class IntellisEnsembleGTIAI:
             "clearness_ratio": real_clearness_ratio,
         }
 
-        # 4. Consult LLM Strategic Arbiter
-        try:
-            from modules.llm.strategic_arbiter import LLMStrategicArbiter
-            arbiter = LLMStrategicArbiter(plant_profile=self.profile)
-            advice = arbiter.get_strategic_guidance(
-                target_date_str=target_date_str,
-                target_time_str=target_time_str,
-                weather_indicators=weather_ind,
-                live_telemetry=telemetry_ind,
-            )
-            print(f"  [LLM STRATEGY] Regime: {advice.regime} | Risk Quantile: {advice.quantile_bias_factor:.3f} | Agency: {advice.preferred_agency} | Trip Flag: {advice.is_trip_or_curtailment}")
-            print(f"                 Reasoning: {advice.reasoning}")
-        except Exception as arb_err:
-            print(f"  [WARN] LLM Strategic Arbiter invocation skipped: {arb_err}")
-            from modules.llm.strategic_arbiter import StrategicAdvice
-            advice = StrategicAdvice(
-                regime="CLEAR_SKY",
-                quantile_bias_factor=1.0,
-                preferred_agency="BALANCED",
-                is_trip_or_curtailment=False,
-                reasoning="Deterministic physics mode",
-                source="PHYSICS_BASELINE",
-            )
-
-        # 5. Apply Real-Time SCADA Telemetry Relaxation (skip if equipment trip flagged by LLM)
-        if has_live_scada and not advice.is_trip_or_curtailment:
+        # 4. Apply Real-Time SCADA Telemetry Relaxation
+        if has_live_scada:
             try:
                 sched = self.apply_intraday_scada_feedback(
                     sched,
@@ -1326,7 +1329,6 @@ class IntellisEnsembleGTIAI:
             except Exception as exc:
                 print(f"  [WARN] Intraday SCADA feedback failed: {exc}; using strategic forecast.")
         elif self.profile.plant_name.upper() in NON_METER_SITES and not has_live_scada:
-            # For non-meter sites, use satellite virtual meter up to revision cutoff time
             try:
                 from modules.weather.satellite_virtual_meter import fetch_satellite_96block_profile
                 target_dt = dt.datetime.strptime(f"{target_date_str} {target_time_str}", "%Y-%m-%d %H:%M")
@@ -1353,8 +1355,83 @@ class IntellisEnsembleGTIAI:
             except Exception as exc:
                 print(f"  [WARN] Intraday satellite virtual feedback failed: {exc}; using base meteorological forecast.")
 
-        # 6. Apply LLM Quantile Positioning Strategy STRICTLY to actionable future blocks
-        if abs(advice.quantile_bias_factor - 1.0) > 0.005:
+        # Extract next 12 actionable dispatch blocks for the LLM to forecast
+        next_12_blocks = []
+        for b in sched["blocks"]:
+            if actionable_block <= b["block"] < actionable_block + 12 and 24 <= b["block"] <= 76:
+                next_12_blocks.append({
+                    "block": b["block"],
+                    "time_interval": b["time_interval"],
+                    "predicted_mw": b["schedule_mw"],
+                    "gti_wm2": b["intellis_gti"],
+                })
+
+        # 5. Consult LLM Strategic Arbiter
+        try:
+            from modules.llm.strategic_arbiter import LLMStrategicArbiter
+            arbiter = LLMStrategicArbiter(plant_profile=self.profile)
+            advice = arbiter.get_strategic_guidance(
+                target_date_str=target_date_str,
+                target_time_str=target_time_str,
+                weather_indicators=weather_ind,
+                live_telemetry=telemetry_ind,
+                next_12_blocks=next_12_blocks,
+            )
+            print(f"  [LLM STRATEGY] Regime: {advice.regime} | Risk Quantile: {advice.quantile_bias_factor:.3f} | Agency: {advice.preferred_agency} | Trip Flag: {advice.is_trip_or_curtailment}")
+            print(f"                 Reasoning: {advice.reasoning}")
+        except Exception as arb_err:
+            print(f"  [WARN] LLM Strategic Arbiter invocation skipped: {arb_err}")
+            from modules.llm.strategic_arbiter import StrategicAdvice
+            advice = StrategicAdvice(
+                regime="CLEAR_SKY",
+                quantile_bias_factor=1.0,
+                preferred_agency="BALANCED",
+                is_trip_or_curtailment=False,
+                reasoning="Deterministic physics mode",
+                block_predictions={},
+                source="PHYSICS_BASELINE",
+            )
+
+        # 6. Apply LLM Predictions for next 12 blocks, and pure Intellis GTI up to 19:00 (Block 76 / night 7)
+        if advice.block_predictions:
+            print(f"  [LLM 12-BLOCK PREDICTIONS] Applying direct LLM predictions to {len(advice.block_predictions)} blocks...")
+            prev_val = None
+            max_llm_block = max(int(k) for k in advice.block_predictions.keys()) if advice.block_predictions else (actionable_block + 11)
+            for b in sched["blocks"]:
+                b_str = str(b["block"])
+                if b["block"] >= actionable_block and b_str in advice.block_predictions:
+                    pred_mw = float(advice.block_predictions[b_str])
+                    pred_mw = max(0.0, min(self.profile.ac_capacity_mw, pred_mw))
+                    if b["block"] > 74 or b["block"] < 24:
+                        pred_mw = 0.0
+                    if prev_val is not None and 24 <= b["block"] <= 74:
+                        max_ramp = max(0.50, self.profile.ac_capacity_mw * 0.10)
+                        if abs(pred_mw - prev_val) > max_ramp:
+                            pred_mw = prev_val + (max_ramp if pred_mw > prev_val else -max_ramp)
+                    pred_mw = round(pred_mw, 2)
+                    b["predicted_mw"] = pred_mw
+                    b["intellis_mw"] = pred_mw
+                    b["schedule_mw"] = pred_mw
+                    if self.profile.transfer_ratio > 0:
+                        b["intellis_gti"] = round(pred_mw / self.profile.transfer_ratio, 1)
+                        b["predicted_gti_wm2"] = b["intellis_gti"]
+                elif b["block"] > max_llm_block and b["block"] <= 76:
+                    # After 12 LLM blocks up to 19:00 (Block 76 / night 7), use pure physical Intellis GTI
+                    raw_gti_mw = float(b.get("predicted_mw", b.get("intellis_mw", 0.0)))
+                    raw_gti_mw = max(0.0, min(self.profile.ac_capacity_mw, raw_gti_mw))
+                    if b["block"] > 72:  # Sunset transition (18:00 - 19:00)
+                        raw_gti_mw = min(raw_gti_mw, max(0.0, round((76 - b["block"]) * 0.03, 2)))
+                    b["schedule_mw"] = raw_gti_mw
+                    b["intellis_mw"] = raw_gti_mw
+                    b["predicted_mw"] = raw_gti_mw
+                elif b["block"] > 76 or b["block"] < 24:
+                    # Night hours past 19:00 (Block 76) are strictly 0.0 MW
+                    b["schedule_mw"] = 0.0
+                    b["intellis_mw"] = 0.0
+                    b["intellis_gti"] = 0.0
+                    b["predicted_gti_wm2"] = 0.0
+                prev_val = float(b["schedule_mw"])
+        elif abs(advice.quantile_bias_factor - 1.0) > 0.005:
             q_factor = advice.quantile_bias_factor
             for b in sched["blocks"]:
                 # NEVER touch past blocks; only adjust forward actionable blocks
