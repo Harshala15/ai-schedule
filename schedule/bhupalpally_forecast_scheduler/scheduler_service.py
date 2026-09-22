@@ -584,8 +584,13 @@ def run_schedule_job(
         shutil.rmtree(work_output_dir)
     work_output_dir.mkdir(parents=True, exist_ok=True)
     meter_history_text = _build_recent_meter_history_text(bucket, meter_prefix, target_date, work_output_dir.parent)
-    pvlib_text = _build_pvlib_text(forecast_start_dt, settings.FORECAST_BLOCKS)
-    plant_performance_text = _build_recent_plant_performance_text(bucket, meter_prefix, target_date, work_output_dir.parent)
+    is_wind_site = config.is_wind_plant()
+    if is_wind_site:
+        pvlib_text = "Wind plant: PVLib/GTI solar summary is not applicable."
+        plant_performance_text = "Wind plant schedule generated using wind ensemble forecast."
+    else:
+        pvlib_text = _build_pvlib_text(forecast_start_dt, settings.FORECAST_BLOCKS)
+        plant_performance_text = _build_recent_plant_performance_text(bucket, meter_prefix, target_date, work_output_dir.parent)
     _generate_pre_revision_feedback(
         bucket,
         schedule_prefix,
@@ -596,7 +601,7 @@ def run_schedule_job(
     )
 
     snapshot_source = work_output_dir / f"{config.PLANT_NAME}_energy_generation_{target_date}.csv"
-    if config.is_wind_plant():
+    if is_wind_site:
         from modules.weather.wind_ensemble import calculate_wind_schedule_96block, WindTurbineProfile
         wind_prof = WindTurbineProfile.from_plant_profile(getattr(config, "PLANT_PROFILE", {}) or config.PLANT_NAME)
         snapshot_block = ((target_dt.hour * 60 + target_dt.minute) // config.BLOCK_MINUTES) + 1
@@ -611,12 +616,22 @@ def run_schedule_job(
             enable_bias_correction=True,
             enable_telemetry_blending=True,
         )
-        fieldnames = ["Block", "Time Interval (15 minute interval)", "intellis_gti", "intellis_mw", "schedule_mw"]
+        fieldnames = [
+            "Block",
+            "Time Interval (15 minute interval)",
+            "wind_speed_hub_m_s",
+            "air_density_kg_m3",
+            "intellis_gti",
+            "intellis_mw",
+            "schedule_mw",
+        ]
         rows_to_write = []
         for b in wind_sched["blocks"]:
             rows_to_write.append({
                 "Block": b["block"],
                 "Time Interval (15 minute interval)": b["time_interval"],
+                "wind_speed_hub_m_s": b.get("wind_speed_hub_m_s"),
+                "air_density_kg_m3": b.get("air_density_kg_m3"),
                 "intellis_gti": b["intellis_gti"],
                 "intellis_mw": b["intellis_mw"],
                 "schedule_mw": b["schedule_mw"],
@@ -686,6 +701,10 @@ def run_schedule_job(
         penalty_rows=penalty_summary["total_blocks"],
     )
     metadata["snapshot_rows"] = snapshot_rows
+    metadata["plant_type"] = getattr(config, "PLANT_TYPE", "")
+    metadata["is_wind_plant"] = bool(is_wind_site)
+    if is_wind_site:
+        metadata["weather_summary_type"] = "wind_ensemble"
     snapshot_metadata.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
     latest_metadata.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
 
