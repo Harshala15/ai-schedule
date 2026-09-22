@@ -239,6 +239,8 @@ def freeze_from_datetime(target_date: str, target_time: str, block_minutes: int 
         "CME": 45,
         "OSEPL": 45,
         "ZTRIC": 45,
+        "JEWLI": 45,
+        "JGBPL": 45,
     }
     freeze_lag_minutes = freeze_lag_minutes_by_plant.get(config.PLANT_NAME.upper(), 45)
     return freeze_from_datetime_with_lag(
@@ -302,6 +304,8 @@ def write_current_final_schedule(
         "CME": 45,
         "OSEPL": 45,
         "ZTRIC": 45,
+        "JEWLI": 45,
+        "JGBPL": 45,
     }.get(config.PLANT_NAME.upper(), 45)
     freeze_from = freeze_from_datetime_with_lag(
         target_date,
@@ -377,6 +381,7 @@ def write_current_final_schedule(
         "schedule_mw",
     ]
 
+    is_jewli = "JEWLI" in getattr(config, "PLANT_NAME", "").upper()
     for row in frozen_rows:
         if "intellis_mw" not in row or not str(row.get("intellis_mw", "")).strip():
             row["intellis_mw"] = str(
@@ -390,6 +395,24 @@ def write_current_final_schedule(
         row["schedule_mw"] = row["intellis_mw"]
         if "intellis_gti" not in row or not str(row.get("intellis_gti", "")).strip():
             row["intellis_gti"] = "0.0"
+
+        if is_jewli:
+            raw_b = str(row.get("Block", "") or row.get("block", "")).strip()
+            try:
+                b_num = int(raw_b)
+            except Exception:
+                b_num = 0
+            if 25 <= b_num <= 72:
+                try:
+                    val = float(row.get("schedule_mw", 0.0) or 0.0)
+                    if val > 10.0:
+                        row["schedule_mw"] = "10.00"
+                        row["intellis_mw"] = "10.00"
+                    if 37 <= b_num <= 48 and val > 3.0:
+                        row["schedule_mw"] = "3.00"
+                        row["intellis_mw"] = "3.00"
+                except Exception:
+                    pass
 
     is_wind = getattr(config, "is_wind_plant", lambda: False)()
     if not is_wind:

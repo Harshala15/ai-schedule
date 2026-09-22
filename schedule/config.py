@@ -436,7 +436,7 @@ PLANT_TYPE = _read_profile_setting("PLANT_TYPE", "plant_type", _fallback.get("pl
 
 def is_wind_plant(plant_name: str | None = None) -> bool:
     name = (plant_name or PLANT_NAME or "").strip().upper()
-    if name in ("CHANDAWASA", "CHANDWASA", "JEWLI"):
+    if name in ("CHANDAWASA", "CHANDWASA", "JEWLI", "JGBPL"):
         return True
     p_type = ""
     if isinstance(PLANT_PROFILE, dict):

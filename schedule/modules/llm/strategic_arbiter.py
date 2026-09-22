@@ -85,6 +85,30 @@ class LLMStrategicArbiter:
         else:
             blocks_formatted = "  (No specific block list provided; recommend global bias factor)"
 
+        is_non_meter = bool(live_telemetry.get("is_non_meter_site", False))
+        telemetry_source = live_telemetry.get("telemetry_source", "PHYSICAL_SCADA")
+
+        if is_non_meter:
+            telemetry_section = f"""ESTIMATED SATELLITE TELEMETRY & MODEL RESIDUALS (Non-meter site / SCADA offline):
+- Telemetry Source: {telemetry_source} (Physical SCADA meter is not present / offline)
+- Current Generation Estimate: {live_telemetry.get('latest_mw', 'N/A')} MW
+- Physics Baseline Forecast at this time: {live_telemetry.get('physics_predicted_mw', 'N/A')} MW
+- Tracking Residual (Estimate - Physics Baseline): {live_telemetry.get('residual_mw', 'N/A')} MW
+- Solar Elevation Angle: {live_telemetry.get('solar_elevation_deg', 0.0):.1f} deg
+- Clearness Ratio (Kt): {live_telemetry.get('clearness_ratio', 1.0):.2f}"""
+            trip_instruction = """- IMPORTANT: This is a designated NON-METER site. Zero or missing SCADA meter values DO NOT mean an electrical trip or plant outage.
+- Set "is_trip_or_curtailment" strictly to false.
+- DO NOT artificially pull down or flatten the midday solar schedule into a table-top shelf. Follow the natural convex parabolic physics baseline curve."""
+        else:
+            telemetry_section = f"""LIVE SCADA TELEMETRY & MODEL RESIDUALS (at revision cutoff):
+- Telemetry Source: {telemetry_source}
+- Latest SCADA Meter Generation: {live_telemetry.get('latest_mw', 'N/A')} MW
+- Physics Baseline Forecast at this time: {live_telemetry.get('physics_predicted_mw', 'N/A')} MW
+- Tracking Residual (Actual - Physics Baseline): {live_telemetry.get('residual_mw', 'N/A')} MW ({'+' if float(live_telemetry.get('residual_mw', 0) or 0) > 0 else ''}over-performing baseline)
+- Solar Elevation Angle: {live_telemetry.get('solar_elevation_deg', 0.0):.1f} deg
+- Real Clearness Ratio (Kt = Actual / ClearSky): {live_telemetry.get('clearness_ratio', 1.0):.2f}"""
+            trip_instruction = "- If live meter is confirmed 0.0 MW while solar elevation is high (> 25 deg) on this metered site, flag an electrical trip/curtailment (NOT weather cloud)."
+
         prompt = f"""You are the Chief Renewable Energy Scheduling Strategist and Forecaster for {plant_name} Solar Power Plant.
 Target Date: {target_date_str} | Revision Time: {target_time_str}
 Capacity: {ac_cap:.1f} MW AC | PPA Tariff: Rs {ppa_rate:.2f}/kWh | Tolerance Band: {tol_band * 100:.1f}% (+/- {ac_cap * tol_band:.2f} MW)
@@ -95,12 +119,7 @@ ATMOSPHERIC & WEATHER INDICATORS:
 - Precipitation Forecast: {weather_indicators.get('precip_mm', 0.0)} mm
 - 2m Ambient Temperature: {weather_indicators.get('temp_c', 28.0)} C
 
-LIVE SCADA TELEMETRY & MODEL RESIDUALS (at revision cutoff):
-- Latest SCADA Meter Generation: {live_telemetry.get('latest_mw', 'N/A')} MW
-- Physics Baseline Forecast at this time: {live_telemetry.get('physics_predicted_mw', 'N/A')} MW
-- Tracking Residual (Actual - Physics Baseline): {live_telemetry.get('residual_mw', 'N/A')} MW ({'+' if float(live_telemetry.get('residual_mw', 0) or 0) > 0 else ''}over-performing baseline)
-- Solar Elevation Angle: {live_telemetry.get('solar_elevation_deg', 0.0):.1f} deg
-- Real Clearness Ratio (Kt = Actual / ClearSky): {live_telemetry.get('clearness_ratio', 1.0):.2f}
+{telemetry_section}
 
 NEXT 12 ACTIONABLE DISPATCH BLOCKS (Physics Baseline Anchor):
 {blocks_formatted}
@@ -109,12 +128,13 @@ REGULATORY INCENTIVE & RISK INSTRUCTION:
 Under Indian CERC/State DSM rules:
 - Under-generation shortfall penalties are severe and punitive (up to 2x PPA tariff).
 - Mild over-generation inside the tolerance band (0% to +{tol_band * 100:.0f}%) is safe or credit-earning.
-- If live meter is 0.0 MW while solar elevation is high, flag an electrical trip/curtailment (NOT weather cloud).
+{trip_instruction}
 
 TASKS:
 1. Classify the day's meteorological regime: ["CLEAR_SKY", "PARTLY_CLOUDY", "CONVECTIVE_MONSOON", "OVERCAST"].
 2. Predict the generation (in MW) for EACH of the next 12 blocks in "block_predictions":
    - Use the physics baseline as the core anchor.
+   - For non-meter sites, follow the physical solar irradiance curve without artificial plateauing or flatlining.
    - Adjust each block realistically:
      * If plant is over-performing (residual > 0) with high clearness (Kt >= 0.75), increase by 0.1 to 0.3 MW above baseline to capture higher actuals.
      * If plant is under-performing (residual < 0) or clouds are increasing, adjust down by 0.1 to 0.4 MW to avoid shortfall penalty.
@@ -170,6 +190,8 @@ Respond ONLY with a JSON object in this exact schema:
 
             agency = str(data.get("preferred_agency", "BALANCED")).upper().strip()
             is_trip = bool(data.get("is_trip_or_curtailment", False))
+            if is_non_meter:
+                is_trip = False
             reasoning = str(data.get("reasoning", "")).strip()
 
             raw_preds = data.get("block_predictions", {})

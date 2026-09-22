@@ -118,7 +118,7 @@ class WindTurbineProfile:
 
 
 def load_site_calibrated_multipliers(plant_name: str) -> list[float] | None:
-    """Load empirical 96-block transfer multipliers for wind sites (e.g. CHANDAWASA / CHANDWASA)."""
+    """Load empirical 96-block transfer multipliers for wind sites (e.g. CHANDAWASA / CHANDWASA / JGBPL)."""
     clean_name = re.sub(r"[^A-Za-z0-9_]", "", plant_name).upper()
     if clean_name in ("CHANDAWASA", "CHANDWASA"):
         candidates = [
@@ -126,6 +126,38 @@ def load_site_calibrated_multipliers(plant_name: str) -> list[float] | None:
             Path("/var/task/plant_profiles/chandawasa_calibrated_weights.json"),
             Path("plant_profiles/chandawasa_calibrated_weights.json"),
             Path(__file__).parent / "chandawasa_calibrated_weights.json",
+        ]
+        for cand in candidates:
+            if cand.exists():
+                try:
+                    data = json.loads(cand.read_text(encoding="utf-8"))
+                    mults = data.get("calibrated_block_multipliers", [])
+                    if len(mults) == 96:
+                        return mults
+                except Exception:
+                    pass
+    elif clean_name == "JGBPL":
+        candidates = [
+            Path(__file__).parent.parent.parent / "plant_profiles" / "jgbpl_calibrated_multipliers.json",
+            Path("/var/task/plant_profiles/jgbpl_calibrated_multipliers.json"),
+            Path("plant_profiles/jgbpl_calibrated_multipliers.json"),
+            Path(__file__).parent / "jgbpl_calibrated_multipliers.json",
+        ]
+        for cand in candidates:
+            if cand.exists():
+                try:
+                    data = json.loads(cand.read_text(encoding="utf-8"))
+                    mults = data.get("calibrated_block_multipliers", [])
+                    if len(mults) == 96:
+                        return mults
+                except Exception:
+                    pass
+    elif clean_name == "JEWLI":
+        candidates = [
+            Path(__file__).parent.parent.parent / "plant_profiles" / "jewli_calibrated_multipliers.json",
+            Path("/var/task/plant_profiles/jewli_calibrated_multipliers.json"),
+            Path("plant_profiles/jewli_calibrated_multipliers.json"),
+            Path(__file__).parent / "jewli_calibrated_multipliers.json",
         ]
         for cand in candidates:
             if cand.exists():
@@ -176,6 +208,58 @@ SG_3_6_145_GROSS_CURVE = [
 _SG_V_VALS = [p[0] for p in SG_3_6_145_GROSS_CURVE]
 _SG_F_VALS = [p[1] for p in SG_3_6_145_GROSS_CURVE]
 
+# Empirical Power Curve for Envision EN182-5.0 MW (Low-Wind High-Hub Class S Turbine, e.g. JGBPL)
+ENVISION_EN182_5_0_GROSS_CURVE = [
+    (0.0, 0.000),
+    (3.0, 0.018),
+    (3.5, 0.038),
+    (4.0, 0.065),
+    (4.5, 0.105),
+    (5.0, 0.155),
+    (5.5, 0.215),
+    (6.0, 0.285),
+    (6.5, 0.368),
+    (7.0, 0.460),
+    (7.5, 0.565),
+    (8.0, 0.675),
+    (8.5, 0.775),
+    (9.0, 0.865),
+    (9.5, 0.935),
+    (10.0, 0.975),
+    (10.5, 1.000),
+    (25.0, 1.000),
+    (25.1, 0.000),
+]
+_ENVISION_V_VALS = [p[0] for p in ENVISION_EN182_5_0_GROSS_CURVE]
+_ENVISION_F_VALS = [p[1] for p in ENVISION_EN182_5_0_GROSS_CURVE]
+
+# Empirical Power Curve for Gamesa G114/2000 (Class IIIA Low-Wind 2.0 MW, e.g. CHANDAWASA / CHANDWASA)
+GAMESA_G114_2000_GROSS_CURVE = [
+    (0.0, 0.000),
+    (2.0, 0.000),
+    (2.5, 0.008),
+    (3.0, 0.019),
+    (3.5, 0.038),
+    (4.0, 0.059),
+    (4.5, 0.088),
+    (5.0, 0.128),
+    (5.5, 0.178),
+    (6.0, 0.240),
+    (6.5, 0.315),
+    (7.0, 0.405),
+    (7.5, 0.505),
+    (8.0, 0.620),
+    (8.5, 0.730),
+    (9.0, 0.825),
+    (9.5, 0.905),
+    (10.0, 0.970),
+    (10.5, 1.000),
+    (25.0, 1.000),
+    (25.1, 0.000),
+]
+_G114_V_VALS = [p[0] for p in GAMESA_G114_2000_GROSS_CURVE]
+_G114_F_VALS = [p[1] for p in GAMESA_G114_2000_GROSS_CURVE]
+
 
 def turbine_power_curve(
     v_hub_ms: float,
@@ -192,15 +276,36 @@ def turbine_power_curve(
     density_ratio = max(0.70, min(1.30, air_density / prof.standard_air_density))
     v_eff = v_hub_ms * (density_ratio ** (1.0 / 3.0))
 
-    if v_eff < prof.v_cut_in or v_eff >= prof.v_cut_out:
+    if v_eff < 2.0 or v_eff >= prof.v_cut_out:
         return 0.0
 
     # Specific empirical curve for Siemens Gamesa SG 3.6-145 (e.g. JEWLI)
     is_sg145 = "145" in str(prof.turbine_model) or "JEWLI" in str(prof.plant_name).upper()
     if is_sg145:
+        if v_eff < prof.v_cut_in:
+            return 0.0
         frac = float(np.interp(v_eff, _SG_V_VALS, _SG_F_VALS))
         gross_mw = prof.rated_capacity_mw * frac
         return min(prof.rated_capacity_mw, max(0.0, gross_mw))
+
+    # Specific empirical curve for Envision EN182-5.0 MW (e.g. JGBPL)
+    is_envision = "182" in str(prof.turbine_model) or "ENVISION" in str(prof.turbine_manufacturer).upper() or "JGBPL" in str(prof.plant_name).upper()
+    if is_envision:
+        if v_eff < prof.v_cut_in:
+            return 0.0
+        frac = float(np.interp(v_eff, _ENVISION_V_VALS, _ENVISION_F_VALS))
+        gross_mw = prof.rated_capacity_mw * frac
+        return min(prof.rated_capacity_mw, max(0.0, gross_mw))
+
+    # Specific empirical curve for Gamesa G114/2000 (e.g. CHANDAWASA / CHANDWASA)
+    is_g114 = "114" in str(prof.turbine_model) or any(k in str(prof.plant_name).upper() for k in ("CHANDAWASA", "CHANDWASA"))
+    if is_g114:
+        frac = float(np.interp(v_eff, _G114_V_VALS, _G114_F_VALS))
+        gross_mw = prof.rated_capacity_mw * frac
+        return min(prof.rated_capacity_mw, max(0.0, gross_mw))
+
+    if v_eff < prof.v_cut_in:
+        return 0.0
 
     if prof.v_cut_in <= v_eff < prof.v_rated:
         norm_v = (v_eff - prof.v_cut_in) / max(0.1, (prof.v_rated - prof.v_cut_in))
@@ -491,15 +596,16 @@ def apply_dynamic_bias_and_telemetry_blending(
 
 
 def calculate_wind_schedule_96block(
-    latitude: float,
-    longitude: float,
-    target_date_str: str,
+    latitude: float = 24.166208,
+    longitude: float = 75.459684,
+    target_date_str: str = "",
     profile: WindTurbineProfile | None = None,
-    scada_actuals: Any = None,
+    scada_actuals: Path | None = None,
     current_block: int | None = None,
     enable_slot_selection: bool = True,
     enable_bias_correction: bool = True,
     enable_telemetry_blending: bool = True,
+    target_date: str = "",
 ) -> dict[str, Any]:
     """
     Calculate full 96-block 24-hour wind schedule using Jensen's-Inequality-safe
@@ -507,10 +613,11 @@ def calculate_wind_schedule_96block(
     and SCADA telemetry momentum blending.
     """
     prof = profile or WindTurbineProfile()
+    effective_date = target_date_str or target_date
     weather_payload = fetch_wind_ensemble_weather(
         latitude=latitude,
         longitude=longitude,
-        target_date_str=target_date_str,
+        target_date_str=effective_date,
         hub_height_m=prof.hub_height_m,
     )
 
@@ -547,10 +654,39 @@ def calculate_wind_schedule_96block(
         vals = hourly.get(col, [])
         if not vals:
             continue
+        val_list = [v for v in vals if v is not None]
+        if not val_list or len(val_list) < 12:
+            continue
         unit = str(hourly_units.get(col) or hourly_units.get("wind_speed_100m") or hourly_units.get("wind_speed_80m") or "").lower()
-        is_kmh = "km/h" in unit or ("m/s" not in unit and "ms" not in unit and np.mean([v for v in vals if v is not None]) > 14.0)
+        is_kmh = "km/h" in unit or ("m/s" not in unit and "ms" not in unit and val_list and np.mean(val_list) > 14.0)
         conv = (1.0 / 3.6) if is_kmh else 1.0
-        speeds = [round(float(v) * conv * shear_factor, 2) if v is not None else 0.0 for v in vals[:24]]
+        is_10m = "10m" in col
+        speeds = []
+        for i in range(min(24, len(vals))):
+            v_val = vals[i]
+            if v_val is None:
+                speeds.append(0.0)
+                continue
+            v_scaled = float(v_val) * conv
+            if is_10m:
+                # Diurnal atmospheric boundary layer power-law shear scaling from 10m to hub height
+                # Nighttime temperature inversion decouples upper winds (alpha ~ 0.28 to 0.32)
+                # Daytime convective solar turbulence mixes boundary layer (alpha ~ 0.12 to 0.14)
+                h = i  # hour of day 0..23
+                if h >= 21 or h <= 5:
+                    alpha = 0.29
+                elif 6 <= h <= 7:
+                    alpha = 0.20
+                elif 8 <= h <= 17:
+                    alpha = 0.12
+                elif 18 <= h <= 20:
+                    alpha = 0.22
+                else:
+                    alpha = 0.20
+                v_hub_hr = v_scaled * ((prof.hub_height_m / 10.0) ** alpha)
+            else:
+                v_hub_hr = v_scaled * shear_factor
+            speeds.append(round(v_hub_hr, 2))
         if len(speeds) < 24:
             speeds += [speeds[-1] if speeds else 4.0] * (24 - len(speeds))
 
@@ -569,7 +705,7 @@ def calculate_wind_schedule_96block(
     if not member_96_speeds:
         # Fallback synthetic diurnal profile
         b_speeds_base = np.array([4.5 + 2.5 * math.sin(2.0 * math.pi * (b + 12) / 96.0) for b in range(96)])
-    elif enable_slot_selection and "JEWLI" in prof.plant_name.upper():
+    elif enable_slot_selection and ("JEWLI" in prof.plant_name.upper() or "JGBPL" in prof.plant_name.upper()):
         # Apply slot-based champion model selection
         b_speeds_base_list = []
         for b in range(1, 97):
@@ -623,6 +759,21 @@ def calculate_wind_schedule_96block(
     else:
         b_net_mw = np.round(b_net_mw, 2)
 
+    # Mandatory plant operational rules: JEWLI daytime limit <= 10.0 MW (06:00 to 18:00 IST / Blocks 25 to 72)
+    is_jewli = "JEWLI" in str(prof.plant_name).upper()
+    if is_jewli:
+        for b in range(96):
+            b_num = b + 1
+            if 25 <= b_num <= 72:
+                # Daytime cap 10.0 MW as explicitly instructed by plant dispatch rules
+                b_net_mw[b] = min(float(b_net_mw[b]), 10.0)
+                # Midday convective lull floor (09:00 to 12:00 IST / Blocks 37 to 48)
+                if 37 <= b_num <= 48:
+                    b_net_mw[b] = min(float(b_net_mw[b]), 3.0)
+
+    # Always strictly clip to [0.0, rated_capacity_mw]
+    b_net_mw = np.clip(np.round(b_net_mw, 2), 0.0, prof.rated_capacity_mw)
+
     blocks_data = []
     for b in range(96):
         b_num = b + 1
@@ -637,9 +788,17 @@ def calculate_wind_schedule_96block(
         mw_val = round(float(b_net_mw[b]), 2)
         rho_val = round(float(b_densities[b]), 3)
 
-        # Actual SCADA generation if block has elapsed
+        # Pure advance meteorological forecast across all 96 blocks (never overwrite schedule_mw with meter data)
         actual_mw = mw_scada.get(b_num)
-        sched_val = round(actual_mw, 2) if (act_block and b_num <= act_block and actual_mw is not None) else mw_val
+        sched_val = mw_val
+
+        # Mandatory Jewli rule: Daytime schedule_mw must NEVER exceed 10.0 MW (06:00 to 18:00 IST / Blocks 25 to 72)
+        if is_jewli and 25 <= b_num <= 72:
+            sched_val = min(sched_val, 10.0)
+            if 37 <= b_num <= 48:
+                sched_val = min(sched_val, 3.0)
+
+        sched_val = max(0.0, sched_val)
 
         blocks_data.append({
             "block": b_num,

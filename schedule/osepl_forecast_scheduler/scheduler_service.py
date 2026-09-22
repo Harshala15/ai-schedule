@@ -729,29 +729,31 @@ def _snapshot_metadata(
 
 
 def _apply_osepl_settlement_strategy(snapshot_source: Path) -> None:
-    """OSEPL-Specific Asymmetric Golden-Zone Strategy for Positive Net Settlement.
+    """OSEPL Optimized Band-Anchored Settlement Strategy for Maximum Net Receivables.
     
-    1. Financial Mechanics:
-       In OSEPL DSM:
-       - Over-generation (0-10% of 20MW AvC = up to 2.0 MW) earns +Rs 9.27/kWh net profit.
-       - Over-generation (10-15% error) earns +Rs 5.56 to +Rs 7.42/kWh net profit.
-       - Under-generation loses -Rs 9.27 to -Rs 18.54/kWh (punitive 2x PPA penalty).
-       
-    2. Operational Strategy:
-       - Midday Core (09:45-15:30, blocks 39-62): Asymmetric factor (0.75) keeps the schedule
-         safely inside the +5% to +10% over-generation corridor, maximizing receivable credits
-         while avoiding the under-generation trap.
-       - Dawn Guard (06:00-09:30, blocks 24-38): Progressive dampener (0.45 to 0.70) prevents
-         early morning fog/haze over-forecasting that incurs severe >15% payable penalties.
-       - Dusk Guard (15:45-18:00, blocks 63-72): Steep dampener (0.65 down to 0.40) prevents
-         sunset overhang.
-       - Night blocks (<24, >72): Strictly 0.0 MW.
-       - Cap at plant capacity (20.0 MW).
+    Financial Mechanics:
+    - OSEPL (20.0 MW AC, Rs 9.27/kWh PPA) operates under Maharashtra INTER DSM.
+    - Tolerance Band (+/-10% of 20MW AvC) = 2.0 MW.
+    - Under-generation (shortfall) incurs punitive penalties up to 2x PPA (-Rs 18.54/kWh).
+    - Over-generation within 0% to +10% (+0.0 to +2.0 MW) earns the full PPA tariff (+Rs 9.27/kWh).
+    
+    Optimization Policy:
+    - Position the schedule dynamically in the +5.0% to +7.5% Golden Zone (+1.0 to +1.5 MW below actuals):
+      Schedule = max(0.0, raw_mw - 0.55 * band_mw) for daylight blocks.
+    - For lower generation blocks (< 3.0 MW), scale proportionally: Schedule = max(0.0, raw_mw * 0.90).
+    - Dawn Guard (Blocks 24-30, 06:00-07:30): Progressive 0.85 factor avoids morning haze/fog over-prediction.
+    - Dusk Guard (Blocks 66-72, 16:30-18:00): Clean sunset ramp-down to eliminate sunset overhang shortfall.
+    - Night Blocks (<24, >72): Strictly 0.0 MW.
+    - Maximum cap: 20.0 MW (AC Capacity).
     """
     fieldnames, rows = _read_csv_rows(snapshot_source)
     mw_cols = [c for c in fieldnames if any(w in c.lower() for w in ["mw", "forecast"])]
     if not mw_cols:
         return
+
+    ac_capacity = float(getattr(config, "PLANT_CAPACITY_MW", 20.0))
+    band_mw = ac_capacity * float(getattr(config, "TOLERANCE_BAND_PERCENTAGE", 0.10))  # 2.0 MW
+    target_shield_mw = band_mw * 0.55  # 1.10 MW buffer into the +5.5% receivable zone
 
     updated_rows = []
     for row in rows:
@@ -770,19 +772,20 @@ def _apply_osepl_settlement_strategy(snapshot_source: Path) -> None:
 
             if b < 24 or b > 72:
                 new_mw = 0.0
-            elif 24 <= b <= 34:  # 06:00 - 08:30 (Morning Dawn)
-                dawn_factor = 0.45 + 0.02 * (b - 24)
-                new_mw = max(0.0, raw_mw * dawn_factor)
-            elif 35 <= b <= 38:  # 08:45 - 09:30 (Morning Transition)
-                new_mw = max(0.0, raw_mw * 0.70)
-            elif 39 <= b <= 62:  # 09:45 - 15:30 (Midday Golden Zone)
-                new_mw = max(0.0, raw_mw * 0.75)
-            elif 63 <= b <= 68:  # 15:45 - 17:00 (Late Afternoon)
-                new_mw = max(0.0, raw_mw * 0.65)
-            else:  # 17:15 - 18:00 (Evening Dusk)
-                new_mw = max(0.0, raw_mw * 0.40)
+            elif 24 <= b <= 30:  # 06:00 - 07:30 (Morning Dawn Wakeup)
+                new_mw = max(0.0, raw_mw * 0.85)
+            elif 31 <= b <= 65:  # 07:45 - 16:15 (Main Solar Production & Midday Peak)
+                if raw_mw > (band_mw * 1.5):
+                    new_mw = max(0.0, raw_mw - target_shield_mw)
+                else:
+                    new_mw = max(0.0, raw_mw * 0.90)
+            elif 66 <= b <= 72:  # 16:30 - 18:00 (Sunset Rapid Descent)
+                descent_factor = max(0.0, (73 - b) / 8.0)
+                new_mw = min(raw_mw, raw_mw * descent_factor)
+            else:
+                new_mw = 0.0
 
-            row[col] = round(min(new_mw, 20.0), 2)
+            row[col] = round(min(new_mw, ac_capacity), 2)
         updated_rows.append(row)
 
     _write_csv(snapshot_source, fieldnames, updated_rows)

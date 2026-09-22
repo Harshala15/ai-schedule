@@ -693,6 +693,15 @@ def run_schedule_job(
     storage.upload_file(bucket, metadata["latest_csv_key"], latest_csv, content_type="text/csv")
     storage.upload_file(bucket, f"{schedule_prefix.rstrip('/')}/{target_date}/{current_final_csv.name}", current_final_csv, content_type="text/csv")
     storage.upload_file(bucket, metadata["penalty_csv_key"], penalty_csv, content_type="text/csv")
+    
+    # Dual-sync CHANDAWASA and CHANDWASA aliases for dashboard compatibility
+    if config.PLANT_NAME.upper() in ("CHANDAWASA", "CHANDWASA"):
+        alt_name = "CHANDWASA" if config.PLANT_NAME.upper() == "CHANDAWASA" else "CHANDAWASA"
+        alt_prefix = schedule_prefix.replace(config.PLANT_NAME, alt_name).replace(config.PLANT_NAME.lower(), alt_name.lower())
+        alt_final_name = current_final_csv.name.replace(config.PLANT_NAME, alt_name)
+        storage.upload_file(bucket, f"{alt_prefix.rstrip('/')}/{target_date}/{alt_final_name}", current_final_csv, content_type="text/csv")
+        storage.upload_file(bucket, f"{alt_prefix.rstrip('/')}/{target_date}/{latest_csv.name}", latest_csv, content_type="text/csv")
+
     legacy_current_final_csv = generated_root / "current_final_schedule.csv"
     if legacy_current_final_csv != current_final_csv:
         shutil.copyfile(current_final_csv, legacy_current_final_csv)

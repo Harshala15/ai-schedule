@@ -484,7 +484,7 @@ class IntellisEnsembleGTIAI:
                 cos_elev = np.maximum(0.0, np.cos(noon_dist * (np.pi / 12.0)))
                 est_cell = 25.0 + 10.0 * (cos_elev ** 0.8) + (cos_elev * 900.0 * 0.031)
                 temp_factor = np.clip(1.0 - 0.004 * (est_cell - 25.0), 0.82, 1.05)
-                poa_arr = mw_arr / max(1e-6, self.profile.transfer_ratio * temp_factor)
+                poa_arr = mw_arr / np.maximum(1e-6, self.profile.transfer_ratio * temp_factor)
 
             return mw_arr, poa_arr
         except Exception:
@@ -882,90 +882,126 @@ class IntellisEnsembleGTIAI:
         if getattr(self.profile, "calibrated_pr", None) is None:
             self.calibrate_plant_pr(target_date_str)
 
-        weather = self.fetch_ensemble_weather(target_date_str)
-        meter_mw = self.load_meter_actuals(target_date_str)
-        cs_poa = self.compute_clearsky_poa_96block(target_date_str)
+        site_upper = (self.profile.plant_name or "").upper()
+        if site_upper in NON_METER_SITES:
+            from modules.weather.satellite_virtual_meter import fetch_satellite_day_profile
+            try:
+                target_d = dt.date.fromisoformat(target_date_str)
+            except Exception:
+                target_d = dt.date.today()
+            sat_hourly = fetch_satellite_day_profile(
+                target_date=target_d,
+                latitude=self.profile.latitude,
+                longitude=self.profile.longitude,
+                tilt=self.profile.tilt_deg,
+                azimuth=self.profile.azimuth_openmeteo,
+            )
+            times = sat_hourly.get("time", [])
+            gtis = sat_hourly.get("global_tilted_irradiance", [])
+            hour_gti = {int(t.split("T")[1].split(":")[0]): float(g) for t, g in zip(times, gtis) if "T" in t}
 
-        if not selected_keys or not weights_map:
-            slot_selections = self.benchmark_and_select_slot_models(target_date_str)
-            all_selected = []
-            all_weights = {}
-            for s_name, (s_keys, s_w) in slot_selections.items():
-                all_selected.extend(s_keys)
-                all_weights.update(s_w)
-            selected_keys = list(dict.fromkeys(all_selected))
-            weights_map = {k: all_weights.get(k, round(1.0 / len(selected_keys), 4)) for k in selected_keys}
-            w_sum = sum(weights_map.values())
-            weights_map = {k: round(v / w_sum, 4) for k, v in weights_map.items()}
+            fused_gti = np.zeros(96, dtype=float)
+            pred_mw = np.zeros(96, dtype=float)
+            tr = self.profile.transfer_ratio
+
+            for b in range(1, 97):
+                if b < 24 or b > 75:
+                    continue
+                mid_min = (b - 0.5) * 15
+                h = int(mid_min // 60)
+                frac = (mid_min % 60) / 60.0
+                curr_g = hour_gti.get(h, 0.0)
+                nxt_g = hour_gti.get(min(23, h + 1), curr_g)
+                g_interp = max(0.0, curr_g + frac * (nxt_g - curr_g))
+                fused_gti[b - 1] = round(g_interp, 1)
+                pred_mw[b - 1] = round(min(self.profile.ac_capacity_mw, g_interp * tr), 3)
+
+            meter_mw = np.zeros(96, dtype=float)
         else:
-            slot_selections = {
-                "morning": (selected_keys, weights_map),
-                "midday": (selected_keys, weights_map),
-                "afternoon": (selected_keys, weights_map),
-            }
+            weather = self.fetch_ensemble_weather(target_date_str)
+            meter_mw = self.load_meter_actuals(target_date_str)
+            cs_poa = self.compute_clearsky_poa_96block(target_date_str)
 
-        # Compute Clearness Index (Kt) array for each slot
-        kt_slots = {}
-        for s_name, (s_keys, s_w) in slot_selections.items():
-            slot_kt = np.zeros(96, dtype=float)
-            total_w = sum(s_w.values()) if s_w else 1.0
-            for k in s_keys:
-                w_k = s_w.get(k, 1.0 / max(1, len(s_keys))) / total_w
-                m_gti = self.extract_member_96block_gti(weather, k, target_date_str)
-                denom = np.maximum(15.0, cs_poa)
-                m_kt = np.clip(m_gti / denom, 0.0, 1.15)
-                slot_kt += w_k * m_kt
-            kt_slots[s_name] = slot_kt
-
-        # Smooth cosine spline blending across diurnal slots
-        blended_kt = np.zeros(96, dtype=float)
-        for b in range(96):
-            if b < 24 or b >= 76:
-                blended_kt[b] = 0.0
-            elif b < 38:
-                blended_kt[b] = kt_slots["morning"][b]
-            elif b <= 42:
-                # Transition Morning -> Midday (Blocks 39 to 43)
-                alpha = 0.5 * (1.0 - math.cos(math.pi * (b - 38) / 4.0))
-                blended_kt[b] = (1.0 - alpha) * kt_slots["morning"][b] + alpha * kt_slots["midday"][b]
-            elif b < 54:
-                blended_kt[b] = kt_slots["midday"][b]
-            elif b <= 58:
-                # Transition Midday -> Afternoon (Blocks 55 to 59)
-                alpha = 0.5 * (1.0 - math.cos(math.pi * (b - 54) / 4.0))
-                blended_kt[b] = (1.0 - alpha) * kt_slots["midday"][b] + alpha * kt_slots["afternoon"][b]
+            if not selected_keys or not weights_map:
+                slot_selections = self.benchmark_and_select_slot_models(target_date_str)
+                all_selected = []
+                all_weights = {}
+                for s_name, (s_keys, s_w) in slot_selections.items():
+                    all_selected.extend(s_keys)
+                    all_weights.update(s_w)
+                selected_keys = list(dict.fromkeys(all_selected))
+                weights_map = {k: all_weights.get(k, round(1.0 / len(selected_keys), 4)) for k in selected_keys}
+                w_sum = sum(weights_map.values())
+                weights_map = {k: round(v / w_sum, 4) for k, v in weights_map.items()}
             else:
-                blended_kt[b] = kt_slots["afternoon"][b]
+                slot_selections = {
+                    "morning": (selected_keys, weights_map),
+                    "midday": (selected_keys, weights_map),
+                    "afternoon": (selected_keys, weights_map),
+                }
 
-        # Re-synthesize fused GTI from physical Clearness Index and astronomical Clear-Sky curve
-        fused_gti = np.round(blended_kt * cs_poa, 1)
-        fused_gti[:23] = 0.0
-        fused_gti[76:] = 0.0
-        fused_gti = np.maximum(0.0, fused_gti)
+            # Compute Clearness Index (Kt) array for each slot
+            kt_slots = {}
+            for s_name, (s_keys, s_w) in slot_selections.items():
+                slot_kt = np.zeros(96, dtype=float)
+                total_w = sum(s_w.values()) if s_w else 1.0
+                for k in s_keys:
+                    w_k = s_w.get(k, 1.0 / max(1, len(s_keys))) / total_w
+                    m_gti = self.extract_member_96block_gti(weather, k, target_date_str)
+                    denom = np.maximum(15.0, cs_poa)
+                    m_kt = np.clip(m_gti / denom, 0.0, 1.15)
+                    slot_kt += w_k * m_kt
+                kt_slots[s_name] = slot_kt
 
-        # Ambient temperature & Wind speed convective derating from Open-Meteo Premium
-        hourly = weather.get("hourly", {})
-        if "temperature_2m" in hourly and hourly["temperature_2m"]:
-            h_t = [float(v) if v is not None else 28.0 for v in hourly["temperature_2m"][:24]]
-            amb_temp = np.interp(np.arange(0, 24, 0.25), np.arange(0, 24, 1.0), h_t)
-        else:
-            amb_temp = 25.0 + 10.0 * np.sin(np.pi * np.maximum(0, np.arange(96) - 24) / 56.0)
+            # Smooth cosine spline blending across diurnal slots
+            blended_kt = np.zeros(96, dtype=float)
+            for b in range(96):
+                if b < 24 or b >= 76:
+                    blended_kt[b] = 0.0
+                elif b < 38:
+                    blended_kt[b] = kt_slots["morning"][b]
+                elif b <= 42:
+                    # Transition Morning -> Midday (Blocks 39 to 43)
+                    alpha = 0.5 * (1.0 - math.cos(math.pi * (b - 38) / 4.0))
+                    blended_kt[b] = (1.0 - alpha) * kt_slots["morning"][b] + alpha * kt_slots["midday"][b]
+                elif b < 54:
+                    blended_kt[b] = kt_slots["midday"][b]
+                elif b <= 58:
+                    # Transition Midday -> Afternoon (Blocks 55 to 59)
+                    alpha = 0.5 * (1.0 - math.cos(math.pi * (b - 54) / 4.0))
+                    blended_kt[b] = (1.0 - alpha) * kt_slots["midday"][b] + alpha * kt_slots["afternoon"][b]
+                else:
+                    blended_kt[b] = kt_slots["afternoon"][b]
 
-        if "wind_speed_10m" in hourly and hourly["wind_speed_10m"]:
-            h_ws = [float(v) if v is not None else 2.5 for v in hourly["wind_speed_10m"][:24]]
-            wind_speed = np.interp(np.arange(0, 24, 0.25), np.arange(0, 24, 1.0), h_ws)
-        else:
-            wind_speed = np.full(96, 2.5)
+            # Re-synthesize fused GTI from physical Clearness Index and astronomical Clear-Sky curve
+            fused_gti = np.round(blended_kt * cs_poa, 1)
+            fused_gti[:23] = 0.0
+            fused_gti[76:] = 0.0
+            fused_gti = np.maximum(0.0, fused_gti)
 
-        # Faiman / Sandia convective module temperature model
-        # Tcell = Tamb + GTI / (u0 + u1 * WindSpeed), where u0=25.0, u1=1.2 for open-rack modules
-        cell_temp = amb_temp + fused_gti / (25.0 + 1.2 * wind_speed)
-        temp_factor = np.clip(1.0 - 0.0038 * (cell_temp - 25.0), 0.82, 1.06)
+            # Ambient temperature & Wind speed convective derating from Open-Meteo Premium
+            hourly = weather.get("hourly", {})
+            if "temperature_2m" in hourly and hourly["temperature_2m"]:
+                h_t = [float(v) if v is not None else 28.0 for v in hourly["temperature_2m"][:24]]
+                amb_temp = np.interp(np.arange(0, 24, 0.25), np.arange(0, 24, 1.0), h_t)
+            else:
+                amb_temp = 25.0 + 10.0 * np.sin(np.pi * np.maximum(0, np.arange(96) - 24) / 56.0)
 
-        # Predicted MW = GTI * transfer_ratio * temp_factor clipped to AC capacity
-        pred_mw = np.round(np.clip(fused_gti * self.profile.transfer_ratio * temp_factor, 0.0, self.profile.ac_capacity_mw), 2)
-        pred_mw[:23] = 0.0
-        pred_mw[76:] = 0.0
+            if "wind_speed_10m" in hourly and hourly["wind_speed_10m"]:
+                h_ws = [float(v) if v is not None else 2.5 for v in hourly["wind_speed_10m"][:24]]
+                wind_speed = np.interp(np.arange(0, 24, 0.25), np.arange(0, 24, 1.0), h_ws)
+            else:
+                wind_speed = np.full(96, 2.5)
+
+            # Faiman / Sandia convective module temperature model
+            # Tcell = Tamb + GTI / (u0 + u1 * WindSpeed), where u0=25.0, u1=1.2 for open-rack modules
+            cell_temp = amb_temp + fused_gti / (25.0 + 1.2 * wind_speed)
+            temp_factor = np.clip(1.0 - 0.0038 * (cell_temp - 25.0), 0.82, 1.06)
+
+            # Predicted MW = GTI * transfer_ratio * temp_factor clipped to AC capacity
+            pred_mw = np.round(np.clip(fused_gti * self.profile.transfer_ratio * temp_factor, 0.0, self.profile.ac_capacity_mw), 2)
+            pred_mw[:23] = 0.0
+            pred_mw[76:] = 0.0
 
         # Calculate DSM Penalties against meter actuals if available
         blocks_data = []
@@ -1144,6 +1180,8 @@ class IntellisEnsembleGTIAI:
 
                 # Adaptive relaxation with trend momentum; bounded by physical atmospheric clearness
                 eff_kt = decay * (kt_obs + trend_momentum * decay) + (1.0 - decay) * fcst_kt
+                if kt_obs >= 0.78 and 36 <= b_dict["block"] <= 64:
+                    eff_kt = max(eff_kt, min(0.96, kt_obs * 0.95))
                 eff_kt = max(0.15, min(1.05, eff_kt))
 
                 target_poa = eff_kt * cs_poa[b_idx]
@@ -1165,8 +1203,7 @@ class IntellisEnsembleGTIAI:
                 # Ramp continuity against previous block
                 if updated_blocks:
                     prev_adj = updated_blocks[-1]["intellis_mw"]
-                    hr = (b_dict["block"] * 15) // 60
-                    max_delta = max(0.35, self.profile.ac_capacity_mw * 0.06) if 11 <= hr <= 14 else max(0.50, self.profile.ac_capacity_mw * 0.12)
+                    max_delta = max(0.50, self.profile.ac_capacity_mw * 0.10)
                     if abs(adj_mw - prev_adj) > max_delta:
                         adj_mw = round(prev_adj + (max_delta if adj_mw > prev_adj else -max_delta), 2)
                         adj_mw = min(self.profile.ac_capacity_mw, max(0.0, adj_mw))
@@ -1257,6 +1294,7 @@ class IntellisEnsembleGTIAI:
         curr_idx = curr_block - 1
 
         site_upper = (self.profile.plant_name or "").upper()
+        is_non_meter_site = site_upper in NON_METER_SITES
         is_90min_site = (
             self.profile.penalty_regulation == "Madhya Pradesh"
             or site_upper in {
@@ -1267,7 +1305,8 @@ class IntellisEnsembleGTIAI:
         freeze_lag_blocks = 6 if is_90min_site else 3
         actionable_block = max(1, curr_block + freeze_lag_blocks + 1)
 
-        if live_meter_csv_path and Path(live_meter_csv_path).exists():
+        # Attempt to load physical SCADA meter telemetry only for genuine metered sites
+        if live_meter_csv_path and Path(live_meter_csv_path).exists() and not is_non_meter_site:
             try:
                 norm_meter = load_and_normalize_meter_csv(
                     Path(live_meter_csv_path),
@@ -1276,12 +1315,47 @@ class IntellisEnsembleGTIAI:
                 day_meter = norm_meter[norm_meter["date"] == target_date_str]
                 if not day_meter.empty:
                     prior_rows = day_meter[day_meter["block"] <= curr_block].sort_values("block")
-                    if not prior_rows.empty:
-                        live_mw = float(prior_rows["metered_mw"].iloc[-1])
-                        recent_list = prior_rows["metered_mw"].tolist()
+                    vals = [float(v) for v in prior_rows["metered_mw"] if v is not None and not np.isnan(v)]
+                    # Must contain non-zero generation (not just all zeros or #NA) to qualify as active SCADA
+                    if vals and max(vals) > (0.02 * self.profile.ac_capacity_mw):
+                        live_mw = float(vals[-1])
+                        recent_list = vals
                         has_live_scada = True
             except Exception as exc:
                 print(f"  [WARN] Live meter load failed: {exc}")
+
+        # Fallback to Satellite Virtual Meter if non-meter site or physical SCADA is offline / missing (#NA)
+        telemetry_source = "PHYSICAL_SCADA" if has_live_scada else "SATELLITE_VIRTUAL_METER"
+        is_non_meter_or_missing_scada = is_non_meter_site or not has_live_scada
+
+        if not has_live_scada:
+            try:
+                from modules.weather.satellite_virtual_meter import fetch_satellite_96block_profile
+                target_dt = dt.datetime.strptime(f"{target_date_str} {target_time_str}", "%Y-%m-%d %H:%M")
+                virt_mw, _ = fetch_satellite_96block_profile(
+                    target_date=target_date_str,
+                    latitude=self.profile.latitude,
+                    longitude=self.profile.longitude,
+                    tilt=self.profile.tilt_deg,
+                    azimuth=self.profile.azimuth_openmeteo,
+                    plant_capacity_mw=self.profile.ac_capacity_mw,
+                    dc_capacity_mw=self.profile.dc_capacity_mw,
+                    performance_ratio=getattr(self.profile, "calibrated_pr", 0.78),
+                    cutoff_time=target_dt,
+                )
+                if curr_block >= 1 and np.max(virt_mw[:curr_block]) > (0.02 * self.profile.ac_capacity_mw):
+                    live_mw = float(virt_mw[curr_block - 1])
+                    recent_list = virt_mw[:curr_block].tolist()
+            except Exception as exc:
+                print(f"  [WARN] Intraday satellite virtual feedback failed: {exc}; using base meteorological forecast.")
+
+        # Compute solar elevation at revision time
+        try:
+            from modules.weather import time_features
+            t_dt = dt.datetime.strptime(f"{target_date_str} {target_time_str}", "%Y-%m-%d %H:%M")
+            ref_elev = time_features.compute_time_features(t_dt, self.profile.latitude, self.profile.longitude)["solar_elevation_deg"]
+        except Exception:
+            ref_elev = 30.0
 
         # Compute real clear sky and model residual at revision cutoff
         cs_poa = self.compute_clearsky_poa_96block(target_date_str)
@@ -1301,13 +1375,11 @@ class IntellisEnsembleGTIAI:
             physics_curr_mw = round(float(sched["blocks"][curr_idx].get("predicted_mw", 0.0)), 2)
             residual_mw = round(live_mw - physics_curr_mw, 2)
 
-        # Compute solar elevation at revision time
-        try:
-            from modules.weather import time_features
-            t_dt = dt.datetime.strptime(f"{target_date_str} {target_time_str}", "%Y-%m-%d %H:%M")
-            ref_elev = time_features.compute_time_features(t_dt, self.profile.latitude, self.profile.longitude)["solar_elevation_deg"]
-        except Exception:
-            ref_elev = 30.0
+        # For non-meter sites during high solar elevation, ensure telemetry reflects physical generation
+        if is_non_meter_or_missing_scada and live_mw <= 0.05 and physics_curr_mw > 0.3 and ref_elev >= 20.0:
+            live_mw = physics_curr_mw
+            residual_mw = 0.0
+            real_clearness_ratio = 1.0
 
         telemetry_ind = {
             "latest_mw": round(live_mw, 2),
@@ -1315,10 +1387,12 @@ class IntellisEnsembleGTIAI:
             "residual_mw": residual_mw,
             "solar_elevation_deg": round(ref_elev, 1),
             "clearness_ratio": real_clearness_ratio,
+            "is_non_meter_site": is_non_meter_or_missing_scada,
+            "telemetry_source": telemetry_source,
         }
 
-        # 4. Apply Real-Time SCADA Telemetry Relaxation
-        if has_live_scada:
+        # 4. Apply Real-Time SCADA Telemetry Relaxation (Only for plants with active physical SCADA)
+        if has_live_scada and not is_non_meter_site:
             try:
                 sched = self.apply_intraday_scada_feedback(
                     sched,
@@ -1328,32 +1402,6 @@ class IntellisEnsembleGTIAI:
                 )
             except Exception as exc:
                 print(f"  [WARN] Intraday SCADA feedback failed: {exc}; using strategic forecast.")
-        elif self.profile.plant_name.upper() in NON_METER_SITES and not has_live_scada:
-            try:
-                from modules.weather.satellite_virtual_meter import fetch_satellite_96block_profile
-                target_dt = dt.datetime.strptime(f"{target_date_str} {target_time_str}", "%Y-%m-%d %H:%M")
-                virt_mw, _ = fetch_satellite_96block_profile(
-                    target_date=target_date_str,
-                    latitude=self.profile.latitude,
-                    longitude=self.profile.longitude,
-                    tilt=self.profile.tilt_deg,
-                    azimuth=self.profile.azimuth_openmeteo,
-                    plant_capacity_mw=self.profile.ac_capacity_mw,
-                    dc_capacity_mw=self.profile.dc_capacity_mw,
-                    performance_ratio=getattr(self.profile, "calibrated_pr", 0.78),
-                    cutoff_time=target_dt,
-                )
-                if curr_block >= 1 and np.max(virt_mw[:curr_block]) > 0.05:
-                    live_mw = float(virt_mw[curr_block - 1])
-                    recent_list = virt_mw[:curr_block].tolist()
-                    sched = self.apply_intraday_scada_feedback(
-                        sched,
-                        current_block=curr_block,
-                        live_meter_mw=live_mw,
-                        recent_meter_mw_list=recent_list,
-                    )
-            except Exception as exc:
-                print(f"  [WARN] Intraday satellite virtual feedback failed: {exc}; using base meteorological forecast.")
 
         # Extract next 12 actionable dispatch blocks for the LLM to forecast
         next_12_blocks = []
@@ -1366,31 +1414,43 @@ class IntellisEnsembleGTIAI:
                     "gti_wm2": b["intellis_gti"],
                 })
 
-        # 5. Consult LLM Strategic Arbiter
-        try:
-            from modules.llm.strategic_arbiter import LLMStrategicArbiter
-            arbiter = LLMStrategicArbiter(plant_profile=self.profile)
-            advice = arbiter.get_strategic_guidance(
-                target_date_str=target_date_str,
-                target_time_str=target_time_str,
-                weather_indicators=weather_ind,
-                live_telemetry=telemetry_ind,
-                next_12_blocks=next_12_blocks,
-            )
-            print(f"  [LLM STRATEGY] Regime: {advice.regime} | Risk Quantile: {advice.quantile_bias_factor:.3f} | Agency: {advice.preferred_agency} | Trip Flag: {advice.is_trip_or_curtailment}")
-            print(f"                 Reasoning: {advice.reasoning}")
-        except Exception as arb_err:
-            print(f"  [WARN] LLM Strategic Arbiter invocation skipped: {arb_err}")
+        # 5. Consult LLM Strategic Arbiter (For non-meter sites, lock to clean satellite radiation physics)
+        if is_non_meter_site:
             from modules.llm.strategic_arbiter import StrategicAdvice
             advice = StrategicAdvice(
                 regime="CLEAR_SKY",
                 quantile_bias_factor=1.0,
-                preferred_agency="BALANCED",
+                preferred_agency="SATELLITE_PHYSICS",
                 is_trip_or_curtailment=False,
-                reasoning="Deterministic physics mode",
+                reasoning="Deterministic satellite solar radiation physics mode for non-meter site",
                 block_predictions={},
-                source="PHYSICS_BASELINE",
+                source="SATELLITE_PHYSICS",
             )
+        else:
+            try:
+                from modules.llm.strategic_arbiter import LLMStrategicArbiter
+                arbiter = LLMStrategicArbiter(plant_profile=self.profile)
+                advice = arbiter.get_strategic_guidance(
+                    target_date_str=target_date_str,
+                    target_time_str=target_time_str,
+                    weather_indicators=weather_ind,
+                    live_telemetry=telemetry_ind,
+                    next_12_blocks=next_12_blocks,
+                )
+                print(f"  [LLM STRATEGY] Regime: {advice.regime} | Risk Quantile: {advice.quantile_bias_factor:.3f} | Agency: {advice.preferred_agency} | Trip Flag: {advice.is_trip_or_curtailment}")
+                print(f"                 Reasoning: {advice.reasoning}")
+            except Exception as arb_err:
+                print(f"  [WARN] LLM Strategic Arbiter invocation skipped: {arb_err}")
+                from modules.llm.strategic_arbiter import StrategicAdvice
+                advice = StrategicAdvice(
+                    regime="CLEAR_SKY",
+                    quantile_bias_factor=1.0,
+                    preferred_agency="BALANCED",
+                    is_trip_or_curtailment=False,
+                    reasoning="Deterministic physics mode",
+                    block_predictions={},
+                    source="PHYSICS_BASELINE",
+                )
 
         # 6. Apply LLM Predictions for next 12 blocks, and pure Intellis GTI up to 19:00 (Block 76 / night 7)
         if advice.block_predictions:
