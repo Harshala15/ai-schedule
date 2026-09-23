@@ -160,6 +160,10 @@ PLANT_ACTUAL_METER_COLUMNS = {
         "timestamp": ("datetime", "block_end", "timestamp", "TimeStamp", "date_time"),
         "power": ("TVM Active Power", "metered_mw", "Metered MW", "MW"),
     },
+    "REWASPRNG": {
+        "timestamp": ("block_end", "block_start", "timestamp", "TimeStamp", "datetime", "date_time"),
+        "power": ("metered_mw", "Active Power (MW)", "Active Power (kW)", "MW"),
+    },
     "CME": {
         "timestamp": ("block_end", "block_start", "Block End", "Block Start", "TimeStamp", "Timestamp", "DateTime", "Datetime", "TIME", "Time"),
         "power": (

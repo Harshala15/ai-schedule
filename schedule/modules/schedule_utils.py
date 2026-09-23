@@ -21,7 +21,7 @@ IST = ZoneInfo("Asia/Kolkata")
 
 def _capture_times_for_site() -> list[str]:
     site = (getattr(config, "PLANT_NAME", "") or "").strip().upper()
-    if site in {"BHUPALPALLY", "KASIPET", "KOTHAGUDEM", "MANDAMARRI", "BALAKWADA", "ANDAD", "SAWDA", "CME", "ANJANGAON", "ANJANGOAN", "BAMKHAL", "GUGARIYAKHEDI", "NANDGAON", "OSEPL", "GSNP", "GSPPL"}:
+    if site in {"BHUPALPALLY", "KASIPET", "KOTHAGUDEM", "MANDAMARRI", "BALAKWADA", "ANDAD", "SAWDA", "CME", "ANJANGAON", "ANJANGOAN", "BAMKHAL", "GUGARIYAKHEDI", "NANDGAON", "OSEPL", "GSNP", "GSPPL", "REWASPRNG"}:
         return ["06:00", "06:45", "08:15", "09:45", "11:15", "12:45", "14:15", "15:45"]
     return list(getattr(config, "CAPTURE_TIMES", []) or [])
 
@@ -132,6 +132,7 @@ def _meter_filename_hints(plant_name: str | None = None) -> list[str]:
         "OSEPL": ["osepl"],
         "GSNP": ["gsnp", "gsppl"],
         "GSPPL": ["gsnp", "gsppl"],
+        "REWASPRNG": ["rewasprng", "rewa_sprng", "rewa"],
     }
     return hints.get(plant, [plant.lower()] if plant else [])
 
@@ -232,6 +233,7 @@ def freeze_from_datetime(target_date: str, target_time: str, block_minutes: int 
         "GUGARIYAKHEDI": 90,
         "NANDGAON": 90,
         "SAWDA": 90,
+        "REWASPRNG": 90,
         "BHUPALPALLY": 45,
         "KASIPET": 45,
         "KOTHAGUDEM": 45,
@@ -297,6 +299,7 @@ def write_current_final_schedule(
         "GUGARIYAKHEDI": 90,
         "NANDGAON": 90,
         "SAWDA": 90,
+        "REWASPRNG": 90,
         "BHUPALPALLY": 45,
         "KASIPET": 45,
         "KOTHAGUDEM": 45,
@@ -605,6 +608,7 @@ def write_full_block_schedule_from_llm_schedule(
 
     # Overlay current-final schedule
     input_daylight_blocks = []
+    input_explicit_mw = {}
     if input_csv_path.exists():
         with open(input_csv_path, "r", newline="", encoding="utf-8-sig") as handle:
             for row in csv.DictReader(handle):
@@ -624,6 +628,7 @@ def write_full_block_schedule_from_llm_schedule(
                         "intellis_mw": mw,
                         "time_interval": row.get("Time Interval (15 minute interval)", ""),
                     }
+                    input_explicit_mw[b] = mw
                     if 28 <= b <= 72 and mw > 0.02:
                         input_daylight_blocks.append(b)
                 except (ValueError, TypeError):
@@ -778,6 +783,11 @@ def write_full_block_schedule_from_llm_schedule(
                 final_val = round(max(0.0, min(ac_cap, curr_mw)), 3)
                 schedule_by_block.setdefault(b, {})["intellis_mw"] = final_val if final_val > 0.02 else 0.0
             prev_mw = float(schedule_by_block.get(b, {}).get("intellis_mw", 0.0))
+
+        # Explicitly preserve authoritative blocks supplied in input_csv_path
+        for b, exp_mw in input_explicit_mw.items():
+            if b in schedule_by_block:
+                schedule_by_block[b]["intellis_mw"] = exp_mw
 
     # Plant regulatory parameters
     cap_mw = float(getattr(config, "PLANT_CAPACITY_MW", 10.0))

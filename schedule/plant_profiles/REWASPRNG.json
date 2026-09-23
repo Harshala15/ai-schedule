@@ -1,0 +1,24 @@
+{
+  "plant_name": "REWASPRNG",
+  "latitude": 24.46922,
+  "longitude": 81.57604,
+  "dc_capacity_kw": 346000,
+  "maximum_feed_in_ac_kw": 250000,
+  "tracker_type": "None",
+  "orientation_deg_from_south": 0,
+  "tilt_deg": 18,
+  "eeg_id": "RewaSprng",
+  "ppa_rate_inr_per_kwh": 3.2515,
+  "penalty_regulation": "Madhya Pradesh",
+  "tolerance_band_mw": 25.0,
+  "band_percentage": 0.10,
+  "meter_data": {
+    "s3_prefix": "raw/vedanjay/{site_id}/{date}/metered_data/",
+    "file_name_regex": "^rewasprng_\\d{8}\\.csv$",
+    "delimiter": ",",
+    "timestamp_column": "block_end",
+    "power_column": "metered_mw",
+    "power_unit": "mw",
+    "block_column": "block_no"
+  }
+}

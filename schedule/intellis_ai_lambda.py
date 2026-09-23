@@ -39,6 +39,7 @@ SITE_PACKAGES = {
     "JEWLI": "bhupalpally_forecast_scheduler",
     "JGBPL": "bhupalpally_forecast_scheduler",
     "ZTRIC": "ztric_forecast_scheduler",
+    "REWASPRNG": "bhupalpally_forecast_scheduler",
 }
 
 SERVICE_MODULES = {
@@ -63,6 +64,7 @@ SERVICE_MODULES = {
     "JEWLI": "bhupalpally_forecast_scheduler.scheduler_service",
     "JGBPL": "bhupalpally_forecast_scheduler.scheduler_service",
     "ZTRIC": "ztric_forecast_scheduler.scheduler_service",
+    "REWASPRNG": "bhupalpally_forecast_scheduler.scheduler_service",
 }
 
 def _pick(name: str, default: str = "") -> str:

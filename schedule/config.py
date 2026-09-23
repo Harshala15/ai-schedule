@@ -369,6 +369,20 @@ _PLANT_FALLBACKS = {
         "band_percentage": 0.10,
         "eeg_id": "CHANDAWASA",
     },
+    "REWASPRNG": {
+        "latitude": 24.46922,
+        "longitude": 81.57604,
+        "capacity_mw": 250.0,
+        "dc_capacity_mw": 346.0,
+        "max_feed_in_mw": 250.0,
+        "tilt_deg": 18.0,
+        "orientation_deg_from_south": 0.0,
+        "ppa_rate_inr_per_kwh": 3.2515,
+        "penalty_regulation": "Madhya Pradesh",
+        "tolerance_band_mw": 25.0,
+        "band_percentage": 0.10,
+        "eeg_id": "RewaSprng",
+    },
 }
 SITES = _PLANT_FALLBACKS
 _fallback = _PLANT_FALLBACKS.get(_DEFAULT_PLANT_NAME.upper(), _PLANT_FALLBACKS["SIRMOUR"])
@@ -518,7 +532,7 @@ def get_plant_tolerance_band_pct(penalty_regulation: str | None = None, plant_na
     mp_plants = {
         "SIRMOUR", "GSNP", "GSPPL", "BAMKHAL", "BALAKWADA", "ANDAD",
         "ANJANGAON", "ANJANGOAN", "SAWDA", "GUGARIYAKHEDI", "NANDGAON",
-        "CHANDAWASA", "CHANDWASA"
+        "CHANDAWASA", "CHANDWASA", "REWASPRNG"
     }
     if name in mp_plants:
         return 10.0
