@@ -75,7 +75,7 @@ PUBLIC_ENSEMBLE_URL = "https://ensemble-api.open-meteo.com/v1/ensemble"
 
 # Explicit non-meter sites where physical SCADA telemetry is absent
 # and satellite solar radiation API (GTI) acts as the virtual meter input
-NON_METER_SITES = {"ANDAD", "GUGARIYAKHEDI", "SAWDA", "BALAKWADA", "CME"}
+NON_METER_SITES = {"ANDAD", "GUGARIYAKHEDI", "SAWDA", "BALAKWADA", "CME", "CLIMATEDETOX", "EMIL", "UPL"}
 
 
 @dataclass
@@ -155,8 +155,14 @@ def load_plant_profile(plant_name: str = "GSNP") -> PlantProfile:
     if "tolerance_band_percent" in data:
         raw_pct = float(data["tolerance_band_percent"])
         band_pct = raw_pct / 100.0 if raw_pct > 1.0 else raw_pct
+    elif "band_percentage" in data:
+        raw_pct = float(data["band_percentage"])
+        band_pct = raw_pct / 100.0 if raw_pct > 1.0 else raw_pct
 
-    tol_mw = round(ac_mw * band_pct, 3)
+    if "tolerance_band_mw" in data:
+        tol_mw = float(data["tolerance_band_mw"])
+    else:
+        tol_mw = round(ac_mw * band_pct, 3)
     meter_data = data.get("meter_data", {})
 
     return PlantProfile(
@@ -1011,7 +1017,13 @@ class IntellisEnsembleGTIAI:
                 elif b <= 42:
                     # Transition Morning -> Midday (Blocks 39 to 43)
                     alpha = 0.5 * (1.0 - math.cos(math.pi * (b - 38) / 4.0))
-                    blended_kt[b] = (1.0 - alpha) * kt_slots["morning"][b] + alpha * kt_slots["midday"][b]
+                    raw_blend = (1.0 - alpha) * kt_slots["morning"][b] + alpha * kt_slots["midday"][b]
+                    # Cross-slot continuity floor: midday slot models (which are penalised
+                    # for DSM shortfall risk) are systematically more conservative than morning
+                    # slot models. Prevent the cosine cross-fade from creating an artificial
+                    # valley: blended Kt cannot fall more than 15% below the morning Kt.
+                    kt_floor = max(0.0, kt_slots["morning"][b] * 0.85)
+                    blended_kt[b] = max(raw_blend, kt_floor)
                 elif b < 54:
                     blended_kt[b] = kt_slots["midday"][b]
                 elif b <= 58:
@@ -1172,7 +1184,11 @@ class IntellisEnsembleGTIAI:
             kt_poa = max(0.15, min(1.10, live_pyranometer_poa / curr_cs_poa))
 
         # Early morning inverter wakeup guardrail:
-        if current_block < 28 or cs_curr_mw < (0.05 * self.profile.ac_capacity_mw):
+        # Extend to block < 30 (before 07:30 IST) to protect the 90-min freeze zone for MP sites.
+        # The 06:45 revision (block 27) and 08:15 revision (block 33) would otherwise propagate
+        # a low morning Kt into blocks 37-44 which gets frozen before it can be corrected.
+        morning_guardrail_limit = 30 if is_90min_site else 28
+        if current_block < morning_guardrail_limit or cs_curr_mw < (0.05 * self.profile.ac_capacity_mw):
             if kt_poa is not None and current_block >= 25:
                 # Use ground truth pyranometer instead of static 0.85 assumption
                 kt_obs = kt_poa
@@ -1432,27 +1448,6 @@ class IntellisEnsembleGTIAI:
             except Exception as exc:
                 print(f"  [WARN] Live meter load failed: {exc}")
 
-        # Fallback to Enercast Intraday telemetry if physical SCADA is offline / delayed
-        if not has_live_scada and not is_non_meter_site and enercast_intraday_csv_path and Path(enercast_intraday_csv_path).exists():
-            try:
-                import pandas as pd
-                ec_df = pd.read_csv(Path(enercast_intraday_csv_path), skiprows=4)
-                ec_df.columns = [str(c).strip() for c in ec_df.columns]
-                plant_col = next((c for c in ec_df.columns if c.upper() == site_upper), None)
-                if not plant_col and len(ec_df.columns) >= 4:
-                    plant_col = ec_df.columns[3]
-                if plant_col and "BLK NO." in ec_df.columns:
-                    ec_sub = ec_df[ec_df["BLK NO."] <= curr_block].sort_values("BLK NO.")
-                    ec_vals = [float(v) for v in ec_sub[plant_col] if pd.notnull(v)]
-                    if ec_vals and max(ec_vals) > (0.02 * self.profile.ac_capacity_mw):
-                        live_mw = float(ec_vals[-1])
-                        recent_list = ec_vals
-                        has_live_scada = True
-                        telemetry_source = "ENERCAST_INTRADAY"
-                        print(f"  [ENERCAST INTRADAY] Utilizing Enercast telemetry (last block {curr_block}: {live_mw:.2f} MW)")
-            except Exception as ec_err:
-                print(f"  [WARN] Enercast intraday telemetry ingestion failed: {ec_err}")
-
         # Fallback to Satellite Virtual Meter if non-meter site or physical SCADA is offline / missing (#NA)
         if not has_live_scada:
             telemetry_source = "SATELLITE_VIRTUAL_METER"
@@ -1507,8 +1502,12 @@ class IntellisEnsembleGTIAI:
             physics_curr_mw = round(float(sched["blocks"][curr_idx].get("predicted_mw", 0.0)), 2)
             residual_mw = round(live_mw - physics_curr_mw, 2)
 
-        # For non-meter sites during high solar elevation, ensure telemetry reflects physical generation
-        if is_non_meter_or_missing_scada and live_mw <= 0.05 and physics_curr_mw > 0.3 and ref_elev >= 20.0:
+        # For non-meter sites OR when satellite/SCADA telemetry is absent/failed:
+        # If we have zero live_mw but physics expects real generation at high sun angle,
+        # do NOT treat this as a plant collapse — it is missing telemetry, not a trip.
+        # Restore live_mw to physics prediction so downstream trip logic is not falsely triggered.
+        if live_mw <= 0.05 and physics_curr_mw > 0.3 and ref_elev >= 20.0:
+            # Covers: non-meter sites, metered sites with SCADA delay, satellite API failure
             live_mw = physics_curr_mw
             residual_mw = 0.0
             real_clearness_ratio = 1.0
@@ -1586,10 +1585,14 @@ class IntellisEnsembleGTIAI:
                     source="PHYSICS_BASELINE",
                 )
 
-        # Deterministic check for sudden severe drop / multi-inverter trip on metered sites
+        # Deterministic check for sudden severe drop / multi-inverter trip on metered sites.
+        # IMPORTANT: Only trigger if we have CONFIRMED non-zero physical SCADA telemetry.
+        # A zero live_mw after telemetry fallback means DATA MISSING, not a plant trip.
+        # Require live_mw > 0.01 MW to confirm actual generation was observed before declaring collapse.
         is_plant_collapse = (
-            not is_non_meter_or_missing_scada
-            and has_live_scada
+            not is_non_meter_or_missing_scada  # Must have active physical SCADA
+            and has_live_scada                  # SCADA actually loaded
+            and live_mw > 0.01                  # Telemetry present (not missing/failed)
             and ref_elev >= 25.0
             and cs_curr_mw >= 1.5
             and (live_mw <= 0.05 or (real_clearness_ratio <= 0.50 and residual_mw <= -1.2))

@@ -383,6 +383,48 @@ _PLANT_FALLBACKS = {
         "band_percentage": 0.10,
         "eeg_id": "RewaSprng",
     },
+    "CLIMATEDETOX": {
+        "latitude": 17.557881,
+        "longitude": 76.201973,
+        "capacity_mw": 5.0,
+        "dc_capacity_mw": 7.0,
+        "max_feed_in_mw": 5.0,
+        "tilt_deg": 12.0,
+        "orientation_deg_from_south": 0.0,
+        "ppa_rate_inr_per_kwh": 3.00,
+        "penalty_regulation": "Maharashtra",
+        "tolerance_band_mw": 0.50,
+        "band_percentage": 0.10,
+        "eeg_id": "CLIMATEDETOX",
+    },
+    "EMIL": {
+        "latitude": 17.557145,
+        "longitude": 76.199237,
+        "capacity_mw": 1.62,
+        "dc_capacity_mw": 1.62,
+        "max_feed_in_mw": 1.62,
+        "tilt_deg": 12.0,
+        "orientation_deg_from_south": 0.0,
+        "ppa_rate_inr_per_kwh": 3.00,
+        "penalty_regulation": "Maharashtra",
+        "tolerance_band_mw": 0.162,
+        "band_percentage": 0.10,
+        "eeg_id": "EMIL",
+    },
+    "UPL": {
+        "latitude": 17.553289,
+        "longitude": 76.202159,
+        "capacity_mw": 1.0,
+        "dc_capacity_mw": 1.5,
+        "max_feed_in_mw": 1.0,
+        "tilt_deg": 12.0,
+        "orientation_deg_from_south": 0.0,
+        "ppa_rate_inr_per_kwh": 3.00,
+        "penalty_regulation": "Maharashtra",
+        "tolerance_band_mw": 0.10,
+        "band_percentage": 0.10,
+        "eeg_id": "UPL",
+    },
 }
 SITES = _PLANT_FALLBACKS
 _fallback = _PLANT_FALLBACKS.get(_DEFAULT_PLANT_NAME.upper(), _PLANT_FALLBACKS["SIRMOUR"])
@@ -537,7 +579,7 @@ def get_plant_tolerance_band_pct(penalty_regulation: str | None = None, plant_na
     if name in mp_plants:
         return 10.0
 
-    mh_plants = {"CME", "OSEPL", "ZTRIC"}
+    mh_plants = {"CME", "OSEPL", "ZTRIC", "CLIMATEDETOX", "EMIL", "UPL"}
     if name in mh_plants:
         return 10.0
 

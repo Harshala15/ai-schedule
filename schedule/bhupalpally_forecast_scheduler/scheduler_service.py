@@ -40,6 +40,7 @@ class CaptureSelection:
     weather_summary: str = ""
     context_summary: str = ""
     context_payload: dict | None = None
+    enercast_path: Path | None = None
 
 
 def _parse_target_datetime(event: dict | None) -> tuple[str, str, dt.datetime]:
@@ -170,6 +171,8 @@ def _pick_latest_capture_bundle(
             else:
                 raise
 
+    enercast_path = None
+
     if selected_video is not None:
         storage.download_file(bucket, selected_video.key, video_dir / Path(selected_video.key).name)
 
@@ -200,9 +203,9 @@ def _pick_latest_capture_bundle(
         meter_rows_available=meter_rows_available,
         meter_rows_used=meter_rows_used,
         weather_summary=weather_report.get("prompt_text", ""),
-        # Keep the raw ECMWF payload on the capture record so metadata can point to it.
         context_summary=context_summary,
         context_payload=context_payload,
+        enercast_path=enercast_path,
     )
 
 
@@ -601,6 +604,7 @@ def run_schedule_job(
     )
 
     snapshot_source = work_output_dir / f"{config.PLANT_NAME}_energy_generation_{target_date}.csv"
+    solar_sched_result = None
     if is_wind_site:
         from modules.weather.wind_ensemble import calculate_wind_schedule_96block, WindTurbineProfile
         wind_prof = WindTurbineProfile.from_plant_profile(getattr(config, "PLANT_PROFILE", {}) or config.PLANT_NAME)
@@ -641,11 +645,12 @@ def run_schedule_job(
         from modules.weather.intellis_ensemble_gti_ai import IntellisEnsembleGTIAI, load_plant_profile
         prof = load_plant_profile(config.PLANT_NAME)
         ai_engine = IntellisEnsembleGTIAI(plant_profile=prof)
-        ai_engine.generate_revision_schedule_csv(
+        solar_sched_result = ai_engine.generate_revision_schedule_csv(
             target_date_str=target_date,
             target_time_str=target_time,
             output_csv_path=snapshot_source,
             live_meter_csv_path=selection.meter_path,
+            enercast_intraday_csv_path=selection.enercast_path,
         )
 
     if not snapshot_source.exists():
@@ -705,6 +710,8 @@ def run_schedule_job(
     metadata["is_wind_plant"] = bool(is_wind_site)
     if is_wind_site:
         metadata["weather_summary_type"] = "wind_ensemble"
+    elif isinstance(solar_sched_result, dict) and "llm_strategy" in solar_sched_result:
+        metadata["llm_strategy"] = solar_sched_result["llm_strategy"]
     snapshot_metadata.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
     latest_metadata.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
 

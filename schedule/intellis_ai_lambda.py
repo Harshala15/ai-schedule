@@ -40,6 +40,9 @@ SITE_PACKAGES = {
     "JGBPL": "bhupalpally_forecast_scheduler",
     "ZTRIC": "ztric_forecast_scheduler",
     "REWASPRNG": "bhupalpally_forecast_scheduler",
+    "CLIMATEDETOX": "bhupalpally_forecast_scheduler",
+    "EMIL": "bhupalpally_forecast_scheduler",
+    "UPL": "bhupalpally_forecast_scheduler",
 }
 
 SERVICE_MODULES = {
@@ -65,6 +68,9 @@ SERVICE_MODULES = {
     "JGBPL": "bhupalpally_forecast_scheduler.scheduler_service",
     "ZTRIC": "ztric_forecast_scheduler.scheduler_service",
     "REWASPRNG": "bhupalpally_forecast_scheduler.scheduler_service",
+    "CLIMATEDETOX": "bhupalpally_forecast_scheduler.scheduler_service",
+    "EMIL": "bhupalpally_forecast_scheduler.scheduler_service",
+    "UPL": "bhupalpally_forecast_scheduler.scheduler_service",
 }
 
 def _pick(name: str, default: str = "") -> str:

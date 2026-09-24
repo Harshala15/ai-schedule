@@ -39,6 +39,7 @@ class CaptureSelection:
     weather_summary: str = ""
     context_summary: str = ""
     context_payload: dict | None = None
+    enercast_path: Path | None = None
 
 
 def _parse_target_datetime(event: dict | None) -> tuple[str, str, dt.datetime]:
@@ -160,6 +161,8 @@ def _pick_latest_capture_bundle(
             target_dt,
         )
 
+    enercast_path = None
+
     if selected_video is not None:
         storage.download_file(bucket, selected_video.key, video_dir / Path(selected_video.key).name)
 
@@ -190,9 +193,9 @@ def _pick_latest_capture_bundle(
         meter_rows_available=meter_rows_available,
         meter_rows_used=meter_rows_used,
         weather_summary=weather_report.get("prompt_text", ""),
-        # Keep the raw ECMWF payload on the capture record so metadata can point to it.
         context_summary=context_summary,
         context_payload=context_payload,
+        enercast_path=enercast_path,
     )
 
 
@@ -580,6 +583,7 @@ def run_schedule_job(
         target_time_str=target_time,
         output_csv_path=snapshot_source,
         live_meter_csv_path=selection.meter_path,
+        enercast_intraday_csv_path=selection.enercast_path,
     )
 
     snapshot_block = ((target_dt.hour * 60 + target_dt.minute) // config.BLOCK_MINUTES) + 1

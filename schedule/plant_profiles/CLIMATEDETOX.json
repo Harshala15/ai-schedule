@@ -1,0 +1,26 @@
+{
+  "plant_name": "CLIMATEDETOX",
+  "latitude": 17.557881,
+  "longitude": 76.201973,
+  "dc_capacity_kw": 7000,
+  "maximum_feed_in_ac_kw": 5000,
+  "tracker_type": "None",
+  "orientation_deg_from_south": 0,
+  "tilt_deg": 12,
+  "eeg_id": "CLIMATEDETOX",
+  "ppa_rate_inr_per_kwh": 3.00,
+  "penalty_regulation": "Maharashtra",
+  "tolerance_band_mw": 0.50,
+  "band_percentage": 0.10,
+  "tolerance_band_percent": 0.10,
+  "meter_data": {
+    "is_non_meter_site": true,
+    "s3_prefix": "raw/vedanjay/{site_id}/{date}/metered_data/",
+    "file_name_regex": "^climatedetox_\\d{8}\\.csv$",
+    "delimiter": ",",
+    "timestamp_column": "block_end",
+    "power_column": "metered_mw",
+    "power_unit": "mw",
+    "block_column": "block_no"
+  }
+}

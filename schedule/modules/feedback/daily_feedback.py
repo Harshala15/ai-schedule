@@ -164,6 +164,18 @@ PLANT_ACTUAL_METER_COLUMNS = {
         "timestamp": ("block_end", "block_start", "timestamp", "TimeStamp", "datetime", "date_time"),
         "power": ("metered_mw", "Active Power (MW)", "Active Power (kW)", "MW"),
     },
+    "CLIMATEDETOX": {
+        "timestamp": ("block_end", "block_start", "timestamp", "TimeStamp", "datetime", "date_time"),
+        "power": ("metered_mw", "Active Power (MW)", "Active Power (kW)", "MW"),
+    },
+    "EMIL": {
+        "timestamp": ("block_end", "block_start", "timestamp", "TimeStamp", "datetime", "date_time"),
+        "power": ("metered_mw", "Active Power (MW)", "Active Power (kW)", "MW"),
+    },
+    "UPL": {
+        "timestamp": ("block_end", "block_start", "timestamp", "TimeStamp", "datetime", "date_time"),
+        "power": ("metered_mw", "Active Power (MW)", "Active Power (kW)", "MW"),
+    },
     "CME": {
         "timestamp": ("block_end", "block_start", "Block End", "Block Start", "TimeStamp", "Timestamp", "DateTime", "Datetime", "TIME", "Time"),
         "power": (

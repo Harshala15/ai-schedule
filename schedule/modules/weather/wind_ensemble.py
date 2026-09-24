@@ -759,13 +759,15 @@ def calculate_wind_schedule_96block(
     else:
         b_net_mw = np.round(b_net_mw, 2)
 
-    # Mandatory plant operational rules: JEWLI daytime limit <= 10.0 MW (06:00 to 18:00 IST / Blocks 25 to 72)
+    # Optional plant operational override: JEWLI daytime limit <= 10.0 MW (06:00 to 18:00 IST / Blocks 25 to 72)
+    # Default is False so physical power curve operates unhindered during real wind events (e.g. 50-65 MW mornings)
     is_jewli = "JEWLI" in str(prof.plant_name).upper()
-    if is_jewli:
+    enable_jewli_daytime_clamp = os.getenv("ENABLE_JEWLI_DAYTIME_CLAMP", "false").strip().lower() in {"1", "true", "yes", "on"}
+    if is_jewli and enable_jewli_daytime_clamp:
         for b in range(96):
             b_num = b + 1
             if 25 <= b_num <= 72:
-                # Daytime cap 10.0 MW as explicitly instructed by plant dispatch rules
+                # Daytime cap 10.0 MW when explicitly enabled by dispatch instructions
                 b_net_mw[b] = min(float(b_net_mw[b]), 10.0)
                 # Midday convective lull floor (09:00 to 12:00 IST / Blocks 37 to 48)
                 if 37 <= b_num <= 48:
@@ -792,8 +794,8 @@ def calculate_wind_schedule_96block(
         actual_mw = mw_scada.get(b_num)
         sched_val = mw_val
 
-        # Mandatory Jewli rule: Daytime schedule_mw must NEVER exceed 10.0 MW (06:00 to 18:00 IST / Blocks 25 to 72)
-        if is_jewli and 25 <= b_num <= 72:
+        # Daytime schedule_mw curtailment bounds only if explicitly enabled
+        if is_jewli and enable_jewli_daytime_clamp and 25 <= b_num <= 72:
             sched_val = min(sched_val, 10.0)
             if 37 <= b_num <= 48:
                 sched_val = min(sched_val, 3.0)

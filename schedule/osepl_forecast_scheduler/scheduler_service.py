@@ -850,9 +850,9 @@ def run_schedule_job(
     latest_metadata = generated_root / f"{target_date}_latest_metadata.json"
 
     shutil.copyfile(snapshot_source, snapshot_csv)
-    # If revision 1 of the day is run with force, do not seed from stale uncalibrated runs
-    is_first_revision = target_time in ("00:00", "01:15") and str(event.get("force", "")).lower() in ("1", "true", "yes")
-    if is_first_revision:
+    # If revision is run with force or clean_seed, do not seed from stale uncalibrated runs
+    force_all = event and (str(event.get("force", "")).lower() in ("1", "true", "yes") or str(event.get("clean_seed", "")).lower() in ("1", "true", "yes"))
+    if force_all or (target_time in ("00:00", "01:15") and event and str(event.get("force", "")).lower() in ("1", "true", "yes")):
         if current_final_csv.exists():
             current_final_csv.unlink(missing_ok=True)
         if latest_csv.exists():
