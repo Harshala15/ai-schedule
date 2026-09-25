@@ -128,12 +128,10 @@ def _pick_latest_capture_bundle(
             f"  [WARN] No meter file found under metered_data or meter_data for {meter_prefix.rstrip('/')}/{date_str}/; "
             "continuing without intraday actuals."
         )
-        meter_objects = _list_capture_objects(bucket, meter_prefix)
 
     selected_meter = None
     if meter_objects:
-        meter_objects.sort(key=lambda obj: (obj.last_modified or dt.datetime.min.replace(tzinfo=dt.timezone.utc), obj.key))
-        selected_meter = meter_objects[-1]
+        selected_meter = shared_schedule_utils.select_preferred_meter_object(meter_objects, config.PLANT_NAME)
 
     work_root = _storage_subpath("_scheduler_work", date_str, target_dt.strftime("%H-%M"))
     screenshot_dir = work_root / "screenshots"
@@ -741,7 +739,3 @@ def run_schedule_job(
         state_sync.push_state_to_s3(bucket=bucket)
 
     return metadata
-
-
-
-

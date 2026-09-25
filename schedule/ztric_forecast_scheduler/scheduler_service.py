@@ -85,6 +85,40 @@ def _unique_id(base_id: str, raw: dict[str, Any], seen_ids: set[str]) -> str:
     seen_ids.add(candidate)
     return candidate
 
+def _default_ztric_contract(table_name: str, plant_id: str, reason: str) -> dict[str, Any]:
+    print(f"  [WARN] ZTRIC DynamoDB contract config is incomplete ({reason}); using built-in ZTRIC contract fallback.")
+    buyer_id = "OA_MSEDCL"
+    assets = [
+        {"asset_id": "POLYBOND", "asset_name": "Polybond", "buyer_id": buyer_id, "capacity_ac_mw": 3.3, "capacity_dc_mw": 4.5, "meter_data_available": True},
+        {"asset_id": "SNHEAT", "asset_name": "S.N.Heat", "buyer_id": buyer_id, "capacity_ac_mw": 1.475, "capacity_dc_mw": 2.0, "meter_data_available": True},
+        {"asset_id": "INTEGRATED", "asset_name": "Integrated", "buyer_id": buyer_id, "capacity_ac_mw": 1.0, "capacity_dc_mw": 1.0, "meter_data_available": True},
+        {"asset_id": "DE_SOLAR", "asset_name": "DE Solar", "buyer_id": buyer_id, "capacity_ac_mw": 2.4, "capacity_dc_mw": 3.0, "meter_data_available": True},
+        {"asset_id": "INDIQUBE", "asset_name": "Indiqube", "buyer_id": buyer_id, "capacity_ac_mw": 2.95, "capacity_dc_mw": 4.015, "meter_data_available": True},
+        {"asset_id": "GAJLAXMI", "asset_name": "Gajlaxmi", "buyer_id": buyer_id, "capacity_ac_mw": 1.475, "capacity_dc_mw": 1.5, "meter_data_available": True},
+        {"asset_id": "CHAKUR_ONE_BLOCK_1", "asset_name": "CHAKUR ONE BLOCK 1", "buyer_id": buyer_id, "capacity_ac_mw": 1.8, "capacity_dc_mw": 2.443, "meter_data_available": False},
+        {"asset_id": "CHAKUR_ONE_BLOCK_2", "asset_name": "CHAKUR ONE BLOCK 2", "buyer_id": buyer_id, "capacity_ac_mw": 4.2, "capacity_dc_mw": 4.569, "meter_data_available": False},
+    ]
+    return {
+        "config_source": "builtin_ztric_contract_fallback",
+        "table_name": table_name,
+        "plant_id": plant_id,
+        "plant_name": "ZETRIC",
+        "latitude": 18.557968,
+        "longitude": 76.859083,
+        "reference_capacity_mw": 18.63,
+        "buyers": [
+            {
+                "buyer_id": buyer_id,
+                "buyer_name": "OA-MSEDCL",
+                "capacity_mw": 20.35,
+                "contract_id": "CONTRACT25458",
+                "approval_number": "Chakur/S/09/26/OA-MSEDCL",
+            }
+        ],
+        "assets": assets,
+        "updated_at": None,
+        "updated_by": reason,
+    }
 
 def _load_contract_config() -> dict[str, Any]:
     region = os.getenv("AWS_REGION") or os.getenv("AWS_DEFAULT_REGION") or "ap-south-1"
@@ -141,9 +175,9 @@ def _load_contract_config() -> dict[str, Any]:
             )
 
     if not buyers:
-        raise RuntimeError("ZTRIC contract config has no active buyers with schedule_capacity_mw")
+        return _default_ztric_contract(table_name, plant_id, "no active buyers with schedule_capacity_mw")
     if not assets:
-        raise RuntimeError("ZTRIC contract config has no active assets to aggregate")
+        return _default_ztric_contract(table_name, plant_id, "no active assets to aggregate")
 
     current_capacity = item.get("currently_scheduling_capacity") if isinstance(item.get("currently_scheduling_capacity"), dict) else {}
     reference_capacity = _float_value(current_capacity.get("ac_mw"))
