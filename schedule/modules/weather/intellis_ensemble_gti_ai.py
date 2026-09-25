@@ -541,16 +541,63 @@ class IntellisEnsembleGTIAI:
         return self.profile.calibrated_pr
 
     # -------------------------------------------------------------------------
-    # 4. Clearness Index (Kt) Regime Classifier
+    # 4. Clearness Index (Kt) Regime Classifier & Atmospheric Cloud Metrics
     # -------------------------------------------------------------------------
-    def classify_weather_regime(self, gti_daylight_wm2: float, cs_daylight_wm2: float) -> str:
+    def get_cloud_and_atmospheric_metrics_96block(self, raw_weather: dict[str, Any]) -> dict[str, np.ndarray]:
+        """
+        Extract 96-block multi-model ensemble interpolated cloud, precipitation, and CAPE series.
+        """
+        hourly = raw_weather.get("hourly", {})
+        hourly_idx = np.arange(0, 24, 1.0)
+        b_idx = np.arange(0, 24, 0.25)
+
+        # 1. Total Cloud Cover (%)
+        cloud_tot_keys = [k for k in hourly.keys() if k == "cloud_cover" or (k.startswith("cloud_cover_") and not any(k.startswith(f"cloud_cover_{layer}") for layer in ["low", "mid", "high"]))]
+        tot_matrix = [[float(v) if v is not None else 0.0 for v in hourly[k][:24]] for k in cloud_tot_keys if hourly[k] and len(hourly[k]) >= 24]
+        mean_tot_h = np.mean(tot_matrix, axis=0) if tot_matrix else np.zeros(24)
+        tot_cloud_96 = np.clip(np.interp(b_idx, hourly_idx, mean_tot_h), 0.0, 100.0)
+
+        # 2. Low Cloud Cover (%) - thickest optical depth (stratus, nimbostratus)
+        cloud_low_keys = [k for k in hourly.keys() if "cloud_cover_low" in k]
+        low_matrix = [[float(v) if v is not None else 0.0 for v in hourly[k][:24]] for k in cloud_low_keys if hourly[k] and len(hourly[k]) >= 24]
+        mean_low_h = np.mean(low_matrix, axis=0) if low_matrix else np.zeros(24)
+        low_cloud_96 = np.clip(np.interp(b_idx, hourly_idx, mean_low_h), 0.0, 100.0)
+
+        # 3. Precipitation (mm/hr)
+        precip_keys = [k for k in hourly.keys() if "precipitation" in k]
+        precip_matrix = [[float(v) if v is not None else 0.0 for v in hourly[k][:24]] for k in precip_keys if hourly[k] and len(hourly[k]) >= 24]
+        mean_precip_h = np.mean(precip_matrix, axis=0) if precip_matrix else np.zeros(24)
+        precip_96 = np.maximum(0.0, np.interp(b_idx, hourly_idx, mean_precip_h))
+
+        return {
+            "tot_cloud_96": tot_cloud_96,
+            "low_cloud_96": low_cloud_96,
+            "precip_96": precip_96,
+        }
+
+    def classify_weather_regime(
+        self,
+        gti_daylight_wm2: float,
+        cs_daylight_wm2: float,
+        mean_cloud_cover_pct: float | None = None,
+        mean_low_cloud_pct: float | None = None,
+        mean_precip_mm: float | None = None,
+    ) -> str:
         """Classify daily atmospheric condition into OVERCAST, MIXED, or CLEAR."""
+        # Strong physical cloud indicators override raw NWP diffuse inflation
+        if mean_cloud_cover_pct is not None and mean_cloud_cover_pct >= 80.0:
+            return "OVERCAST"
+        if mean_low_cloud_pct is not None and mean_low_cloud_pct >= 45.0:
+            return "OVERCAST"
+        if mean_precip_mm is not None and mean_precip_mm > 0.10:
+            return "OVERCAST"
+
         if cs_daylight_wm2 <= 0.0:
             return "MIXED"
         kt = gti_daylight_wm2 / cs_daylight_wm2
         if kt < 0.50:
             return "OVERCAST"
-        elif kt >= 0.75:
+        elif kt >= 0.75 and (mean_cloud_cover_pct is None or mean_cloud_cover_pct <= 25.0):
             return "CLEAR"
         return "MIXED"
 
@@ -650,10 +697,22 @@ class IntellisEnsembleGTIAI:
         if not sample_keys:
             sample_keys = canonical_keys[:20]
 
+        # Extract atmospheric indicators for today to robustly detect overcast / cloud fronts
+        cloud_metrics_today = self.get_cloud_and_atmospheric_metrics_96block(today_weather)
+        tot_c_day = float(np.mean(cloud_metrics_today["tot_cloud_96"][b_start:b_end])) if len(cloud_metrics_today["tot_cloud_96"]) > b_end else 0.0
+        low_c_day = float(np.mean(cloud_metrics_today["low_cloud_96"][b_start:b_end])) if len(cloud_metrics_today["low_cloud_96"]) > b_end else 0.0
+        prec_day = float(np.mean(cloud_metrics_today["precip_96"][b_start:b_end])) if len(cloud_metrics_today["precip_96"]) > b_end else 0.0
+
         today_prelim_gti = [self.extract_member_96block_gti(today_weather, k, target_date_str) for k in sample_keys]
         # Use robust multi-family median across ensemble members
         today_mean_gti_sum = float(np.sum(np.median(today_prelim_gti, axis=0)[b_start:b_end])) if today_prelim_gti else 0.0
-        today_regime = self.classify_weather_regime(today_mean_gti_sum, cs_daylight_sum)
+        today_regime = self.classify_weather_regime(
+            today_mean_gti_sum,
+            cs_daylight_sum,
+            mean_cloud_cover_pct=tot_c_day,
+            mean_low_cloud_pct=low_c_day,
+            mean_precip_mm=prec_day,
+        )
 
         model_weighted_mse: dict[str, float] = {k: 0.0 for k in canonical_keys}
         model_weighted_bias: dict[str, float] = {k: 0.0 for k in canonical_keys}
@@ -676,10 +735,25 @@ class IntellisEnsembleGTIAI:
 
             w_d = math.exp(-offset / max(0.5, tau_decay_days))
             if use_regime_matching:
-                if day_regime == today_regime:
-                    w_d *= 1.50  # Boost matched weather regime
-                else:
-                    w_d *= 0.65  # Soft de-weight for mismatched regime
+                if today_regime == "OVERCAST":
+                    if day_regime == "OVERCAST":
+                        w_d *= 3.5  # Strong boost for genuine overcast actuals
+                    elif day_regime == "MIXED":
+                        w_d *= 1.2
+                    else:  # CLEAR
+                        w_d *= 0.15 # Heavily suppress sunny lookback days from biasing overcast forecast
+                elif today_regime == "CLEAR":
+                    if day_regime == "CLEAR":
+                        w_d *= 2.5
+                    elif day_regime == "MIXED":
+                        w_d *= 0.8
+                    else:  # OVERCAST
+                        w_d *= 0.15
+                else:  # MIXED
+                    if day_regime == "MIXED":
+                        w_d *= 1.8
+                    else:
+                        w_d *= 0.7
 
             try:
                 weather_d = self.fetch_ensemble_weather(d_str)
@@ -787,14 +861,20 @@ class IntellisEnsembleGTIAI:
 
         df_rank = pd.DataFrame(records).sort_values("composite_loss")
 
-        # Capped Family Diversity Selection (Min 1 Floor + Max 3 per Agency, Total 6)
+        # Capped Family Diversity Selection with Outlier Agency Rejection
+        best_global_loss = df_rank.iloc[0]["composite_loss"] if not df_rank.empty else 1.0
         floor_models = []
         for fam in ["ECMWF", "ICON", "GEFS"]:
             sub = df_rank[df_rank["family"] == fam]
             if not sub.empty:
-                floor_models.append(sub.iloc[0])
+                fam_best = sub.iloc[0]
+                # Reject outlier family if its best member is > 2.2x worse than best global model
+                if fam_best["composite_loss"] <= (best_global_loss * 2.2):
+                    floor_models.append(fam_best)
+                else:
+                    print(f"  [OUTLIER REJECTED] Agency {fam} excluded from mandatory floor (loss {fam_best['composite_loss']} > 2.2 * {best_global_loss:.4f})")
 
-        selected_df = pd.DataFrame(floor_models)
+        selected_df = pd.DataFrame(floor_models) if floor_models else pd.DataFrame([df_rank.iloc[0]])
         used_keys = set(selected_df["key"].tolist())
         fam_counts = selected_df["family"].value_counts().to_dict()
 
@@ -990,6 +1070,17 @@ class IntellisEnsembleGTIAI:
                     "afternoon": (selected_keys, weights_map),
                 }
 
+            # Physical Cloud Optical Attenuation Ceiling (Kasten-Czeplak formulation)
+            cloud_metrics = self.get_cloud_and_atmospheric_metrics_96block(weather)
+            tot_cloud = cloud_metrics["tot_cloud_96"]
+            low_cloud = cloud_metrics["low_cloud_96"]
+            precip = cloud_metrics["precip_96"]
+
+            t_cloud = 1.0 - 0.75 * ((tot_cloud / 100.0) ** 3.4)
+            eta_low = 1.0 - 0.50 * (low_cloud / 100.0)
+            eta_rain = np.where(precip > 0.5, 0.50, np.where(precip > 0.05, 0.70, 1.0))
+            cloud_cap = cs_poa * t_cloud * eta_low * eta_rain
+
             # Compute Clearness Index (Kt) array for each slot
             kt_slots = {}
             for s_name, slot_data in slot_selections.items():
@@ -1002,6 +1093,8 @@ class IntellisEnsembleGTIAI:
                     w_k = s_w.get(k, 1.0 / max(1, len(s_keys))) / total_w
                     gain_k = s_gains.get(k, 1.0)
                     m_gti = self.extract_member_96block_gti(weather, k, target_date_str) * gain_k
+                    # Physically cap inflated diffuse irradiance under overcast / thick cloud regimes
+                    m_gti = np.minimum(m_gti, np.maximum(35.0, cloud_cap))
                     denom = np.maximum(15.0, cs_poa)
                     m_kt = np.clip(m_gti / denom, 0.0, 1.15)
                     slot_kt += w_k * m_kt
@@ -1017,13 +1110,7 @@ class IntellisEnsembleGTIAI:
                 elif b <= 42:
                     # Transition Morning -> Midday (Blocks 39 to 43)
                     alpha = 0.5 * (1.0 - math.cos(math.pi * (b - 38) / 4.0))
-                    raw_blend = (1.0 - alpha) * kt_slots["morning"][b] + alpha * kt_slots["midday"][b]
-                    # Cross-slot continuity floor: midday slot models (which are penalised
-                    # for DSM shortfall risk) are systematically more conservative than morning
-                    # slot models. Prevent the cosine cross-fade from creating an artificial
-                    # valley: blended Kt cannot fall more than 15% below the morning Kt.
-                    kt_floor = max(0.0, kt_slots["morning"][b] * 0.85)
-                    blended_kt[b] = max(raw_blend, kt_floor)
+                    blended_kt[b] = (1.0 - alpha) * kt_slots["morning"][b] + alpha * kt_slots["midday"][b]
                 elif b < 54:
                     blended_kt[b] = kt_slots["midday"][b]
                 elif b <= 58:
@@ -1585,23 +1672,23 @@ class IntellisEnsembleGTIAI:
                     source="PHYSICS_BASELINE",
                 )
 
-        # Deterministic check for sudden severe drop / multi-inverter trip on metered sites.
-        # IMPORTANT: Only trigger if we have CONFIRMED non-zero physical SCADA telemetry.
-        # A zero live_mw after telemetry fallback means DATA MISSING, not a plant trip.
-        # Require live_mw > 0.01 MW to confirm actual generation was observed before declaring collapse.
-        is_plant_collapse = (
-            not is_non_meter_or_missing_scada  # Must have active physical SCADA
-            and has_live_scada                  # SCADA actually loaded
-            and live_mw > 0.01                  # Telemetry present (not missing/failed)
-            and ref_elev >= 25.0
-            and cs_curr_mw >= 1.5
-            and (live_mw <= 0.05 or (real_clearness_ratio <= 0.50 and residual_mw <= -1.2))
-        )
-        if is_plant_collapse:
-            advice.is_trip_or_curtailment = True
-            print(f"  [COLLAPSE DETECTED] Deterministic drop detected: live {live_mw:.2f} MW vs physics {physics_curr_mw:.2f} MW (Kt={real_clearness_ratio:.2f})")
+        # Note: Hardware trip / inverter outage logic is disabled per industry standard (Enercast alignment).
+        # Electrical breaker resets cannot be predicted in advance; scheduling strictly reflects meteorological potential.
+        advice.is_trip_or_curtailment = False
 
         # 6. Apply LLM Predictions for next 12 blocks, and pure Intellis GTI up to 19:00 (Block 76 / night 7)
+        is_clear_sky = (
+            
+            real_clearness_ratio >= 0.85
+            or advice.regime in ("CLEAR", "CLEAR_SKY")
+            or (weather_ind and weather_ind.get("cloud_cover_pct", 100) <= 30.0)
+        )
+        is_overcast = (
+            advice.regime in ("OVERCAST", "RAIN", "STORMY")
+            or real_clearness_ratio < 0.50
+            or (weather_ind and weather_ind.get("cloud_cover_pct", 0) >= 75.0)
+        )
+
         if advice.block_predictions:
             print(f"  [LLM 12-BLOCK PREDICTIONS] Applying direct LLM predictions to {len(advice.block_predictions)} blocks...")
             prev_val = None
@@ -1611,15 +1698,40 @@ class IntellisEnsembleGTIAI:
                 if b["block"] >= actionable_block and b_str in advice.block_predictions:
                     pred_mw = float(advice.block_predictions[b_str])
                     pred_mw = max(0.0, min(self.profile.ac_capacity_mw, pred_mw))
+                    b_idx = b["block"] - 1
+                    physics_base_mw = float(b["schedule_mw"])
+
+                    # --- PHYSICAL GUARDRAIL 1: Solar Geometry Hard Cutoff ---
                     if b["block"] > 74 or b["block"] < 24:
                         pred_mw = 0.0
+
+                    # --- PHYSICAL GUARDRAIL 2: Clear-Sky Negative Cut Lockout ---
+                    # If ground telemetry, weather, or regime confirms clear sky,
+                    # forbid LLM from slashing predictions below the physics baseline.
+                    if is_clear_sky:
+                        if pred_mw < physics_base_mw:
+                            pred_mw = physics_base_mw
+
+                    # --- PHYSICAL GUARDRAIL 3: Overcast Optical Cloud Ceiling Upper Bound ---
+                    # If today is overcast, forbid LLM from inflating generation above the cloud ceiling
+                    if is_overcast:
+                        overcast_max = max(physics_base_mw * 1.10, self.profile.ac_capacity_mw * 0.25)
+                        if pred_mw > overcast_max:
+                            pred_mw = overcast_max
+
+                    # --- PHYSICAL GUARDRAIL 4: Ramp-Rate Continuity Filter ---
+                    # Only apply downward ramp clamping if we are NOT locked to clear-sky physics baseline
                     if prev_val is not None and 24 <= b["block"] <= 74:
-                        if b["block"] == actionable_block and (advice.is_trip_or_curtailment or real_clearness_ratio < 0.65):
-                            max_ramp = max(abs(pred_mw - prev_val), max(0.50, self.profile.ac_capacity_mw * 0.10))
+                        if is_clear_sky and pred_mw >= physics_base_mw and not advice.is_trip_or_curtailment:
+                            # Physics baseline is already smooth and continuous
+                            pred_mw = max(pred_mw, physics_base_mw)
                         else:
-                            max_ramp = max(0.50, self.profile.ac_capacity_mw * 0.10)
-                        if abs(pred_mw - prev_val) > max_ramp:
-                            pred_mw = prev_val + (max_ramp if pred_mw > prev_val else -max_ramp)
+                            if b["block"] == actionable_block and (advice.is_trip_or_curtailment or real_clearness_ratio < 0.65):
+                                max_ramp = max(abs(pred_mw - prev_val), max(0.50, self.profile.ac_capacity_mw * 0.10))
+                            else:
+                                max_ramp = max(0.50, self.profile.ac_capacity_mw * 0.10)
+                            if abs(pred_mw - prev_val) > max_ramp:
+                                pred_mw = prev_val + (max_ramp if pred_mw > prev_val else -max_ramp)
                     pred_mw = round(pred_mw, 2)
                     b["predicted_mw"] = pred_mw
                     b["intellis_mw"] = pred_mw
@@ -1645,6 +1757,13 @@ class IntellisEnsembleGTIAI:
                 prev_val = float(b["schedule_mw"])
         elif abs(advice.quantile_bias_factor - 1.0) > 0.005:
             q_factor = advice.quantile_bias_factor
+            # Under confirmed clear sky, lock out negative cuts below 1.0
+            if (real_clearness_ratio >= 0.85 or today_regime == "CLEAR") and not advice.is_trip_or_curtailment:
+                q_factor = max(1.0, q_factor)
+            # Under overcast conditions, lock out upward inflation above 1.02
+            elif (today_regime == "OVERCAST" or real_clearness_ratio < 0.50) and not advice.is_trip_or_curtailment:
+                q_factor = min(1.02, q_factor)
+
             for b in sched["blocks"]:
                 # NEVER touch past blocks; only adjust forward actionable blocks
                 if b["block"] >= actionable_block and 24 <= b["block"] <= 76:
@@ -1655,32 +1774,6 @@ class IntellisEnsembleGTIAI:
                     if self.profile.transfer_ratio > 0:
                         b["intellis_gti"] = round(adj_mw / self.profile.transfer_ratio, 1)
                         b["predicted_gti_wm2"] = b["intellis_gti"]
-
-        # Enforce trip / severe generation collapse ceiling on all forward actionable blocks
-        if advice.is_trip_or_curtailment and not is_non_meter_site:
-            if live_mw > 0.05:
-                print(f"  [TRIP / COLLAPSE CEILING] Clamping forward actionable blocks to collapsed generation level ({live_mw:.2f} MW)...")
-                for b in sched["blocks"]:
-                    if b["block"] >= actionable_block and 24 <= b["block"] <= 76:
-                        b_idx = b["block"] - 1
-                        ratio = (cs_poa[b_idx] / max(10.0, cs_poa[curr_idx])) if curr_idx < 96 else 1.0
-                        trip_cap = round(min(self.profile.ac_capacity_mw, live_mw * max(0.20, min(1.15, ratio))), 2)
-                        if float(b["schedule_mw"]) > trip_cap:
-                            b["schedule_mw"] = trip_cap
-                            b["intellis_mw"] = trip_cap
-                            b["predicted_mw"] = trip_cap
-                            if self.profile.transfer_ratio > 0:
-                                b["intellis_gti"] = round(trip_cap / self.profile.transfer_ratio, 1)
-                                b["predicted_gti_wm2"] = b["intellis_gti"]
-            else:
-                print(f"  [FULL TRIP OUTAGE] Clamping all forward actionable blocks to 0.0 MW...")
-                for b in sched["blocks"]:
-                    if b["block"] >= actionable_block:
-                        b["schedule_mw"] = 0.0
-                        b["intellis_mw"] = 0.0
-                        b["predicted_mw"] = 0.0
-                        b["intellis_gti"] = 0.0
-                        b["predicted_gti_wm2"] = 0.0
 
         sched["llm_strategy"] = {
             "regime": advice.regime,

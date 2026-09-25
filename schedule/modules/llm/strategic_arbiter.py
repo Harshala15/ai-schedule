@@ -105,13 +105,14 @@ class LLMStrategicArbiter:
 - Telemetry Source: {telemetry_source}
 - Latest SCADA Meter Generation: {live_telemetry.get('latest_mw', 'N/A')} MW{poa_line}
 - Physics Baseline Forecast at this time: {live_telemetry.get('physics_predicted_mw', 'N/A')} MW
-- Tracking Residual (Actual - Physics Baseline): {live_telemetry.get('residual_mw', 'N/A')} MW ({'+' if float(live_telemetry.get('residual_mw', 0) or 0) > 0 else ''}over-performing baseline)
-- Solar Elevation Angle: {live_telemetry.get('solar_elevation_deg', 0.0):.1f} deg
-- Real Clearness Ratio (Kt = Actual / ClearSky): {live_telemetry.get('clearness_ratio', 1.0):.2f}"""
-            trip_instruction = """- TRIP / SEVERE GENERATION COLLAPSE DETECTION:
-  * If live meter is confirmed <= 0.05 MW while solar elevation > 25 deg, flag an electrical trip ("is_trip_or_curtailment": true).
-  * If live meter has dropped > 45% below expected midday physics baseline (residual < -1.5 MW while elevation > 25 deg), flag a partial trip/curtailment or severe collapse ("is_trip_or_curtailment": true).
-  * When "is_trip_or_curtailment" is true, DO NOT predict high baseline generation. Anchor forward block predictions down to the collapsed live generation level and set quantile_bias_factor down (e.g. 0.20 to 0.50) to protect against massive shortfall penalties."""
+- Real Clearness Ratio (Kt): {live_telemetry.get('clearness_ratio', 1.0):.2f}"""
+            trip_instruction = """- PURE METEOROLOGICAL SCHEDULING (ENERCAST / INDUSTRY STANDARD):
+  * Do NOT predict hardware inverter trips or equipment outages. The schedule strictly reflects available meteorological generation potential.
+  * Set "is_trip_or_curtailment" strictly to false.
+
+- DIRECTIONAL INTEGRITY RULES (PHYSICAL GUARDRAILS):
+  * CLEAR-SKY PRESERVATION: If ground conditions are CLEAR (Kt >= 0.85, cloud cover <= 25%), DO NOT make negative downward cuts below the physics baseline! Clear-sky generation must follow the unobstructed physical solar curve.
+  * OVERCAST BOUNDING: If cloud cover is high (>= 80%) or rain is active, DO NOT predict high clear-sky generation. Bound predictions strictly to the overcast diffuse envelope."""
 
         prompt = f"""You are the Chief Renewable Energy Scheduling Strategist and Forecaster for {plant_name} Solar Power Plant.
 Target Date: {target_date_str} | Revision Time: {target_time_str}
@@ -189,13 +190,12 @@ Respond ONLY with a JSON object in this exact schema:
             data = json.loads(cleaned)
 
             regime = str(data.get("regime", "CLEAR_SKY")).upper().strip()
-            is_trip = bool(data.get("is_trip_or_curtailment", False))
-            if is_non_meter:
-                is_trip = False
+            is_trip = False  # Hardware trips are excluded from automated forecasting (Enercast alignment)
 
             bias = float(data.get("quantile_bias_factor", 1.0))
-            if is_trip:
-                bias = max(0.15, min(1.08, bias))
+            if regime == "CLEAR_SKY" or float(live_telemetry.get("clearness_ratio", 1.0)) >= 0.85:
+                # Clear-sky directional guardrail: forbid downward bias cuts below 1.0
+                bias = max(1.0, min(1.08, bias))
             else:
                 bias = max(0.60, min(1.08, bias))  # Sanity clamp allowing down to 0.60 for convective weather
 

@@ -8,7 +8,7 @@ REGION = "ap-south-1"
 PROFILE = "intellis-608"
 ACCOUNT_ID = "608744602858"
 REPO = "intellis-ai-scheduler"
-TAG = "intellis-ai-20260924-v4"
+TAG = "intellis-ai-20260925-v1"
 ECR_REGISTRY = f"{ACCOUNT_ID}.dkr.ecr.{REGION}.amazonaws.com"
 IMAGE_URI = f"{ECR_REGISTRY}/{REPO}:{TAG}"
 

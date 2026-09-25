@@ -47,8 +47,21 @@ def _nearest_configured_capture_time(now: dt.datetime, max_drift_minutes: int = 
 def parse_target_datetime(event: dict | None) -> tuple[str, str, dt.datetime]:
     now = dt.datetime.now(IST)
     event = event or {}
+
+    # Handle AWS EventBridge default scheduled events where event["time"] is an ISO timestamp (e.g. "2026-09-25T04:15:00Z")
+    event_time = event.get("target_time") or event.get("time")
+    if event_time and ("T" in str(event_time) or "Z" in str(event_time)):
+        try:
+            iso_dt = dt.datetime.fromisoformat(str(event_time).replace("Z", "+00:00")).astimezone(IST)
+            target_date = event.get("target_date") or event.get("date") or iso_dt.strftime("%Y-%m-%d")
+            target_time = _nearest_configured_capture_time(iso_dt)
+            target_dt = dt.datetime.strptime(f"{target_date} {target_time}", "%Y-%m-%d %H:%M")
+            return target_date, target_time, target_dt
+        except Exception:
+            pass
+
     target_date = event.get("target_date") or event.get("date") or now.strftime("%Y-%m-%d")
-    target_time = event.get("target_time") or event.get("time") or _nearest_configured_capture_time(now)
+    target_time = event.get("target_time") or (event.get("time") if event.get("time") and ":" in event.get("time") and len(event.get("time")) <= 8 else None) or _nearest_configured_capture_time(now)
     target_dt = dt.datetime.strptime(f"{target_date} {target_time}", "%Y-%m-%d %H:%M")
     return target_date, target_time, target_dt
 
@@ -438,13 +451,19 @@ def write_current_final_schedule(
             curr_row = frozen_rows[i]
             prev_dt = _row_dt(prev_row)
             curr_dt = _row_dt(curr_row)
-            if prev_dt is not None and curr_dt is not None and prev_dt < freeze_from <= curr_dt:
+            if prev_dt is not None and curr_dt is not None and curr_dt >= freeze_from:
                 try:
                     prev_mw = float(prev_row.get("intellis_mw", 0.0) or 0.0)
                     curr_mw = float(curr_row.get("intellis_mw", 0.0) or 0.0)
                     diff = curr_mw - prev_mw
-                    if abs(diff) > max_step:
-                        smoothed_mw = round(prev_mw + (max_step if diff > 0 else -max_step), 3)
+                    # Smooth seam transition across newly actionable blocks
+                    if prev_dt < freeze_from <= curr_dt:
+                        if abs(diff) > max_step:
+                            smoothed_mw = round(prev_mw + (max_step if diff > 0 else -max_step), 3)
+                            curr_row["intellis_mw"] = str(smoothed_mw)
+                            curr_row["schedule_mw"] = str(smoothed_mw)
+                    elif abs(diff) > (max_step * 1.5):
+                        smoothed_mw = round(prev_mw + (max_step * 1.5 if diff > 0 else -max_step * 1.5), 3)
                         curr_row["intellis_mw"] = str(smoothed_mw)
                         curr_row["schedule_mw"] = str(smoothed_mw)
                 except (ValueError, TypeError):
