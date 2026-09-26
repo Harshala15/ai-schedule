@@ -1,0 +1,26 @@
+{
+  "plant_name": "REWASEIT",
+  "latitude": 24.482079,
+  "longitude": 81.56178,
+  "dc_capacity_kw": 336300,
+  "maximum_feed_in_ac_kw": 250000,
+  "tracker_type": "None",
+  "orientation_deg_from_south": 0,
+  "tilt_deg": 14,
+  "eeg_id": "RewaSeit",
+  "plant_key": "MSRPL_REWA_RUMS_S",
+  "ppa_rate_inr_per_kwh": 3.2515,
+  "penalty_regulation": "Madhya Pradesh",
+  "tolerance_band_mw": 25.0,
+  "band_percentage": 0.10,
+  "meter_data": {
+    "is_non_meter_site": true,
+    "s3_prefix": "raw/vedanjay/{site_id}/{date}/metered_data/",
+    "file_name_regex": "^rewaseit_\\d{8}\\.csv$",
+    "delimiter": ",",
+    "timestamp_column": "block_end",
+    "power_column": "metered_mw",
+    "power_unit": "mw",
+    "block_column": "block_no"
+  }
+}

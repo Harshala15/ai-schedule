@@ -75,7 +75,7 @@ PUBLIC_ENSEMBLE_URL = "https://ensemble-api.open-meteo.com/v1/ensemble"
 
 # Explicit non-meter sites where physical SCADA telemetry is absent
 # and satellite solar radiation API (GTI) acts as the virtual meter input
-NON_METER_SITES = {"ANDAD", "GUGARIYAKHEDI", "SAWDA", "BALAKWADA", "CME", "CLIMATEDETOX", "EMIL", "UPL"}
+NON_METER_SITES = {"ANDAD", "GUGARIYAKHEDI", "SAWDA", "BALAKWADA", "CME", "CLIMATEDETOX", "EMIL", "UPL", "REWASEIT"}
 
 
 @dataclass
@@ -1254,7 +1254,7 @@ class IntellisEnsembleGTIAI:
             self.profile.penalty_regulation == "Madhya Pradesh"
             or site_upper in {
                 "SIRMOUR", "ANJANGOAN", "ANJANGAON", "ANDAD", "BALAKWADA",
-                "BAMKHAL", "CHANDAWASA", "GSNP", "GSPPL", "GUGARIYAKHEDI", "NANDGAON", "SAWDA", "REWASPRNG"
+                "BAMKHAL", "CHANDAWASA", "GSNP", "GSPPL", "GUGARIYAKHEDI", "NANDGAON", "SAWDA", "REWASPRNG", "REWASEIT"
             }
         )
         freeze_lag_blocks = 6 if is_90min_site else 3
@@ -1505,7 +1505,7 @@ class IntellisEnsembleGTIAI:
             self.profile.penalty_regulation == "Madhya Pradesh"
             or site_upper in {
                 "SIRMOUR", "ANJANGOAN", "ANJANGAON", "ANDAD", "BALAKWADA",
-                "BAMKHAL", "CHANDAWASA", "GSNP", "GSPPL", "GUGARIYAKHEDI", "NANDGAON", "SAWDA", "REWASPRNG"
+                "BAMKHAL", "CHANDAWASA", "GSNP", "GSPPL", "GUGARIYAKHEDI", "NANDGAON", "SAWDA", "REWASPRNG", "REWASEIT"
             }
         )
         freeze_lag_blocks = 6 if is_90min_site else 3

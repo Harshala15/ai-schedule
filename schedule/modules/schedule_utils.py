@@ -21,7 +21,7 @@ IST = ZoneInfo("Asia/Kolkata")
 
 def _capture_times_for_site() -> list[str]:
     site = (getattr(config, "PLANT_NAME", "") or "").strip().upper()
-    if site in {"BHUPALPALLY", "KASIPET", "KOTHAGUDEM", "MANDAMARRI", "BALAKWADA", "ANDAD", "SAWDA", "CME", "ANJANGAON", "ANJANGOAN", "BAMKHAL", "GUGARIYAKHEDI", "NANDGAON", "OSEPL", "GSNP", "GSPPL", "REWASPRNG", "CLIMATEDETOX", "EMIL", "UPL"}:
+    if site in {"BHUPALPALLY", "KASIPET", "KOTHAGUDEM", "MANDAMARRI", "BALAKWADA", "ANDAD", "SAWDA", "CME", "ANJANGAON", "ANJANGOAN", "BAMKHAL", "GUGARIYAKHEDI", "NANDGAON", "OSEPL", "GSNP", "GSPPL", "REWASPRNG", "REWASEIT", "CLIMATEDETOX", "EMIL", "UPL"}:
         return ["06:00", "06:45", "08:15", "09:45", "11:15", "12:45", "14:15", "15:45"]
     return list(getattr(config, "CAPTURE_TIMES", []) or [])
 
@@ -146,6 +146,7 @@ def _meter_filename_hints(plant_name: str | None = None) -> list[str]:
         "GSNP": ["gsnp", "gsppl"],
         "GSPPL": ["gsnp", "gsppl"],
         "REWASPRNG": ["rewasprng", "rewa_sprng", "rewa"],
+        "REWASEIT": ["rewaseit", "rewa_seit", "rewa", "msrpl"],
         "CLIMATEDETOX": ["climatedetox", "climate_detox", "enrich"],
         "EMIL": ["emil", "enrich"],
         "UPL": ["upl", "enrich"],
@@ -250,6 +251,7 @@ def freeze_from_datetime(target_date: str, target_time: str, block_minutes: int 
         "NANDGAON": 90,
         "SAWDA": 90,
         "REWASPRNG": 90,
+        "REWASEIT": 90,
         "BHUPALPALLY": 45,
         "KASIPET": 45,
         "KOTHAGUDEM": 45,
@@ -319,6 +321,7 @@ def write_current_final_schedule(
         "NANDGAON": 90,
         "SAWDA": 90,
         "REWASPRNG": 90,
+        "REWASEIT": 90,
         "BHUPALPALLY": 45,
         "KASIPET": 45,
         "KOTHAGUDEM": 45,

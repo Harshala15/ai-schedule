@@ -32,6 +32,7 @@ ALL_LAMBDAS = [
     "SIRMOUR-ai-intellis-scheduler",
     "ZTRIC-ai-intellis-scheduler",
     "REWASPRNG-ai-intellis-scheduler",
+    "REWASEIT-ai-intellis-scheduler",
     "CLIMATEDETOX-ai-intellis-scheduler",
     "EMIL-ai-intellis-scheduler",
     "UPL-ai-intellis-scheduler",

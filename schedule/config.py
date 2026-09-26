@@ -383,6 +383,20 @@ _PLANT_FALLBACKS = {
         "band_percentage": 0.10,
         "eeg_id": "RewaSprng",
     },
+    "REWASEIT": {
+        "latitude": 24.482079,
+        "longitude": 81.56178,
+        "capacity_mw": 250.0,
+        "dc_capacity_mw": 336.3,
+        "max_feed_in_mw": 250.0,
+        "tilt_deg": 14.0,
+        "orientation_deg_from_south": 0.0,
+        "ppa_rate_inr_per_kwh": 3.2515,
+        "penalty_regulation": "Madhya Pradesh",
+        "tolerance_band_mw": 25.0,
+        "band_percentage": 0.10,
+        "eeg_id": "RewaSeit",
+    },
     "CLIMATEDETOX": {
         "latitude": 17.557881,
         "longitude": 76.201973,
@@ -574,7 +588,7 @@ def get_plant_tolerance_band_pct(penalty_regulation: str | None = None, plant_na
     mp_plants = {
         "SIRMOUR", "GSNP", "GSPPL", "BAMKHAL", "BALAKWADA", "ANDAD",
         "ANJANGAON", "ANJANGOAN", "SAWDA", "GUGARIYAKHEDI", "NANDGAON",
-        "CHANDAWASA", "CHANDWASA", "REWASPRNG"
+        "CHANDAWASA", "CHANDWASA", "REWASPRNG", "REWASEIT"
     }
     if name in mp_plants:
         return 10.0

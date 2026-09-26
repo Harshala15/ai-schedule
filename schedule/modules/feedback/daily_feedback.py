@@ -164,6 +164,10 @@ PLANT_ACTUAL_METER_COLUMNS = {
         "timestamp": ("block_end", "block_start", "timestamp", "TimeStamp", "datetime", "date_time"),
         "power": ("metered_mw", "Active Power (MW)", "Active Power (kW)", "MW"),
     },
+    "REWASEIT": {
+        "timestamp": ("block_end", "block_start", "timestamp", "TimeStamp", "datetime", "date_time"),
+        "power": ("metered_mw", "Active Power (MW)", "Active Power (kW)", "MW"),
+    },
     "CLIMATEDETOX": {
         "timestamp": ("block_end", "block_start", "timestamp", "TimeStamp", "datetime", "date_time"),
         "power": ("metered_mw", "Active Power (MW)", "Active Power (kW)", "MW"),
