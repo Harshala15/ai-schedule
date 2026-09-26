@@ -89,16 +89,18 @@ class LLMStrategicArbiter:
         telemetry_source = live_telemetry.get("telemetry_source", "PHYSICAL_SCADA")
 
         if is_non_meter:
-            telemetry_section = f"""ESTIMATED SATELLITE TELEMETRY & MODEL RESIDUALS (Non-meter site / SCADA offline):
-- Telemetry Source: {telemetry_source} (Physical SCADA meter is not present / offline)
-- Current Generation Estimate: {live_telemetry.get('latest_mw', 'N/A')} MW
+            telemetry_section = f"""ESTIMATED SATELLITE TELEMETRY & MULTI-MODEL SPREAD (Non-meter site):
+- Telemetry Source: {telemetry_source} (Physical SCADA meter is not present; using meteorological satellite radiation input)
+- Current Estimated Generation: {live_telemetry.get('latest_mw', 'N/A')} MW
 - Physics Baseline Forecast at this time: {live_telemetry.get('physics_predicted_mw', 'N/A')} MW
-- Tracking Residual (Estimate - Physics Baseline): {live_telemetry.get('residual_mw', 'N/A')} MW
 - Solar Elevation Angle: {live_telemetry.get('solar_elevation_deg', 0.0):.1f} deg
 - Clearness Ratio (Kt): {live_telemetry.get('clearness_ratio', 1.0):.2f}"""
-            trip_instruction = """- IMPORTANT: This is a designated NON-METER site. Zero or missing SCADA meter values DO NOT mean an electrical trip or plant outage.
-- Set "is_trip_or_curtailment" strictly to false.
-- DO NOT artificially pull down or flatten the midday solar schedule into a table-top shelf. Follow the natural convex parabolic physics baseline curve."""
+            trip_instruction = f"""- NON-METER METEOROLOGICAL REASONING RULES:
+  * This is a designated NON-METER site without physical SCADA feedback. Missing ground meter telemetry does NOT mean a trip.
+  * Set "is_trip_or_curtailment" strictly to false.
+  * MULTI-MODEL CONSENSUS: Evaluate cloud cover, CAPE convective instability, and precipitation to position the schedule within the ±{tol_band*100:.0f}% tolerance band.
+  * CLEAR-SKY INTEGRITY: Under clear sky (Kt >= 0.85 or cloud cover <= 25%), preserve the full convex solar arc (do NOT flatten or slash below physics baseline).
+  * CONVECTIVE CLOUD POSITIONING: Under moderate/uncertain clouds (cloud cover 30-70%), apply an asymmetric risk-neutral positioning (quantile_bias_factor 0.90 to 0.96) to shield against shortfall penalties."""
         else:
             poa_line = f"\n- On-Site SCADA Pyranometer POA: {live_telemetry['live_poa_wm2']:.1f} W/m2" if live_telemetry.get("live_poa_wm2") is not None else ""
             telemetry_section = f"""LIVE SCADA TELEMETRY & MODEL RESIDUALS (at revision cutoff):
@@ -193,7 +195,13 @@ Respond ONLY with a JSON object in this exact schema:
             is_trip = False  # Hardware trips are excluded from automated forecasting (Enercast alignment)
 
             bias = float(data.get("quantile_bias_factor", 1.0))
-            if regime == "CLEAR_SKY" or float(live_telemetry.get("clearness_ratio", 1.0)) >= 0.85:
+            if is_non_meter:
+                # Tightly bounded risk envelope for non-meter sites (0.85 to 1.05) to ensure safety without SCADA feedback
+                if regime == "CLEAR_SKY" or float(live_telemetry.get("clearness_ratio", 1.0)) >= 0.85:
+                    bias = max(1.0, min(1.05, bias))
+                else:
+                    bias = max(0.85, min(1.05, bias))
+            elif regime == "CLEAR_SKY" or float(live_telemetry.get("clearness_ratio", 1.0)) >= 0.85:
                 # Clear-sky directional guardrail: forbid downward bias cuts below 1.0
                 bias = max(1.0, min(1.08, bias))
             else:

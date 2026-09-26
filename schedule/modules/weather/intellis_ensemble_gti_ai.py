@@ -1634,43 +1634,32 @@ class IntellisEnsembleGTIAI:
                     "gti_wm2": b["intellis_gti"],
                 })
 
-        # 5. Consult LLM Strategic Arbiter (For non-meter sites, lock to clean satellite radiation physics)
-        if is_non_meter_site:
+        # 5. Consult LLM Strategic Arbiter (for metered and non-metered sites)
+        try:
+            from modules.llm.strategic_arbiter import LLMStrategicArbiter
+            arbiter = LLMStrategicArbiter(plant_profile=self.profile)
+            advice = arbiter.get_strategic_guidance(
+                target_date_str=target_date_str,
+                target_time_str=target_time_str,
+                weather_indicators=weather_ind,
+                live_telemetry=telemetry_ind,
+                next_12_blocks=next_12_blocks,
+            )
+            print(f"  [LLM STRATEGY] Regime: {advice.regime} | Risk Quantile: {advice.quantile_bias_factor:.3f} | Agency: {advice.preferred_agency} | Trip Flag: {advice.is_trip_or_curtailment}")
+            print(f"                 Reasoning: {advice.reasoning}")
+        except Exception as arb_err:
+            print(f"  [WARN] LLM Strategic Arbiter invocation skipped: {arb_err}")
             from modules.llm.strategic_arbiter import StrategicAdvice
+            source_lbl = "SATELLITE_PHYSICS" if is_non_meter_site else "PHYSICS_BASELINE"
             advice = StrategicAdvice(
                 regime="CLEAR_SKY",
                 quantile_bias_factor=1.0,
-                preferred_agency="SATELLITE_PHYSICS",
+                preferred_agency="SATELLITE_PHYSICS" if is_non_meter_site else "BALANCED",
                 is_trip_or_curtailment=False,
-                reasoning="Deterministic satellite solar radiation physics mode for non-meter site",
+                reasoning=f"Deterministic fallback physics mode ({arb_err})",
                 block_predictions={},
-                source="SATELLITE_PHYSICS",
+                source=source_lbl,
             )
-        else:
-            try:
-                from modules.llm.strategic_arbiter import LLMStrategicArbiter
-                arbiter = LLMStrategicArbiter(plant_profile=self.profile)
-                advice = arbiter.get_strategic_guidance(
-                    target_date_str=target_date_str,
-                    target_time_str=target_time_str,
-                    weather_indicators=weather_ind,
-                    live_telemetry=telemetry_ind,
-                    next_12_blocks=next_12_blocks,
-                )
-                print(f"  [LLM STRATEGY] Regime: {advice.regime} | Risk Quantile: {advice.quantile_bias_factor:.3f} | Agency: {advice.preferred_agency} | Trip Flag: {advice.is_trip_or_curtailment}")
-                print(f"                 Reasoning: {advice.reasoning}")
-            except Exception as arb_err:
-                print(f"  [WARN] LLM Strategic Arbiter invocation skipped: {arb_err}")
-                from modules.llm.strategic_arbiter import StrategicAdvice
-                advice = StrategicAdvice(
-                    regime="CLEAR_SKY",
-                    quantile_bias_factor=1.0,
-                    preferred_agency="BALANCED",
-                    is_trip_or_curtailment=False,
-                    reasoning="Deterministic physics mode",
-                    block_predictions={},
-                    source="PHYSICS_BASELINE",
-                )
 
         # Note: Hardware trip / inverter outage logic is disabled per industry standard (Enercast alignment).
         # Electrical breaker resets cannot be predicted in advance; scheduling strictly reflects meteorological potential.

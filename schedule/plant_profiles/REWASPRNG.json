@@ -12,6 +12,7 @@
   "penalty_regulation": "Madhya Pradesh",
   "tolerance_band_mw": 25.0,
   "band_percentage": 0.10,
+  "freeze_lag_minutes": 90,
   "meter_data": {
     "s3_prefix": "raw/vedanjay/{site_id}/{date}/metered_data/",
     "file_name_regex": "^rewasprng_\\d{8}\\.csv$",
