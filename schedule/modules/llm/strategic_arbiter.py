@@ -162,6 +162,7 @@ Respond ONLY with a JSON object in this exact schema:
             regime = str(data.get("regime", "CLEAR_SKY")).upper().strip()
             is_trip = False  # Hardware trips are excluded from automated forecasting (Enercast alignment)
 
+            is_non_meter = bool((live_telemetry or {}).get("is_non_meter_site", False))
             bias = float(data.get("quantile_bias_factor", 1.0))
             if is_non_meter:
                 # Tightly bounded risk envelope for non-meter sites (0.85 to 1.05) to ensure safety without SCADA feedback
