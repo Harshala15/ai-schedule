@@ -1342,33 +1342,53 @@ class IntellisEnsembleGTIAI:
                     safe_count += 1
                 tot_pen += b_copy.get("block_penalty_inr", 0.0)
             else:
-                # Future actionable blocks: continuous Kt relaxation with trend momentum into NWP ensemble
+                # Actionable dispatch horizon architecture:
+                # 1. Blocks 1-2 (immediate 30 min, delta_blocks 0 & 1): Meter-Adjusted to instantly catch equipment trips and grid curtailments.
+                # 2. Block 3 (30-45 min, delta_blocks 2): Smooth transition bridge (50% Meter, 50% Pure Weather).
+                # 3. Block 4+ (beyond 45 min, delta_blocks >= 3): 100% Pure Weather, anchored strictly to meteorological physics.
                 delta_blocks = b_idx - (actionable_block - 1)
-                decay = math.exp(-delta_blocks / max(1.0, tau_blocks))
 
                 fcst_gti = b_dict["predicted_gti_wm2"]
                 fcst_kt = min(1.05, fcst_gti / max(15.0, cs_poa[b_idx]))
 
-                # Adaptive relaxation with trend momentum; bounded by physical atmospheric clearness
-                eff_kt = decay * (kt_obs + trend_momentum * decay) + (1.0 - decay) * fcst_kt
-                if kt_obs >= 0.78 and 36 <= b_dict["block"] <= 64:
-                    eff_kt = max(eff_kt, min(0.96, kt_obs * 0.95))
-                elif kt_obs <= 0.55 and 32 <= b_dict["block"] <= 68:
-                    eff_kt = min(eff_kt, max(0.15, kt_obs * 1.10))
-                eff_kt = max(0.15, min(1.05, eff_kt))
+                if delta_blocks == 0:
+                    # Block 1 (+00 to +15 min): 100% Meter-Adjusted telemetry
+                    eff_kt = max(0.15, min(1.05, kt_obs + trend_momentum))
+                    target_poa = eff_kt * cs_poa[b_idx]
+                    b_hr = (b_dict["block"] * 15) // 60
+                    amb_t = 28.0 + (4.0 if 11 <= b_hr <= 15 else 0.0)
+                    cell_t = amb_t + target_poa * 0.031
+                    temp_factor = np.clip(1.0 - 0.004 * (cell_t - 25.0), 0.82, 1.06)
+                    raw_mw = target_poa * self.profile.transfer_ratio * temp_factor
+                    adj_mw = min(self.profile.ac_capacity_mw, max(0.0, raw_mw))
+                    adj_mw = round(adj_mw, 2)
+                elif delta_blocks == 1:
+                    # Block 2 (+15 to +30 min): 100% Meter-Adjusted telemetry
+                    eff_kt = max(0.15, min(1.05, kt_obs + trend_momentum * 0.50))
+                    target_poa = eff_kt * cs_poa[b_idx]
+                    b_hr = (b_dict["block"] * 15) // 60
+                    amb_t = 28.0 + (4.0 if 11 <= b_hr <= 15 else 0.0)
+                    cell_t = amb_t + target_poa * 0.031
+                    temp_factor = np.clip(1.0 - 0.004 * (cell_t - 25.0), 0.82, 1.06)
+                    raw_mw = target_poa * self.profile.transfer_ratio * temp_factor
+                    adj_mw = min(self.profile.ac_capacity_mw, max(0.0, raw_mw))
+                    adj_mw = round(adj_mw, 2)
+                elif delta_blocks == 2:
+                    # Block 3 (+30 to +45 min): Smooth transition bridge (50% Meter, 50% Pure Weather)
+                    eff_kt = max(0.15, min(1.05, 0.50 * kt_obs + 0.50 * fcst_kt))
+                    target_poa = eff_kt * cs_poa[b_idx]
+                    b_hr = (b_dict["block"] * 15) // 60
+                    amb_t = 28.0 + (4.0 if 11 <= b_hr <= 15 else 0.0)
+                    cell_t = amb_t + target_poa * 0.031
+                    temp_factor = np.clip(1.0 - 0.004 * (cell_t - 25.0), 0.82, 1.06)
+                    raw_mw = target_poa * self.profile.transfer_ratio * temp_factor
+                    adj_mw = min(self.profile.ac_capacity_mw, max(0.0, raw_mw))
+                    adj_mw = round(adj_mw, 2)
+                else:
+                    # Block 4+ (beyond 45 min): 100% Pure Weather Ensemble
+                    target_poa = fcst_gti
+                    adj_mw = b_dict["predicted_mw"]
 
-                target_poa = eff_kt * cs_poa[b_idx]
-                
-                # Dynamic cell temperature derating
-                b_hr = (b_dict["block"] * 15) // 60
-                amb_t = 28.0 + (4.0 if 11 <= b_hr <= 15 else 0.0)
-                cell_t = amb_t + target_poa * 0.031
-                temp_factor = np.clip(1.0 - 0.004 * (cell_t - 25.0), 0.82, 1.06)
-
-                raw_mw = target_poa * self.profile.transfer_ratio * temp_factor
-
-                adj_mw = min(self.profile.ac_capacity_mw, max(0.0, raw_mw))
-                adj_mw = round(adj_mw, 2)
                 if b_dict["block"] < 24 or b_dict["block"] > 76:
                     adj_mw = 0.0
                     target_poa = 0.0

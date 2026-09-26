@@ -1,0 +1,721 @@
+<?xml version='1.0' encoding='utf-8'?>
+<mxfile host="Electron" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/29.3.0 Chrome/140.0.7339.249 Electron/38.7.2 Safari/537.36" version="29.3.0">
+  <diagram name="Page-1" id="gqRKvnnP-Ad458hL7a9w">
+    <mxGraphModel dx="28340" dy="16050" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1650" pageHeight="1050" background="#F8FAFC" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="2" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=light-dark(#e8f2fc, #182e44);strokeColor=#36393d;strokeWidth=2;" value="" vertex="1">
+          <mxGeometry height="930" width="1040" x="2990" y="730" as="geometry" />
+        </mxCell>
+        <mxCell id="3" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=light-dark(#edf3ec, #1f2f1e);strokeColor=light-dark(#000000,#446E2C);strokeWidth=2;" value="" vertex="1">
+          <mxGeometry height="1670" width="3030" x="-2270" y="-110" as="geometry" />
+        </mxCell>
+        <mxCell id="4" connectable="0" parent="1" style="group;fillColor=none;" value="" vertex="1">
+          <mxGeometry height="2850" width="2950" x="-2200" y="-650" as="geometry" />
+        </mxCell>
+        <mxCell id="5" connectable="0" parent="4" style="group;container=0;" value="" vertex="1">
+          <mxGeometry height="1710" width="2950" y="560" as="geometry" />
+        </mxCell>
+        <mxCell id="6" parent="4" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;shadow=1;arcSize=8;align=center;verticalAlign=middle;container=0;gradientColor=#ffd966;" value="&lt;b style=&quot;color: rgb(15, 23, 42);&quot;&gt;&lt;font style=&quot;font-size: 35px;&quot;&gt;PHASE 3: 143-MEMBER MULTI-AGENCY NWP ENSEMBLE &amp;amp; SLOT-WISE TOP MODEL SELECTION&lt;/font&gt;&lt;/b&gt;" vertex="1">
+          <mxGeometry height="73.5" width="1750.85" x="579.15" y="560" as="geometry" />
+        </mxCell>
+        <mxCell id="7" parent="4" style="swimlane;whiteSpace=wrap;html=1;fillColor=#EFF6FF;strokeColor=#3B82F6;strokeWidth=2;startSize=35;arcSize=6;container=0;" value="&lt;b style=&quot;font-size:15px; color:#1E3A8A;&quot;&gt;3.1 SINGLE-CALL MULTI-AGENCY QUERY&lt;/b&gt;" vertex="1">
+          <mxGeometry height="777" width="531.4507772020726" y="654.5" as="geometry" />
+        </mxCell>
+        <mxCell id="8" parent="4" style="swimlane;whiteSpace=wrap;html=1;fillColor=#FEFCE8;strokeColor=#EAB308;strokeWidth=2;startSize=35;arcSize=6;container=0;" value="&lt;b style=&quot;font-size:15px; color:#854D0E;&quot;&gt;3.2&amp;nbsp;15-MIN INTERPOLATION&lt;/b&gt;" vertex="1">
+          <mxGeometry height="840" width="545.0777202072538" x="681.3471502590673" y="654.5" as="geometry" />
+        </mxCell>
+        <mxCell id="9" parent="4" style="swimlane;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;strokeWidth=2;startSize=35;arcSize=6;container=0;gradientColor=#b3b3b3;" value="&lt;b style=&quot;font-size:15px; color:#4C1D95;&quot;&gt;3.3 DIURNAL SLOT-WISE TOP MODEL BENCHMARK&lt;/b&gt;" vertex="1">
+          <mxGeometry height="1505.5" width="1560" x="1330" y="654.5" as="geometry" />
+        </mxCell>
+        <mxCell id="10" parent="9" style="swimlane;startSize=30;rounded=1;whiteSpace=wrap;html=1;fillColor=#F1F5F9;strokeColor=#94A3B8;shadow=1;" value="&lt;b style='font-size:14px; color:#1E293B;'&gt;STAGE 1: DUAL-PATH GROUND TRUTH INGESTION&lt;/b&gt;" vertex="1">
+          <mxGeometry height="530" width="880" x="350" y="50" as="geometry" />
+        </mxCell>
+        <mxCell id="11" edge="1" parent="10" source="20" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.882;exitY=0.993;exitDx=0;exitDy=0;exitPerimeter=0;" target="17">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="12" edge="1" parent="10" source="22" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.25;exitY=1;exitDx=0;exitDy=0;" target="15">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="13" parent="10" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#D97706;shadow=1;" value="&lt;b style='font-size:12px;'&gt;Is Plant Classified as&lt;br&gt;NON_METER_SITE?&lt;/b&gt;" vertex="1">
+          <mxGeometry height="90" width="200" x="340" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="14" edge="1" parent="10" source="15" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="18">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="15" parent="10" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F0F9FF;strokeColor=#0284C7;shadow=0;align=left;spacingLeft=10;spacingRight=10;" value="&lt;div style='font-size:13px; font-weight:bold; color:#0369A1;'&gt;PATH A: Non-Meter Sites&lt;/div&gt;&lt;hr style='border:0.5px solid #BAE6FD;'&gt;&lt;div style='text-align:left; font-size:11px; line-height:1.6; color:#0F172A;'&gt;&amp;bull; &lt;b&gt;Physical SCADA Ingestion:&lt;/b&gt; Completely bypassed (No S3 meter download)&lt;br&gt;&amp;bull; &lt;b&gt;Virtual Telemetry Engine:&lt;/b&gt; Calls &lt;code&gt;fetch_satellite_day_profile&lt;/code&gt; from Open-Meteo Satellite API&lt;br&gt;&amp;bull; &lt;b&gt;Historical Benchmark Data:&lt;/b&gt; 7-day lookback runs against satellite solar radiation&lt;br&gt;&amp;bull; &lt;b&gt;Trip Flag Lock:&lt;/b&gt; &lt;code&gt;is_trip_or_curtailment = False&lt;/code&gt; permanently locked&lt;br&gt;&amp;bull; &lt;b&gt;Default Clearing Ratio:&lt;/b&gt; K&lt;sub&gt;t&lt;/sub&gt; locked to 1.00&lt;br&gt;&amp;bull; &lt;b&gt;Output Anchor:&lt;/b&gt; P&lt;sub&gt;base&lt;/sub&gt;(b) = min(P&lt;sub&gt;AC,max&lt;/sub&gt;, GTI&lt;sub&gt;satellite&lt;/sub&gt;(b) &amp;times; TR)&lt;/div&gt;" vertex="1">
+          <mxGeometry height="190" width="400" x="25" y="180" as="geometry" />
+        </mxCell>
+        <mxCell id="16" edge="1" parent="10" source="17" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" target="18">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="660" y="410" />
+              <mxPoint x="470" y="410" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="17" parent="10" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#4F46E5;shadow=0;align=left;spacingLeft=10;spacingRight=10;" value="&lt;div style='font-size:13px; font-weight:bold; color:#4338CA;'&gt;PATH B: Metered SCADA Sites&lt;/div&gt;&lt;hr style='border:0.5px solid #C7D2FE;'&gt;&lt;div style='text-align:left; font-size:11px; line-height:1.6; color:#0F172A;'&gt;&amp;bull; &lt;b&gt;Telemetry Ingestion:&lt;/b&gt; S3 download from &lt;code&gt;raw/vedanjay/&amp;lt;SITE&amp;gt;/&amp;lt;DATE&amp;gt;/metered_data/&lt;/code&gt;&lt;br&gt;&amp;bull; &lt;b&gt;Normalization Pipeline:&lt;/b&gt; Standardizes timestamps, converts kW &amp;rarr; MW, extracts on-site pyranometer POA (W/m&amp;sup2;)&lt;br&gt;&amp;bull; &lt;b&gt;7-Day Evaluation Array:&lt;/b&gt; Loads 96-block generation array &amp;amp; POA sensor readings for each day in lookback window&lt;br&gt;&amp;bull; &lt;b&gt;Missing Data Fallback:&lt;/b&gt; If SCADA missing on a lookback day, substitutes astronomical clear-sky POA&lt;/div&gt;" vertex="1">
+          <mxGeometry height="180" width="400" x="460" y="180" as="geometry" />
+        </mxCell>
+        <mxCell id="18" parent="10" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;shadow=1;gradientColor=#b3b3b3;" value="&lt;font style=&quot;color: rgb(0, 0, 0);&quot;&gt;&lt;b style=&quot;font-size: 12px;&quot;&gt;Unified Ground Truth Matrix for Lookback Window&lt;/b&gt;&lt;br&gt;&lt;span style=&quot;font-size: 11px;&quot;&gt;7 Days × 96 Blocks [POA&lt;sub style=&quot;&quot;&gt;actual&lt;/sub&gt;(d, b) and P&lt;sub style=&quot;&quot;&gt;actual&lt;/sub&gt;(d, b)]&lt;br&gt;Passed to Regime Matching &amp;amp; Performance Benchmark&lt;/span&gt;&lt;/font&gt;" vertex="1">
+          <mxGeometry height="70" width="400" x="270" y="445" as="geometry" />
+        </mxCell>
+        <mxCell id="19" edge="1" parent="10" source="13" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" target="20" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="150" y="185" as="sourcePoint" />
+            <mxPoint x="270" y="280" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="20" parent="10" style="text;html=1;align=center;verticalAlign=middle;" value="&lt;b style='color:#4338CA;'&gt;NO (Metered)&lt;/b&gt;" vertex="1">
+          <mxGeometry height="20" width="90" x="580" y="75" as="geometry" />
+        </mxCell>
+        <mxCell id="21" edge="1" parent="10" source="13" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;" target="22" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="-70" y="185" as="sourcePoint" />
+            <mxPoint x="-185" y="280" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="22" parent="10" style="text;html=1;align=center;verticalAlign=middle;" value="&lt;b style='color:#0369A1;'&gt;YES (Non-Meter)&lt;/b&gt;" vertex="1">
+          <mxGeometry height="20" width="100" x="200" y="75" as="geometry" />
+        </mxCell>
+        <mxCell id="23" parent="9" style="swimlane;startSize=30;rounded=1;whiteSpace=wrap;html=1;fillColor=#F8FAFC;strokeColor=#94A3B8;shadow=1;" value="&lt;b style='font-size:14px; color:#1E293B;'&gt;STAGE 2: REGIME CLASSIFICATION &amp;amp; BENCHMARKING&lt;/b&gt;" vertex="1">
+          <mxGeometry height="750" width="460" x="70" y="690.5" as="geometry" />
+        </mxCell>
+        <mxCell id="24" parent="23" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ECFDF5;strokeColor=#10B981;shadow=0;align=left;spacingLeft=10;spacingRight=10;" value="&lt;div style='font-size:13px; font-weight:bold; color:#047857;'&gt;Clearness Index (Kt) Regime Classifier&lt;/div&gt;&lt;hr style='border:0.5px solid #A7F3D0;'&gt;&lt;div style='text-align:left; font-size:11px; line-height:1.6; color:#0F172A;'&gt;&amp;bull; &lt;b&gt;Daily Clearness Ratio Calculation:&lt;/b&gt;&lt;br&gt;&amp;nbsp;&amp;nbsp;K&lt;sub&gt;t&lt;/sub&gt; = &amp;sum; POA&lt;sub&gt;daylight&lt;/sub&gt; / &amp;sum; POA&lt;sub&gt;clear-sky&lt;/sub&gt; across Blocks 24 to 76&lt;br&gt;&amp;bull; &lt;b&gt;Classification Thresholds:&lt;/b&gt;&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;minus; &lt;span style='background:#FEE2E2; padding:1px 4px; border-radius:3px;'&gt;K&lt;sub&gt;t&lt;/sub&gt; &amp;lt; 0.50 &amp;rarr; OVERCAST&lt;/span&gt; (Heavy cloud cover / monsoon)&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;minus; &lt;span style='background:#FEF3C7; padding:1px 4px; border-radius:3px;'&gt;0.50 &amp;le; K&lt;sub&gt;t&lt;/sub&gt; &amp;lt; 0.75 &amp;rarr; MIXED&lt;/span&gt; (Variable passing clouds)&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;minus; &lt;span style='background:#DCFCE7; padding:1px 4px; border-radius:3px;'&gt;K&lt;sub&gt;t&lt;/sub&gt; &amp;ge; 0.75 &amp;rarr; CLEAR&lt;/span&gt; (High uninhibited irradiance)&lt;/div&gt;" vertex="1">
+          <mxGeometry height="150" width="410" x="25" y="50" as="geometry" />
+        </mxCell>
+        <mxCell id="25" parent="23" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFBEB;strokeColor=#D97706;shadow=0;align=left;spacingLeft=10;spacingRight=10;" value="&lt;div style='font-size:13px; font-weight:bold; color:#B45309;'&gt;Exponential Decay &amp;amp; Regime-Matched Weighting&lt;/div&gt;&lt;hr style='border:0.5px solid #FDE68A;'&gt;&lt;div style='text-align:left; font-size:11px; line-height:1.6; color:#0F172A;'&gt;&amp;bull; &lt;b&gt;Temporal Recency Weighting:&lt;/b&gt;&lt;br&gt;&amp;nbsp;&amp;nbsp;w&lt;sub&gt;d&lt;/sub&gt; = exp(&amp;minus;offset / &amp;tau;) where &amp;tau; = 3.5 days (Recent days matter most)&lt;br&gt;&amp;bull; &lt;b&gt;Stratified Regime-Matching Multiplier:&lt;/b&gt;&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;minus; If Evaluation Day Regime == Today's Regime: &lt;b&gt;w&lt;sub&gt;d&lt;/sub&gt; &amp;larr; w&lt;sub&gt;d&lt;/sub&gt; &amp;times; 1.50&lt;/b&gt;&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;minus; If Evaluation Day Regime != Today's Regime: &lt;b&gt;w&lt;sub&gt;d&lt;/sub&gt; &amp;larr; w&lt;sub&gt;d&lt;/sub&gt; &amp;times; 0.65&lt;/b&gt;&lt;br&gt;&amp;bull; Ensures sunny historical days do not bias an overcast target day forecast&lt;/div&gt;" vertex="1">
+          <mxGeometry height="150" width="410" x="25" y="230" as="geometry" />
+        </mxCell>
+        <mxCell id="26" parent="23" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEF2F2;strokeColor=#EF4444;shadow=0;align=left;spacingLeft=10;spacingRight=10;" value="&lt;div style='font-size:13px; font-weight:bold; color:#991B1B;'&gt;Asymmetric DSM Penalty Loss Formulation&lt;/div&gt;&lt;hr style='border:0.5px solid #FCA5A5;'&gt;&lt;div style='text-align:left; font-size:11px; line-height:1.6; color:#0F172A;'&gt;&amp;bull; &lt;b&gt;Statistical Metrics for Model Member k:&lt;/b&gt;&lt;br&gt;&amp;nbsp;&amp;nbsp;RMSE&lt;sub&gt;poa&lt;/sub&gt;(k) = &amp;radic;( &amp;sum; w&lt;sub&gt;d&lt;/sub&gt; &amp;times; (POA&lt;sub&gt;actual&lt;/sub&gt; &amp;minus; POA&lt;sub&gt;model&lt;/sub&gt;)&amp;sup2; / &amp;sum; w&lt;sub&gt;d&lt;/sub&gt; )&lt;br&gt;&amp;nbsp;&amp;nbsp;Bias&lt;sub&gt;poa&lt;/sub&gt;(k) = &amp;sum; w&lt;sub&gt;d&lt;/sub&gt; &amp;times; (POA&lt;sub&gt;actual&lt;/sub&gt; &amp;minus; POA&lt;sub&gt;model&lt;/sub&gt;) / &amp;sum; w&lt;sub&gt;d&lt;/sub&gt;&lt;br&gt;&amp;nbsp;&amp;nbsp;Corr&lt;sub&gt;poa&lt;/sub&gt;(k) = Pearson correlation of diurnal generation shape&lt;br&gt;&amp;bull; &lt;b&gt;Shortfall Risk Penalty (Regulatory Shield):&lt;/b&gt;&lt;br&gt;&amp;nbsp;&amp;nbsp;shortfall_risk = max(0.0, &amp;minus;raw_bias&lt;sub&gt;poa&lt;/sub&gt;) &amp;times; 0.50&lt;br&gt;&amp;bull; &lt;b&gt;Composite Objective Loss:&lt;/b&gt;&lt;br&gt;&amp;nbsp;&amp;nbsp;Loss(k) = [ RMSE&lt;sub&gt;poa&lt;/sub&gt; + 0.40 &amp;times; |Bias&lt;sub&gt;poa&lt;/sub&gt;| + shortfall_risk&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;+ 0.15 &amp;times; (1.0 &amp;minus; Corr&lt;sub&gt;poa&lt;/sub&gt;) &amp;times; 100.0 ] &amp;times; Transfer_Ratio&lt;/div&gt;" vertex="1">
+          <mxGeometry height="230" width="410" x="25" y="410" as="geometry" />
+        </mxCell>
+        <mxCell id="27" parent="23" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;shadow=1;gradientColor=#b3b3b3;" value="&lt;font&gt;&lt;b style=&quot;font-size: 12px;&quot;&gt;Ranked Candidate Pool (Up to 143 Members)&lt;/b&gt;&lt;br&gt;&lt;span style=&quot;font-size: 11px;&quot;&gt;Sorted by lowest Composite Loss across DWD, ECMWF, NOAA, GEM&lt;br&gt;Passed to Capped Diversity Selection per Diurnal Slot&lt;/span&gt;&lt;/font&gt;" vertex="1">
+          <mxGeometry height="70" width="410" x="25" y="660" as="geometry" />
+        </mxCell>
+        <mxCell id="28" edge="1" parent="23" source="24" target="25">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="29" edge="1" parent="23" source="25" target="26">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="30" edge="1" parent="23" source="26" target="27">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="31" parent="9" style="swimlane;startSize=30;rounded=1;whiteSpace=wrap;html=1;fillColor=#F1F5F9;strokeColor=#94A3B8;shadow=1;" value="&lt;b style='font-size:14px; color:#1E293B;'&gt;STAGE 3: 3-SLOT CAPPED DIVERSITY SELECTION&lt;/b&gt;" vertex="1">
+          <mxGeometry height="770" width="460" x="560" y="690.5" as="geometry" />
+        </mxCell>
+        <mxCell id="32" parent="31" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F0FDFA;strokeColor=#0D9488;shadow=0;align=left;spacingLeft=10;spacingRight=10;" value="&lt;div style='font-size:13px; font-weight:bold; color:#0F766E;'&gt;Three Independent Diurnal Time Slots&lt;/div&gt;&lt;hr style='border:0.5px solid #99F6E4;'&gt;&lt;div style='text-align:left; font-size:11px; line-height:1.6; color:#0F172A;'&gt;&amp;bull; &lt;b&gt;Morning Slot:&lt;/b&gt; Blocks 25 to 40 (06:00 to 10:00 IST) - Inverter ramp-up&lt;br&gt;&amp;bull; &lt;b&gt;Midday Slot:&lt;/b&gt; Blocks 41 to 56 (10:00 to 14:00 IST) - Peak solar irradiance&lt;br&gt;&amp;bull; &lt;b&gt;Afternoon Slot:&lt;/b&gt; Blocks 57 to 75 (14:00 to 18:45 IST) - Evening descent&lt;br&gt;&lt;i style='color:#0D9488;'&gt;Top-6 model identification is executed completely independently for each slot!&lt;/i&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="120" width="410" x="25" y="50" as="geometry" />
+        </mxCell>
+        <mxCell id="33" parent="31" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EFF6FF;strokeColor=#2563EB;shadow=0;align=left;spacingLeft=10;spacingRight=10;" value="&lt;div style=&quot;font-size:13px; font-weight:bold; color:#1E40AF;&quot;&gt;Capped Agency Diversity Selection Algorithm&lt;/div&gt;&lt;hr style=&quot;border:0.5px solid #BFDBFE;&quot;&gt;&lt;div style=&quot;text-align:left; font-size:11px; line-height:1.6; color:#0F172A;&quot;&gt;• &lt;b&gt;Step 1: Mandatory Multi-Agency Floor (3 Models):&lt;/b&gt;&lt;br&gt;&amp;nbsp;&amp;nbsp;− Pick 1 lowest loss model from &lt;b&gt;ECMWF&lt;/b&gt; (IFS-025)&lt;br&gt;&amp;nbsp;&amp;nbsp;− Pick 1 lowest loss model from &lt;b&gt;ICON&lt;/b&gt; (Seamless)&lt;br&gt;&amp;nbsp;&amp;nbsp;− Pick 1 lowest loss model from &lt;b&gt;GEFS&lt;/b&gt; (NCEP-025)&lt;br&gt;&amp;nbsp;&amp;nbsp;&lt;i style=&quot;color:#2563EB;&quot;&gt;Prevents single-agency model failure during unexpected atmospheric shifts&lt;/i&gt;&lt;br&gt;• &lt;b&gt;Step 2: Capped Quota Filling (Fill remaining 3 to reach 6):&lt;/b&gt;&lt;br&gt;&amp;nbsp;&amp;nbsp;− Iterate through remaining candidates by lowest composite loss&lt;br&gt;&amp;nbsp;&amp;nbsp;− Enforce &lt;b&gt;Max 3 Members per Agency Family&lt;/b&gt;&lt;br&gt;&amp;nbsp;&amp;nbsp;− Stop when total selected models = 6&lt;br&gt;• &lt;b&gt;Result:&lt;/b&gt; Exactly 6 diverse, high-performing ensemble members selected per slot&lt;/div&gt;" vertex="1">
+          <mxGeometry height="250" width="410" x="25" y="210" as="geometry" />
+        </mxCell>
+        <mxCell id="34" parent="31" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAF5FF;strokeColor=#7C3AED;shadow=0;align=left;spacingLeft=10;spacingRight=10;" value="&lt;div style='font-size:13px; font-weight:bold; color:#6D28D9;'&gt;Slot-Wise Selected Model Portfolio (Example)&lt;/div&gt;&lt;hr style='border:0.5px solid #DDD6FE;'&gt;&lt;div style='text-align:left; font-size:11px; line-height:1.5; color:#0F172A;'&gt;&amp;bull; Model 1: ECMWF #09 (Floor member) &amp;bull; Agency count = 1&lt;br&gt;&amp;bull; Model 2: ICON #05 (Floor member) &amp;bull; Agency count = 1&lt;br&gt;&amp;bull; Model 3: GEFS #03 (Floor member) &amp;bull; Agency count = 1&lt;br&gt;&amp;bull; Model 4: ICON #13 (Best remaining) &amp;bull; Agency count = 2&lt;br&gt;&amp;bull; Model 5: ECMWF #48 (Best remaining) &amp;bull; Agency count = 2&lt;br&gt;&amp;bull; Model 6: GEFS #05 (Best remaining) &amp;bull; Agency count = 2&lt;br&gt;&lt;b style='color:#7C3AED;'&gt;&amp;check; 6 Models Chosen &amp;bull; Max per agency = 2 (&amp;le; 3 capped quota)&lt;/b&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="150" width="410" x="25" y="500" as="geometry" />
+        </mxCell>
+        <mxCell id="35" parent="31" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;shadow=1;gradientColor=#b3b3b3;" value="&lt;font&gt;&lt;b style=&quot;font-size: 12px;&quot;&gt;Final Top-6 Model IDs for Diurnal Slot&lt;/b&gt;&lt;br&gt;&lt;span style=&quot;font-size: 11px;&quot;&gt;Output: [Keys, Slot Range, Loss Metrics]&lt;br&gt;Passed to Bayesian Weighting &amp;amp; MOS Gain Calibration&lt;/span&gt;&lt;/font&gt;" vertex="1">
+          <mxGeometry height="70" width="410" x="25" y="680" as="geometry" />
+        </mxCell>
+        <mxCell id="36" edge="1" parent="31" source="32" target="33">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="37" edge="1" parent="31" source="33" target="34">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="38" edge="1" parent="31" source="34" target="35">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="39" parent="9" style="swimlane;startSize=30;rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;shadow=1;gradientColor=#b3b3b3;" value="&lt;b style='font-size:14px; color:#1E293B;'&gt;STAGE 4: WEIGHTING, CALIBRATION &amp;amp; BLENDING&lt;/b&gt;" vertex="1">
+          <mxGeometry height="770" width="460" x="1050" y="690.5" as="geometry" />
+        </mxCell>
+        <mxCell id="40" parent="39" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F0F9FF;strokeColor=#0284C7;shadow=0;align=left;spacingLeft=10;spacingRight=10;" value="&lt;div style='font-size:13px; font-weight:bold; color:#0369A1;'&gt;Bayesian Inverse-Loss Normalization&lt;/div&gt;&lt;hr style='border:0.5px solid #BAE6FD;'&gt;&lt;div style='text-align:left; font-size:11px; line-height:1.6; color:#0F172A;'&gt;&amp;bull; &lt;b&gt;Raw Inverse Weights:&lt;/b&gt;&lt;br&gt;&amp;nbsp;&amp;nbsp;W&lt;sub&gt;raw&lt;/sub&gt;(k) = 1.0 / max(10&lt;sup&gt;&amp;minus;4&lt;/sup&gt;, Composite_Loss(k))&lt;br&gt;&amp;bull; &lt;b&gt;Normalized Bayesian Weight:&lt;/b&gt;&lt;br&gt;&amp;nbsp;&amp;nbsp;W(k) = W&lt;sub&gt;raw&lt;/sub&gt;(k) / &amp;sum; W&lt;sub&gt;raw&lt;/sub&gt;(j)&lt;br&gt;&amp;bull; High-accuracy models receive highest weight; inferior models smoothly attenuated&lt;/div&gt;" vertex="1">
+          <mxGeometry height="170" width="410" x="25" y="50" as="geometry" />
+        </mxCell>
+        <mxCell id="41" parent="39" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#4F46E5;shadow=0;align=left;spacingLeft=10;spacingRight=10;" value="&lt;div style='font-size:13px; font-weight:bold; color:#4338CA;'&gt;Empirical Diurnal MOS Linear Calibration Gain&lt;/div&gt;&lt;hr style='border:0.5px solid #C7D2FE;'&gt;&lt;div style='text-align:left; font-size:11px; line-height:1.6; color:#0F172A;'&gt;&amp;bull; &lt;b&gt;Linear Gain Formulation:&lt;/b&gt;&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;alpha;&lt;sub&gt;k&lt;/sub&gt; = &amp;sum; (POA&lt;sub&gt;actual&lt;/sub&gt; &amp;times; POA&lt;sub&gt;sim&lt;/sub&gt;) / &amp;sum; (POA&lt;sub&gt;sim&lt;/sub&gt;)&amp;sup2;&lt;br&gt;&amp;bull; &lt;b&gt;Physical Stability Guardrail Clamp:&lt;/b&gt;&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;alpha;&lt;sub&gt;k&lt;/sub&gt; = clip(&amp;alpha;&lt;sub&gt;k&lt;/sub&gt;, 0.85, 1.15)&lt;br&gt;&amp;bull; Directly removes systematic atmospheric agency under/over-estimation bias&lt;/div&gt;" vertex="1">
+          <mxGeometry height="130" width="410" x="25" y="260" as="geometry" />
+        </mxCell>
+        <mxCell id="42" parent="39" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ECFDF5;strokeColor=#10B981;shadow=0;align=left;spacingLeft=10;spacingRight=10;" value="&lt;div style='font-size:13px; font-weight:bold; color:#047857;'&gt;Raised-Cosine Slot Cross-Fading (Blended Kt)&lt;/div&gt;&lt;hr style='border:0.5px solid #A7F3D0;'&gt;&lt;div style='text-align:left; font-size:11px; line-height:1.6; color:#0F172A;'&gt;&amp;bull; &lt;b&gt;Slot Clearness Calculation:&lt;/b&gt;&lt;br&gt;&amp;nbsp;&amp;nbsp;Kt&lt;sub&gt;slot&lt;/sub&gt;(b) = &amp;sum; W(k) &amp;times; clip( (&amp;alpha;&lt;sub&gt;k&lt;/sub&gt; &amp;times; POA&lt;sub&gt;k&lt;/sub&gt;) / max(15, POA&lt;sub&gt;cs&lt;/sub&gt;), 0.0, 1.15 )&lt;br&gt;&amp;bull; &lt;b&gt;Morning &amp;rarr; Midday Transition (Blocks 39 to 42):&lt;/b&gt;&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;gamma; = 0.5 &amp;times; (1.0 &amp;minus; cos(&amp;pi; &amp;times; (b &amp;minus; 38) / 4.0))&lt;br&gt;&amp;nbsp;&amp;nbsp;Kt&lt;sub&gt;blended&lt;/sub&gt; = max( (1 &amp;minus; &amp;gamma;) &amp;times; Kt&lt;sub&gt;morn&lt;/sub&gt; + &amp;gamma; &amp;times; Kt&lt;sub&gt;mid&lt;/sub&gt;, 0.85 &amp;times; Kt&lt;sub&gt;morn&lt;/sub&gt; )&lt;br&gt;&amp;bull; &lt;b&gt;Midday &amp;rarr; Afternoon Transition (Blocks 55 to 58):&lt;/b&gt;&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;gamma; = 0.5 &amp;times; (1.0 &amp;minus; cos(&amp;pi; &amp;times; (b &amp;minus; 54) / 4.0))&lt;br&gt;&amp;nbsp;&amp;nbsp;Kt&lt;sub&gt;blended&lt;/sub&gt; = (1 &amp;minus; &amp;gamma;) &amp;times; Kt&lt;sub&gt;mid&lt;/sub&gt; + &amp;gamma; &amp;times; Kt&lt;sub&gt;aft&lt;/sub&gt;&lt;br&gt;&amp;bull; Eliminates boundary step-jumps and prevents artificial valley dips&lt;/div&gt;" vertex="1">
+          <mxGeometry height="220" width="410" x="25" y="420" as="geometry" />
+        </mxCell>
+        <mxCell id="43" parent="39" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;shadow=1;gradientColor=#b3b3b3;" value="&lt;font&gt;&lt;b style=&quot;font-size: 12px;&quot;&gt;Fused 96-Block GTI fused&lt;/b&gt;&lt;br&gt;&lt;/font&gt;&lt;span style=&quot;font-size: 11px;&quot;&gt;&lt;font&gt;GTI&lt;sub style=&quot;&quot;&gt;fused&lt;/sub&gt;(b) = round(Kt&lt;sub style=&quot;&quot;&gt;blended&lt;/sub&gt;(b) × POA&lt;sub style=&quot;&quot;&gt;cs&lt;/sub&gt;(b), 1) [W/m²]&lt;/font&gt;&lt;br&gt;&lt;/span&gt;" vertex="1">
+          <mxGeometry height="70" width="410" x="25" y="670" as="geometry" />
+        </mxCell>
+        <mxCell id="44" edge="1" parent="39" source="40" target="41">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="45" edge="1" parent="39" source="41" target="42">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="46" edge="1" parent="39" source="42" target="43">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="47" edge="1" parent="9" source="35" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="40">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="48" edge="1" parent="9" source="27" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="32">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="49" edge="1" parent="9" source="18" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="24">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="820" y="645.5" />
+              <mxPoint x="40" y="645.5" />
+              <mxPoint x="40" y="850.5" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="50" edge="1" parent="4" source="55" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#2563EB;strokeWidth=2;" target="60">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="599.5854922279791" y="1379" />
+              <mxPoint x="599.5854922279791" y="754.25" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="51" parent="4" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DBEAFE;strokeColor=#2563EB;strokeWidth=1.5;shadow=1;container=0;" value="&lt;b&gt;Ensemble Weather Fetcher&lt;/b&gt;&lt;br&gt;&lt;code&gt;fetch_ensemble_weather(target_date_str)&lt;/code&gt;&lt;br&gt;&lt;i style='color:#475569;'&gt;modules/weather/intellis_ensemble_gti_ai.py&lt;/i&gt;" vertex="1">
+          <mxGeometry height="63" width="449.6891191709845" x="40.880829015543895" y="712.25" as="geometry" />
+        </mxCell>
+        <mxCell id="52" parent="4" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#2563EB;strokeWidth=1.5;shadow=1;container=0;" value="&lt;b&gt;High-Bandwidth API Endpoints&lt;/b&gt;&lt;br&gt;&lt;div style='font-size:11px; text-align:left; margin-top:5px; line-height:1.5;'&gt;• &lt;b&gt;Primary:&lt;/b&gt; &lt;code&gt;customer-ensemble-api.open-meteo.com/v1/ensemble&lt;/code&gt;&lt;br&gt;• &lt;b&gt;Fallback:&lt;/b&gt; &lt;code&gt;ensemble-api.open-meteo.com/v1/ensemble&lt;/code&gt;&lt;br&gt;• &lt;b&gt;Cache:&lt;/b&gt; Local JSON caching to prevent double-fetching&lt;/div&gt;" vertex="1">
+          <mxGeometry height="89.25" width="449.6891191709845" x="40.880829015543895" y="796.25" as="geometry" />
+        </mxCell>
+        <mxCell id="53" parent="4" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#64748B;strokeWidth=1.5;shadow=1;container=0;" value="&lt;b&gt;4 Leading NWP Agency Families&lt;/b&gt;&lt;br&gt;&lt;table style='width:100%; font-size:11px; margin-top:4px; text-align:left;'&gt;&lt;tr style='background-color:#DBEAFE;'&gt;&lt;th&gt;Agency&lt;/th&gt;&lt;th&gt;Model Code&lt;/th&gt;&lt;th&gt;Members&lt;/th&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;b&gt;ECMWF&lt;/b&gt;&lt;/td&gt;&lt;td&gt;ecmwf_ifs025&lt;/td&gt;&lt;td&gt;51 members&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;b&gt;DWD&lt;/b&gt;&lt;/td&gt;&lt;td&gt;icon_seamless&lt;/td&gt;&lt;td&gt;40 members&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;b&gt;NOAA&lt;/b&gt;&lt;/td&gt;&lt;td&gt;gfs025 / gefs&lt;/td&gt;&lt;td&gt;31 members&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;b&gt;CMC&lt;/b&gt;&lt;/td&gt;&lt;td&gt;gem_global&lt;/td&gt;&lt;td&gt;21 members&lt;/td&gt;&lt;/tr&gt;&lt;tr style='font-weight:bold;'&gt;&lt;td colspan='2'&gt;Total Candidate Pool:&lt;/td&gt;&lt;td style='color:#1E40AF;'&gt;143 Members&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;" vertex="1">
+          <mxGeometry height="157.5" width="463.3160621761659" x="34.067357512953095" y="906.5" as="geometry" />
+        </mxCell>
+        <mxCell id="54" parent="4" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8FAFC;strokeColor=#3B82F6;strokeWidth=1.5;shadow=1;container=0;" value="&lt;b&gt;Queried Atmospheric &amp;amp; Irradiance Channels&lt;/b&gt;&lt;br&gt;&lt;blockquote style=&quot;margin: 0 0 0 40px; border: none; padding: 0px;&quot;&gt;&lt;div style=&quot;font-size:11px; text-align:left; margin-top:5px; line-height:1.5;&quot;&gt;• &lt;b&gt;Plane-of-Array Irradiance:&lt;/b&gt;&lt;/div&gt;&lt;div style=&quot;font-size:11px; text-align:left; margin-top:5px; line-height:1.5;&quot;&gt;&amp;nbsp;&amp;nbsp;&lt;code&gt;global_tilted_irradiance_instant&lt;/code&gt; (preferred, zero-lag)&lt;/div&gt;&lt;div style=&quot;font-size:11px; text-align:left; margin-top:5px; line-height:1.5;&quot;&gt;&amp;nbsp;&amp;nbsp;&lt;code&gt;global_tilted_irradiance&lt;/code&gt; (interval average)&lt;/div&gt;&lt;div style=&quot;font-size:11px; text-align:left; margin-top:5px; line-height:1.5;&quot;&gt;• &lt;b&gt;Radiative Components:&lt;/b&gt;&lt;/div&gt;&lt;div style=&quot;font-size:11px; text-align:left; margin-top:5px; line-height:1.5;&quot;&gt;&amp;nbsp;&amp;nbsp;&lt;code&gt;shortwave_radiation, direct_normal_irradiance, diffuse_radiation&lt;/code&gt;&lt;/div&gt;&lt;div style=&quot;font-size:11px; text-align:left; margin-top:5px; line-height:1.5;&quot;&gt;• &lt;b&gt;Atmospheric Thermodynamics:&lt;/b&gt;&lt;/div&gt;&lt;div style=&quot;font-size:11px; text-align:left; margin-top:5px; line-height:1.5;&quot;&gt;&amp;nbsp;&amp;nbsp;&lt;code&gt;cloud_cover (total, low, mid, high), cape, precip, temp_2m, wind_10m&lt;/code&gt;&lt;/div&gt;&lt;/blockquote&gt;" vertex="1">
+          <mxGeometry height="231" width="497.38341968911925" x="17.033678756476547" y="1085" as="geometry" />
+        </mxCell>
+        <mxCell id="55" parent="4" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DBEAFE;strokeColor=#1E40AF;strokeWidth=2;shadow=1;container=0;" value="&lt;b style='font-size:13px; color:#1E3A8A;'&gt;143-Member Raw Hourly Feed&lt;/b&gt;&lt;br&gt;24 Hourly Timesteps per Member &amp;times; 143 Members" vertex="1">
+          <mxGeometry height="57.75" width="449.6891191709845" x="40.880829015543895" y="1347.5" as="geometry" />
+        </mxCell>
+        <mxCell id="56" edge="1" parent="4" source="51" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="52">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="57" edge="1" parent="4" source="52" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="53">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="58" edge="1" parent="4" source="53" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="54">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="59" edge="1" parent="4" source="54" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="55">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="60" parent="4" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEF08A;strokeColor=#CA8A04;strokeWidth=1.5;shadow=1;container=0;" value="&lt;b&gt;Why Direct Linear Interpolation Fails&lt;/b&gt;&lt;br&gt;&lt;blockquote style=&quot;margin: 0 0 0 40px; border: none; padding: 0px;&quot;&gt;&lt;div style=&quot;font-size:11px; text-align:left; margin-top:5px; color:#78350F;&quot;&gt;Linear interpolation across 1-hour intervals creates &lt;b&gt;sharp artificial triangles&lt;/b&gt; at sunrise, sunset, and solar noon, introducing catastrophic ramp rate errors in statutory 15-minute dispatch schedules.&lt;/div&gt;&lt;/blockquote&gt;" vertex="1">
+          <mxGeometry height="84" width="470.12953367875645" x="729.041450777202" y="712.25" as="geometry" />
+        </mxCell>
+        <mxCell id="61" parent="4" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#CA8A04;strokeWidth=1.5;shadow=1;container=0;" value="&lt;b&gt;Step A: Hourly Clearness Ratio k&lt;sub&gt;t&lt;/sub&gt;(H)&lt;/b&gt;&lt;br&gt;For each hour H &amp;isin; [0, 23]:&lt;br&gt;&lt;div style='font-size:13px; margin:6px 0; background-color:#EFF6FF; padding:4px; border-radius:4px;'&gt;&lt;b style='color:#1E40AF;'&gt;k&lt;sub&gt;t&lt;/sub&gt;(H) = NWP_Forecast(H) / max(15.0, POA&lt;sub&gt;cs&lt;/sub&gt;(H))&lt;/b&gt;&lt;/div&gt;&lt;span style='font-size:11px; color:#475569;'&gt;Normalizes out the astronomical solar curve; leaves pure cloud transmission&lt;/span&gt;" vertex="1">
+          <mxGeometry height="120.75" width="449.68911917098444" x="739.261658031088" y="833" as="geometry" />
+        </mxCell>
+        <mxCell id="62" parent="4" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#CA8A04;strokeWidth=1.5;shadow=1;container=0;" value="&lt;b&gt;Step B: Smooth k&lt;sub&gt;t&lt;/sub&gt; Spline to 15-Min Midpoints&lt;/b&gt;&lt;br&gt;&lt;div style='font-size:12px; margin:5px 0;'&gt;&lt;b style='color:#A16207;'&gt;k&lt;sub&gt;t&lt;/sub&gt;(H) &amp;rarr; Monotonic Spline &amp;rarr; k&lt;sub&gt;t&lt;/sub&gt;(b)&lt;/b&gt;&lt;/div&gt;&lt;span style='font-size:11px; color:#475569;'&gt;Because atmospheric cloud opacity changes slowly, k&lt;sub&gt;t&lt;/sub&gt; interpolates smoothly without ringing or negative overshoots&lt;/span&gt;" vertex="1">
+          <mxGeometry height="94.5" width="449.68911917098444" x="739.261658031088" y="985.25" as="geometry" />
+        </mxCell>
+        <mxCell id="63" parent="4" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#CA8A04;strokeWidth=2;shadow=1;container=0;" value="&lt;b&gt;Step C: Physics-Guided Reconstruction&lt;/b&gt;&lt;br&gt;Multiply by high-resolution instantaneous clear-sky POA:&lt;br&gt;&lt;div style='font-size:14px; margin:6px 0; background-color:#FEF9C3; padding:5px; border-radius:4px;'&gt;&lt;b style='color:#78350F;'&gt;GTI&lt;sub&gt;model&lt;/sub&gt;(b) = k&lt;sub&gt;t&lt;/sub&gt;(b) &amp;times; POA&lt;sub&gt;cs&lt;/sub&gt;(b)&lt;/b&gt;&lt;/div&gt;&lt;span style='font-size:11px; color:#475569;'&gt;Preserves exact astronomical solar zenith &amp;amp; elevation geometry&lt;/span&gt;" vertex="1">
+          <mxGeometry height="126" width="449.68911917098444" x="739.261658031088" y="1116.5" as="geometry" />
+        </mxCell>
+        <mxCell id="64" parent="4" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DCFCE7;strokeColor=#16A34A;strokeWidth=1.5;shadow=1;container=0;" value="&lt;b&gt;Outcome: Natural Earth Rotation Curvature&lt;/b&gt;&lt;br&gt;&lt;div style='font-size:11px; text-align:left; margin-top:5px; line-height:1.5; color:#14532D;'&gt;&amp;bull; Smooth parabolic ramps at dawn and dusk&lt;br&gt;&amp;bull; Zero stepped or sawtooth interval artifacts&lt;br&gt;&amp;bull; Strictly bounded by POA&lt;sub&gt;cs&lt;/sub&gt; astronomical maximum&lt;br&gt;&amp;bull; Formatted as 96-element vector per candidate member&lt;/div&gt;" vertex="1">
+          <mxGeometry height="105" width="449.68911917098444" x="739.261658031088" y="1274" as="geometry" />
+        </mxCell>
+        <mxCell id="65" edge="1" parent="4" source="66" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="13">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1280" y="1439" />
+              <mxPoint x="1280" y="745" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="66" parent="4" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEF9C3;strokeColor=#CA8A04;strokeWidth=2;shadow=1;container=0;" value="&lt;b style='font-size:13px; color:#854D0E;'&gt;143 &amp;times; 96-Block Physical GTI Matrix&lt;/b&gt;&lt;br&gt;All 143 candidates discretized to statutory 15-minute grid" vertex="1">
+          <mxGeometry height="57.75" width="449.68911917098444" x="739.261658031088" y="1410.5" as="geometry" />
+        </mxCell>
+        <mxCell id="67" edge="1" parent="4" source="60" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="61">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="68" edge="1" parent="4" source="61" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="62">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="69" edge="1" parent="4" source="62" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="63">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="70" edge="1" parent="4" source="63" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="64">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="71" edge="1" parent="4" source="64" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="66">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="72" parent="4" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;strokeWidth=2;shadow=1;gradientColor=#ea6b66;" value="&lt;font color=&quot;#0f172a&quot; style=&quot;font-size: 25px;&quot;&gt;&lt;b style=&quot;&quot;&gt;96 Block Base forecast based on weather ensemble&lt;/b&gt;&lt;/font&gt;" vertex="1">
+          <mxGeometry height="70" width="840" x="1730" y="2780" as="geometry" />
+        </mxCell>
+        <mxCell id="73" edge="1" parent="4" source="88" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;strokeWidth=2;jumpStyle=none;" target="13">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="2010" y="520" />
+              <mxPoint x="2590" y="520" />
+              <mxPoint x="2590" y="745" />
+            </Array>
+            <mxPoint x="3710" y="205" as="sourcePoint" />
+            <mxPoint x="2080" y="765" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="74" edge="1" parent="4" source="85" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;jumpStyle=none;strokeWidth=2;strokeColor=default;align=center;verticalAlign=middle;fontFamily=Helvetica;fontSize=11;fontColor=default;labelBackgroundColor=default;endArrow=classic;" target="13">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="2520" y="425" />
+              <mxPoint x="2520" y="520" />
+              <mxPoint x="2590" y="520" />
+              <mxPoint x="2590" y="745" />
+            </Array>
+            <mxPoint x="2080" y="765" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="75" parent="4" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#4338CA;strokeWidth=2;shadow=1;" value="&lt;font style=&quot;font-size: 16px;&quot;&gt;&lt;b style=&quot;&quot;&gt;Convective Cell Temperature Derating (Faiman / Sandia Thermal Model)&lt;/b&gt;&lt;br&gt;Transforms 2m ambient weather temperature T&lt;sub style=&quot;&quot;&gt;amb&lt;/sub&gt; and wind speed W into actual PV module cell temperature:&lt;br&gt;&lt;/font&gt;&lt;div style=&quot;margin: 5px 0px; background-color: rgb(239, 246, 255); padding: 4px; border-radius: 4px;&quot;&gt;&lt;b style=&quot;color:#1E40AF;&quot;&gt;&lt;font style=&quot;font-size: 16px;&quot;&gt;T&lt;sub&gt;cell&lt;/sub&gt;(b) = T&lt;sub&gt;amb&lt;/sub&gt;(b) + GTI(b) / [ 25.0 + 1.2 × W(b) ]&lt;/font&gt;&lt;/b&gt;&lt;/div&gt;&lt;div style=&quot;margin: 5px 0px; background-color: rgb(237, 233, 254); padding: 4px; border-radius: 4px;&quot;&gt;&lt;b style=&quot;color:#4C1D95;&quot;&gt;&lt;font style=&quot;font-size: 16px;&quot;&gt;temp_factor(b) = clip( 1.0 - 0.0038 × ( T&lt;sub&gt;cell&lt;/sub&gt;(b) - 25.0 ), 0.82, 1.06 )&lt;/font&gt;&lt;/b&gt;&lt;/div&gt;&lt;span style=&quot;color: rgb(71, 85, 105);&quot;&gt;&lt;font style=&quot;font-size: 16px;&quot;&gt;Accounts for wind cooling and heat-induced solar panel voltage drop during summer/monsoon noon&lt;/font&gt;&lt;/span&gt;" vertex="1">
+          <mxGeometry height="215" width="675" x="1812.5" y="2290" as="geometry" />
+        </mxCell>
+        <mxCell id="76" parent="4" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#1E40AF;strokeWidth=2.5;shadow=1;" value="&lt;b&gt;Thermally-Corrected Clamped Base Generation Formula&lt;/b&gt;&lt;br&gt;&lt;div style='font-size:15px; margin:8px 0; background-color:#DBEAFE; padding:6px; border-radius:4px;'&gt;&lt;b style='color:#1E40AF;'&gt;P&lt;sub&gt;base&lt;/sub&gt;(b) = clip( GTI(b) &amp;times; transfer_ratio &amp;times; temp_factor(b), 0.0, P&lt;sub&gt;AC,max&lt;/sub&gt; )&lt;/b&gt;&lt;/div&gt;&lt;span style='font-size:11px; color:#475569;'&gt;Multiplies slot consensus GTI by calibrated transfer ratio and thermal factor; clamps strictly between 0.0 and P&lt;sub&gt;AC,max&lt;/sub&gt;&lt;/span&gt;" vertex="1">
+          <mxGeometry height="90" width="615" x="1842.5" y="2545" as="geometry" />
+        </mxCell>
+        <mxCell id="77" edge="1" parent="4" source="78" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" target="72">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="78" parent="4" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DBEAFE;strokeColor=#1E40AF;strokeWidth=2;shadow=1;" value="&lt;font style=&quot;font-size: 15px;&quot;&gt;&lt;b style=&quot;color: rgb(30, 58, 138);&quot;&gt;Path B Base Schedule Output&lt;/b&gt;&lt;br&gt;&lt;b style=&quot;&quot;&gt;P&lt;sub&gt;base&lt;/sub&gt; ∈ ℝ&lt;sup&gt;96&lt;/sup&gt; [MW]&lt;/b&gt;&lt;br&gt;&lt;span style=&quot;color: rgb(71, 85, 105);&quot;&gt;Thermally-calibrated, multi-slot blended base generation profile&lt;/span&gt;&lt;/font&gt;" vertex="1">
+          <mxGeometry height="95" width="435" x="1932.5" y="2655" as="geometry" />
+        </mxCell>
+        <mxCell id="79" edge="1" parent="4" source="75" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="76">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="80" edge="1" parent="4" source="76" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="78">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="81" parent="4" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;shadow=1;arcSize=8;align=center;verticalAlign=middle;gradientColor=#ffd966;" value="&lt;font style=&quot;font-size: 35px;&quot;&gt;&lt;b style=&quot;color: rgb(15, 23, 42);&quot;&gt;PHASE 4: BASE FORECAST GENERATION &amp;amp; TELEMETRY HANDLING ARCHITECTURE&lt;/b&gt;&lt;br&gt;&lt;/font&gt;" vertex="1">
+          <mxGeometry height="130" width="1880" x="470" y="-40" as="geometry" />
+        </mxCell>
+        <mxCell id="82" parent="4" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FEF08A;strokeColor=#CA8A04;strokeWidth=2;shadow=1;" value="&lt;b style='font-size:14px;'&gt;Plant Classification Gate&lt;/b&gt;&lt;br&gt;Is &lt;code&gt;PLANT_NAME&lt;/code&gt; in &lt;code&gt;NON_METER_SITES&lt;/code&gt;?" vertex="1">
+          <mxGeometry height="90" width="400" x="2070" y="110" as="geometry" />
+        </mxCell>
+        <mxCell id="83" edge="1" parent="4" source="82" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;fontStyle=1;strokeColor=#059669;strokeWidth=2;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="86" value="YES (Non-Meter Site)">
+          <mxGeometry relative="1" x="0.6863" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="2010" y="155" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="84" edge="1" parent="4" source="82" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;fontStyle=1;strokeColor=#1D4ED8;strokeWidth=2;" target="85" value="NO (Metered Site)">
+          <mxGeometry relative="1" x="-0.0924" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="2523" y="155" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="85" parent="4" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DBEAFE;strokeColor=#2563EB;strokeWidth=1.5;shadow=1;" value="&lt;b&gt;S3 SCADA Meter Ingestion &amp;amp; Normalization&lt;/b&gt;&lt;br&gt;&lt;code&gt;s3://raw/vedanjay/&amp;lt;site&amp;gt;/&amp;lt;date&amp;gt;/metered_data/&lt;/code&gt;&lt;br&gt;&lt;div style='font-size:11px; text-align:left; margin-top:4px;'&gt;&amp;bull; Canonicalize columns (&lt;code&gt;block_end, metered_mw, poa_wm2&lt;/code&gt;)&lt;br&gt;&amp;bull; Clean NaN, #N/A, negative spikes &amp;amp; fill telemetry dropouts&lt;/div&gt;" vertex="1">
+          <mxGeometry height="85" width="420" x="2312.5" y="340" as="geometry" />
+        </mxCell>
+        <mxCell id="86" parent="4" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D1FAE5;strokeColor=#059669;strokeWidth=1.5;shadow=1;" value="&lt;b&gt;Complete SCADA Meter Bypass&lt;/b&gt;&lt;br&gt;&lt;div style='font-size:11px; text-align:left; margin-top:4px; line-height:1.5; color:#064E3B;'&gt;&amp;bull; Bypasses S3 physical SCADA CSV fetch completely&lt;br&gt;&amp;bull; Eliminates network latency &amp;amp; missing-file exceptions&lt;br&gt;&amp;bull; Bypasses invertor trip / curtailment alarm triggers&lt;/div&gt;" vertex="1">
+          <mxGeometry height="75" width="320" x="1850" y="230" as="geometry" />
+        </mxCell>
+        <mxCell id="87" edge="1" parent="4" source="86" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="88">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="88" parent="4" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#10B981;strokeWidth=1.5;shadow=1;" value="&lt;b&gt;Satellite Virtual Irradiance Ingestion&lt;/b&gt;&lt;br&gt;&lt;code&gt;modules.weather.satellite_virtual_meter.py&lt;/code&gt;&lt;br&gt;&lt;span style='font-size:11px; color:#475569;'&gt;Fetches high-resolution satellite global radiation field at plant latitude &amp;amp; longitude&lt;/span&gt;" vertex="1">
+          <mxGeometry height="75" width="420" x="1800" y="340" as="geometry" />
+        </mxCell>
+        <mxCell id="89" edge="1" parent="4" source="43" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=default;align=center;verticalAlign=middle;fontFamily=Helvetica;fontSize=11;fontColor=default;labelBackgroundColor=default;jumpStyle=none;endArrow=classic;" target="75">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="90" connectable="0" parent="1" style="group;strokeColor=default;strokeWidth=2;" value="" vertex="1">
+          <mxGeometry height="1800" width="1680" x="1080" y="-170" as="geometry" />
+        </mxCell>
+        <mxCell id="91" parent="90" style="rounded=0;whiteSpace=wrap;html=1;fillColor=light-dark(#e5e4ec, #3b394a);strokeColor=#56517e;" value="" vertex="1">
+          <mxGeometry height="1800" width="1680" as="geometry" />
+        </mxCell>
+        <mxCell id="92" connectable="0" parent="90" style="group" value="" vertex="1">
+          <mxGeometry height="1720" width="1620" x="30" y="50" as="geometry" />
+        </mxCell>
+        <mxCell id="93" parent="92" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;shadow=1;arcSize=8;align=center;verticalAlign=middle;gradientColor=#ffd966;" value="&lt;b style=&quot;color: rgb(15, 23, 42);&quot;&gt;&lt;font style=&quot;font-size: 35px;&quot;&gt;PHASE 1: PLANT PROFILE INGESTION &amp;amp; CAPACITY SCALING ARCHITECTURE&lt;/font&gt;&lt;/b&gt;" vertex="1">
+          <mxGeometry height="101.67" width="1235" x="192.5" y="-40" as="geometry" />
+        </mxCell>
+        <mxCell id="94" parent="92" style="swimlane;whiteSpace=wrap;html=1;fillColor=#EFF6FF;strokeColor=#3B82F6;strokeWidth=2;startSize=35;arcSize=6;" value="&lt;b style=&quot;font-size:15px; color:#1E3A8A;&quot;&gt;1.1 PROFILE LOADING &amp;amp; PARAMETER EXTRACTION&lt;/b&gt;" vertex="1">
+          <mxGeometry height="819.047619047619" width="480" x="570" y="81.9047619047619" as="geometry">
+            <mxRectangle height="35" width="420" x="40" y="110" as="alternateBounds" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="95" parent="94" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DBEAFE;strokeColor=#2563EB;strokeWidth=1.5;shadow=1;" value="&lt;b&gt;Plant Invocation Request&lt;/b&gt;&lt;br&gt;Target Identifier: &lt;code&gt;site_id / PLANT_NAME&lt;/code&gt;&lt;br&gt;&lt;i style='color:#475569;'&gt;(Dynamic runtime parameter from EventBridge / Orchestrator)&lt;/i&gt;" vertex="1">
+          <mxGeometry height="61.42857142857142" width="400" x="40" y="56.3095238095238" as="geometry" />
+        </mxCell>
+        <mxCell id="96" parent="94" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FEF08A;strokeColor=#CA8A04;strokeWidth=1.5;shadow=1;" value="&lt;b&gt;Check Profile Existence&lt;/b&gt;" vertex="1">
+          <mxGeometry height="97.26190476190476" width="215" x="132.5" y="133.09523809523807" as="geometry" />
+        </mxCell>
+        <mxCell id="97" parent="94" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DCFCE7;strokeColor=#16A34A;strokeWidth=1.5;shadow=1;" value="&lt;b&gt;Primary: Ingest JSON File&lt;/b&gt;&lt;br&gt;Load profile from filesystem:" vertex="1">
+          <mxGeometry height="71.66666666666666" width="200" x="20" y="266.19047619047615" as="geometry" />
+        </mxCell>
+        <mxCell id="98" parent="94" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEE2E2;strokeColor=#DC2626;strokeWidth=1.5;shadow=1;" value="&lt;b&gt;Fallback: Internal Dict&lt;/b&gt;&lt;br&gt;Load fallback configuration from:&lt;br&gt;&lt;code&gt;_PLANT_FALLBACKS[PLANT_NAME]&lt;/code&gt;" vertex="1">
+          <mxGeometry height="71.66666666666666" width="200" x="250" y="266.19047619047615" as="geometry" />
+        </mxCell>
+        <mxCell id="99" parent="94" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#64748B;strokeWidth=1.5;shadow=1;" value="&lt;b&gt;Extracted Site Parameters&lt;/b&gt;&lt;br&gt;&lt;table style='width:100%; font-size:11px; text-align:left; margin-top:4px;'&gt;&lt;tr&gt;&lt;td&gt;• &lt;b&gt;latitude&lt;/b&gt; (float)&lt;/td&gt;&lt;td&gt;Site latitude in decimal degrees&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;• &lt;b&gt;longitude&lt;/b&gt; (float)&lt;/td&gt;&lt;td&gt;Site longitude in decimal degrees&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;• &lt;b&gt;tilt_deg&lt;/b&gt; (Panel Tilt β)&lt;/td&gt;&lt;td&gt;Module inclination from horizontal (°)&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;• &lt;b&gt;orientation_deg_from_south&lt;/b&gt; (γ&lt;sub&gt;m&lt;/sub&gt;)&lt;/td&gt;&lt;td&gt;Module azimuth relative to True South (°)&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;• &lt;b&gt;ppa_rate_inr_per_kwh&lt;/b&gt;&lt;/td&gt;&lt;td&gt;Commercial contract tariff rate&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;• &lt;b&gt;penalty_regulation&lt;/b&gt;&lt;/td&gt;&lt;td&gt;Applicable state grid code jurisdiction&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;" vertex="1">
+          <mxGeometry height="138.2142857142857" width="410" x="35" y="368.57142857142856" as="geometry" />
+        </mxCell>
+        <mxCell id="100" parent="94" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8FAFC;strokeColor=#3B82F6;strokeWidth=1.5;shadow=1;" value="&lt;b&gt;Capacity MW Scaling Normalization&lt;/b&gt;&lt;br&gt;&lt;div style='font-size:12px; margin-top:5px; background-color:#EFF6FF; padding:6px; border-radius:4px;'&gt;&lt;b style='color:#1E40AF;'&gt;P&lt;sub&gt;DC&lt;/sub&gt; = dc_capacity_kw / 1000.0 [MW]&lt;/b&gt;&lt;br&gt;&lt;b style='color:#1E40AF;'&gt;P&lt;sub&gt;AC,max&lt;/sub&gt; = maximum_feed_in_ac_kw / 1000.0 [MW]&lt;/b&gt;&lt;/div&gt;&lt;hr style='border:0.5px solid #CBD5E1; margin:6px 0;'&gt;&lt;div style='text-align:left; font-size:11px; color:#475569;'&gt;• &lt;b&gt;Inverter Loading Ratio (ILR):&lt;/b&gt; ILR = P&lt;sub&gt;DC&lt;/sub&gt; / P&lt;sub&gt;AC,max&lt;/sub&gt;&lt;br&gt;• &lt;b&gt;AC Grid Limit:&lt;/b&gt; Strict upper ceiling on inverter feed-in export&lt;/div&gt;" vertex="1">
+          <mxGeometry height="153.57142857142856" width="410" x="35" y="537.5" as="geometry" />
+        </mxCell>
+        <mxCell id="101" parent="94" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DBEAFE;strokeColor=#1E40AF;strokeWidth=2;shadow=1;" value="&lt;b style='font-size:13px; color:#1E3A8A;'&gt;Normalized Plant Metadata Object&lt;/b&gt;&lt;br&gt;&lt;code&gt;self.profile: PlantProfile&lt;/code&gt;&lt;br&gt;Provides scaled capacities, geometry &amp;amp; regulatory rules" vertex="1">
+          <mxGeometry height="61.42857142857142" width="410" x="35" y="721.7857142857142" as="geometry" />
+        </mxCell>
+        <mxCell id="102" edge="1" parent="94" source="95" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="96">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="103" edge="1" parent="94" source="96" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;fontStyle=1;strokeColor=#16A34A;" target="97" value="YES">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="104" edge="1" parent="94" source="96" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;fontStyle=1;strokeColor=#DC2626;" target="98" value="NO">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="105" edge="1" parent="94" source="97" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="99">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="130" y="353.21428571428567" />
+              <mxPoint x="240" y="353.21428571428567" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="106" edge="1" parent="94" source="98" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="99">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="350" y="353.21428571428567" />
+              <mxPoint x="240" y="353.21428571428567" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="107" edge="1" parent="94" source="99" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="100">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="108" edge="1" parent="94" source="100" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="101">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="109" parent="92" style="swimlane;whiteSpace=wrap;html=1;fillColor=#FAF5FF;strokeColor=#8B5CF6;strokeWidth=2;startSize=35;arcSize=6;" value="&lt;b style=&quot;font-size:15px; color:#4C1D95;&quot;&gt;1.2 OPTICAL TRANSFER RATIO (TR) PHYSICS ENGINE&lt;/b&gt;" vertex="1">
+          <mxGeometry height="716.6666666666666" width="510" y="900.9523809523808" as="geometry" />
+        </mxCell>
+        <mxCell id="110" parent="109" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EDE9FE;strokeColor=#7C3AED;strokeWidth=1.5;shadow=1;" value="&lt;b&gt;Physical Definition &amp;amp; Purpose&lt;/b&gt;&lt;br&gt;Measures generation capacity per unit Plane-of-Array irradiance:&lt;br&gt;&lt;b&gt;Engineering Units:&lt;/b&gt; &lt;span style='color:#6D28D9; font-weight:bold;'&gt;MW / (W/m²)&lt;/span&gt;&lt;br&gt;&lt;span style='font-size:11px; color:#475569;'&gt;Converts meteorological GTI forecast directly into raw electrical AC generation&lt;/span&gt;" vertex="1">
+          <mxGeometry height="76.78571428571428" width="430" x="40" y="56.3095238095238" as="geometry" />
+        </mxCell>
+        <mxCell id="111" parent="109" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#6D28D9;strokeWidth=2;shadow=1;" value="&lt;b&gt;Optical Transfer Ratio Governing Formula&lt;/b&gt;&lt;br&gt;&lt;div style='font-size:15px; margin:8px 0; background-color:#EDE9FE; padding:6px; border-radius:4px;'&gt;&lt;b style='color:#4C1D95;'&gt;transfer_ratio = ( P&lt;sub&gt;DC&lt;/sub&gt; [MW] × PR ) / 1000.0&lt;/b&gt;&lt;/div&gt;&lt;span style='font-size:11px; color:#475569;'&gt;Denominator 1000.0 scales from Standard Test Condition (STC 1000 W/m²)&lt;/span&gt;" vertex="1">
+          <mxGeometry height="87.02380952380952" width="430" x="40" y="153.57142857142856" as="geometry" />
+        </mxCell>
+        <mxCell id="112" parent="109" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEF08A;strokeColor=#CA8A04;strokeWidth=1.5;shadow=1;" value="&lt;b&gt;Performance Ratio (PR) Selection Gate&lt;/b&gt;&lt;br&gt;Static Engineering Baseline vs. Dynamic Historical Calibration" vertex="1">
+          <mxGeometry height="51.19047619047619" width="370" x="70" y="266.19047619047615" as="geometry" />
+        </mxCell>
+        <mxCell id="113" parent="109" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#64748B;strokeWidth=1.5;shadow=1;" value="&lt;b&gt;&lt;font style=&quot;font-size: 13px;&quot;&gt;Static Baseline PR (Non metered sites )&lt;/font&gt;&lt;/b&gt;&lt;br&gt;&lt;b style=&quot;color:#1E3A8A; font-size:13px;&quot;&gt;PR&lt;sub&gt;base&lt;/sub&gt; = 0.7800&lt;/b&gt;&lt;br&gt;&lt;span style=&quot;font-size:11px; color:#475569;&quot;&gt;Standard crystalline silicon baseline for Non-Meter Sites &amp;amp; initial cold-start&lt;/span&gt;" vertex="1">
+          <mxGeometry height="97.26190476190476" width="200" x="30" y="342.9761904761904" as="geometry" />
+        </mxCell>
+        <mxCell id="114" parent="109" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DCFCE7;strokeColor=#16A34A;strokeWidth=1.5;shadow=1;" value="&lt;font style=&quot;font-size: 13px;&quot;&gt;&lt;b&gt;Dynamic Learned PR (Metered sites)&lt;/b&gt;&lt;br&gt;&lt;/font&gt;&lt;code&gt;calibrate_plant_pr()&lt;/code&gt;&lt;br&gt;&lt;span style=&quot;font-size:11px; color:#166534;&quot;&gt;70th percentile of valid SCADA points (clamped between 0.78 and 0.95)&lt;/span&gt;" vertex="1">
+          <mxGeometry height="97.26190476190476" width="230" x="250" y="342.9761904761904" as="geometry" />
+        </mxCell>
+        <mxCell id="115" parent="109" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#8B5CF6;strokeWidth=1.5;shadow=1;" value="&lt;b&gt;Generic Mathematical Formulation&lt;/b&gt;&lt;br&gt;&lt;div style='font-size:12px; text-align:left; margin-top:8px; line-height:1.6;'&gt;• &lt;b&gt;Metered Sites:&lt;/b&gt;&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;transfer_ratio = ( P&lt;sub&gt;DC&lt;/sub&gt; × PR&lt;sub&gt;calibrated&lt;/sub&gt; ) / 1000.0&lt;br&gt;• &lt;b&gt;Non-Meter Sites:&lt;/b&gt;&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;transfer_ratio = ( P&lt;sub&gt;DC&lt;/sub&gt; × 0.7800 ) / 1000.0&lt;br&gt;• &lt;b&gt;Physical Interpretation:&lt;/b&gt;&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;Yields AC megawatts delivered per 1 W/m² irradiance reaching panel surface.&lt;/div&gt;" vertex="1">
+          <mxGeometry height="153.57142857142856" width="460" x="25" y="522.1428571428571" as="geometry" />
+        </mxCell>
+        <mxCell id="116" edge="1" parent="109" source="110" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="111">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="117" edge="1" parent="109" source="111" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="112">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="118" edge="1" parent="109" source="112" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="113">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="180" y="332.7380952380952" />
+              <mxPoint x="130" y="332.7380952380952" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="119" edge="1" parent="109" source="112" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="114">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="330" y="332.7380952380952" />
+              <mxPoint x="375" y="332.7380952380952" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="120" edge="1" parent="109" source="113" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="115">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="130" y="460.71428571428567" />
+              <mxPoint x="255" y="460.71428571428567" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="121" edge="1" parent="109" source="114" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="115">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="375" y="460.71428571428567" />
+              <mxPoint x="255" y="460.71428571428567" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="122" parent="92" style="swimlane;whiteSpace=wrap;html=1;fillColor=#ECFDF5;strokeColor=#10B981;strokeWidth=2;startSize=35;arcSize=6;" value="&lt;b style=&quot;font-size:15px; color:#064E3B;&quot;&gt;1.3 REGULATORY TOLERANCE BAND WIDTH ENGINE&lt;/b&gt;" vertex="1">
+          <mxGeometry height="819.047619047619" width="510" x="1110" y="900.9523809523808" as="geometry" />
+        </mxCell>
+        <mxCell id="123" parent="122" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D1FAE5;strokeColor=#059669;strokeWidth=1.5;shadow=1;" value="&lt;b&gt;State Grid Code Regulatory Lookup&lt;/b&gt;&lt;br&gt;&lt;code&gt;penalty_regulation&lt;/code&gt; parameter mapping" vertex="1">
+          <mxGeometry height="51.19047619047619" width="430" x="40" y="56.3095238095238" as="geometry" />
+        </mxCell>
+        <mxCell id="124" parent="122" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#059669;strokeWidth=1.5;shadow=1;" value="&lt;b&gt;State Statutory Band Rules&lt;/b&gt;&lt;br&gt;&lt;table style='width:100%; font-size:12px; margin-top:5px; text-align:left;'&gt;&lt;tr style='background-color:#D1FAE5;'&gt;&lt;th&gt;Statutory Category&lt;/th&gt;&lt;th&gt;Band %&lt;/th&gt;&lt;th&gt;Regulatory Description&lt;/th&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;b&gt;Standard Band Jurisdictions&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b style='color:#047857;'&gt;10% (0.10)&lt;/b&gt;&lt;/td&gt;&lt;td&gt;Standard regulatory bandwidth applicable across central and western grid codes&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;b&gt;Extended Band Jurisdictions&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b style='color:#047857;'&gt;15% (0.15)&lt;/b&gt;&lt;/td&gt;&lt;td&gt;Relaxed regulatory bandwidth for high-variability solar regimes&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;" vertex="1">
+          <mxGeometry height="153.57142857142856" width="440" x="35" y="127.97619047619047" as="geometry" />
+        </mxCell>
+        <mxCell id="125" parent="122" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D1FAE5;strokeColor=#047857;strokeWidth=2;shadow=1;" value="&lt;b&gt;Regulatory Tolerance Band Governing Formula&lt;/b&gt;&lt;br&gt;&lt;div style='font-size:14px; margin:8px 0; background-color:#D1FAE5; padding:6px; border-radius:4px;'&gt;&lt;b style='color:#065F46;'&gt;tolerance_band_mw = P&lt;sub&gt;AC,max&lt;/sub&gt; × band_percentage&lt;/b&gt;&lt;/div&gt;&lt;span style='font-size:11px; color:#475569;'&gt;Defines the operational deviation margin around the commercial dispatch schedule&lt;/span&gt;" vertex="1">
+          <mxGeometry height="81.9047619047619" width="440" x="35" y="302.0238095238095" as="geometry" />
+        </mxCell>
+        <mxCell id="126" parent="122" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#10B981;strokeWidth=1.5;shadow=1;" value="&lt;b&gt;Parametric Tolerance Envelope Computation&lt;/b&gt;&lt;br&gt;&lt;div style='font-size:12px; text-align:left; margin-top:8px; line-height:1.6;'&gt;• &lt;b&gt;Standard 10% Band:&lt;/b&gt;&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;tolerance_band_mw = P&lt;sub&gt;AC,max&lt;/sub&gt; × 0.10&lt;br&gt;• &lt;b&gt;Extended 15% Band:&lt;/b&gt;&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;tolerance_band_mw = P&lt;sub&gt;AC,max&lt;/sub&gt; × 0.15&lt;br&gt;• &lt;b&gt;Dynamic Application:&lt;/b&gt;&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;Computed automatically at runtime for any contracted AC capacity.&lt;/div&gt;" vertex="1">
+          <mxGeometry height="153.57142857142856" width="460" x="25" y="404.40476190476187" as="geometry" />
+        </mxCell>
+        <mxCell id="127" parent="122" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ECFDF5;strokeColor=#047857;strokeWidth=1.5;shadow=1;" value="&lt;b&gt;Zero-DSM Penalty Operating Envelope&lt;/b&gt;&lt;br&gt;&lt;div style='font-size:12px; margin-top:5px; text-align:center;'&gt;&lt;b style='color:#065F46;'&gt;Band&lt;sub&gt;upper&lt;/sub&gt;(b) = P&lt;sub&gt;sch&lt;/sub&gt;(b) + tolerance_band_mw&lt;/b&gt;&lt;br&gt;&lt;b style='color:#065F46;'&gt;Band&lt;sub&gt;lower&lt;/sub&gt;(b) = max( 0.0, P&lt;sub&gt;sch&lt;/sub&gt;(b) - tolerance_band_mw )&lt;/b&gt;&lt;/div&gt;&lt;span style='font-size:11px; color:#475569;'&gt;Actual generation within this envelope incurs ₹0.00 deviation penalty under grid code regulations&lt;/span&gt;" vertex="1">
+          <mxGeometry height="102.38095238095238" width="440" x="35" y="578.4523809523808" as="geometry" />
+        </mxCell>
+        <mxCell id="128" parent="122" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D1FAE5;strokeColor=#047857;strokeWidth=2;shadow=1;" value="&lt;b style='font-size:13px; color:#064E3B;'&gt;Configured Tolerance Band Envelope&lt;/b&gt;&lt;br&gt;&lt;code&gt;self.profile.tolerance_band_mw&lt;/code&gt;" vertex="1">
+          <mxGeometry height="61.42857142857142" width="440" x="35" y="721.7857142857142" as="geometry" />
+        </mxCell>
+        <mxCell id="129" edge="1" parent="122" source="123" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="124">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="130" edge="1" parent="122" source="124" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="125">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="131" edge="1" parent="122" source="125" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="126">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="132" edge="1" parent="122" source="126" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="127">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="133" edge="1" parent="122" source="127" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="128">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="134" edge="1" parent="92" source="100" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#4338CA;strokeWidth=2;exitX=0.004;exitY=0.595;exitDx=0;exitDy=0;exitPerimeter=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="111">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="607" y="706.4285714285713" />
+              <mxPoint x="550" y="706.4285714285713" />
+              <mxPoint x="550" y="1098.547619047619" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="135" edge="1" parent="92" source="100" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#047857;strokeWidth=2;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" target="125">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1070" y="696.1904761904761" />
+              <mxPoint x="1070" y="1243.9285714285713" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="136" edge="1" parent="1" source="115" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2;" target="76">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="137" connectable="0" parent="1" style="group" value="" vertex="1">
+          <mxGeometry height="852.9032258064517" width="1000" x="3010" y="760" as="geometry" />
+        </mxCell>
+        <mxCell id="138" parent="137" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;shadow=1;arcSize=8;align=center;verticalAlign=middle;gradientColor=#ffd966;" value="&lt;b style=&quot;color: rgb(15, 23, 42);&quot;&gt;&lt;font style=&quot;&quot;&gt;&lt;span style=&quot;font-size: 35px;&quot;&gt;PHASE 2: ASTRONOMICAL CLEAR-SKY SOLAR POWER&lt;/span&gt;&lt;br&gt;&lt;font style=&quot;font-size: 30px;&quot;&gt;(PVLib library)&lt;/font&gt;&lt;/font&gt;&lt;/b&gt;" vertex="1">
+          <mxGeometry height="100" width="1000" as="geometry" />
+        </mxCell>
+        <mxCell id="139" parent="137" style="swimlane;whiteSpace=wrap;html=1;fillColor=#FAF5FF;strokeColor=#8B5CF6;strokeWidth=2;startSize=35;arcSize=6;" value="&lt;b style=&quot;font-size:15px; color:#4C1D95;&quot;&gt;2.1 INEICHEN CLEAR-SKY MODEL&lt;/b&gt;" vertex="1">
+          <mxGeometry height="628.6451612903226" width="370" x="50" y="137.54838709677415" as="geometry" />
+        </mxCell>
+        <mxCell id="140" parent="139" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EDE9FE;strokeColor=#7C3AED;strokeWidth=1.5;shadow=1;" value="&lt;b&gt;Ineichen Clear-Sky Radiative Model&lt;/b&gt;&lt;br&gt;&lt;code&gt;pvlib.clearsky.ineichen&lt;/code&gt;&lt;br&gt;Attenuates solar constant (I&lt;sub&gt;0&lt;/sub&gt; = 1361 W/m&amp;sup2;) across atmosphere" vertex="1">
+          <mxGeometry height="81.29032258064515" width="300" x="35" y="59.61290322580645" as="geometry" />
+        </mxCell>
+        <mxCell id="141" parent="139" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#7C3AED;strokeWidth=1.5;shadow=1;" value="&lt;b&gt;Atmospheric Correction Parameters&lt;/b&gt;&lt;br&gt;&lt;div style='text-align:left; font-size:12px; margin-top:5px; line-height:1.6;'&gt;• &lt;b&gt;Site Altitude (z):&lt;/b&gt; Barometric pressure scaling&lt;br&gt;• &lt;b&gt;Relative Air Mass (AM):&lt;/b&gt; Atmospheric path length&lt;br&gt;• &lt;b&gt;Linke Turbidity (T&lt;sub&gt;L&lt;/sub&gt;):&lt;/b&gt; Aerosols and water vapor&lt;/div&gt;" vertex="1">
+          <mxGeometry height="119.2258064516129" width="300" x="35" y="173.41935483870967" as="geometry" />
+        </mxCell>
+        <mxCell id="142" parent="139" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#6D28D9;strokeWidth=2;shadow=1;" value="&lt;b&gt;3-Component Radiative Decomposition&lt;/b&gt;&lt;br&gt;&lt;table style='width:100%; font-size:12px; margin-top:6px; text-align:left;'&gt;&lt;tr&gt;&lt;td&gt;&lt;b style='color:#6D28D9;'&gt;GHI&lt;sub&gt;cs&lt;/sub&gt;:&lt;/b&gt;&lt;/td&gt;&lt;td&gt;Global Horizontal Irradiance&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;b style='color:#6D28D9;'&gt;DNI&lt;sub&gt;cs&lt;/sub&gt;:&lt;/b&gt;&lt;/td&gt;&lt;td&gt;Direct Normal Irradiance&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;b style='color:#6D28D9;'&gt;DHI&lt;sub&gt;cs&lt;/sub&gt;:&lt;/b&gt;&lt;/td&gt;&lt;td&gt;Diffuse Horizontal Irradiance&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;hr style='border:0.5px solid #DDD6FE; margin:6px 0;'&gt;&lt;div style='font-size:11px; color:#4C1D95;'&gt;&lt;b&gt;GHI&lt;sub&gt;cs&lt;/sub&gt; = DNI&lt;sub&gt;cs&lt;/sub&gt; &amp;times; cos(&amp;theta;&lt;sub&gt;z&lt;/sub&gt;) + DHI&lt;sub&gt;cs&lt;/sub&gt;&lt;/b&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="146.32258064516128" width="300" x="35" y="319.741935483871" as="geometry" />
+        </mxCell>
+        <mxCell id="143" parent="139" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EDE9FE;strokeColor=#6D28D9;strokeWidth=2;shadow=1;" value="&lt;b style='font-size:13px; color:#4C1D95;'&gt;Horizontal Irradiance Triplet Vector&lt;/b&gt;&lt;br&gt;&lt;b&gt;GHI&lt;sub&gt;cs&lt;/sub&gt;, DNI&lt;sub&gt;cs&lt;/sub&gt;, DHI&lt;sub&gt;cs&lt;/sub&gt; &amp;isin; &amp;#8477;&lt;sup&gt;96&lt;/sup&gt; [W/m&amp;sup2;]&lt;/b&gt;" vertex="1">
+          <mxGeometry height="59.61290322580645" width="300" x="35" y="531.0967741935483" as="geometry" />
+        </mxCell>
+        <mxCell id="144" edge="1" parent="139" source="140" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="141">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="145" edge="1" parent="139" source="141" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="142">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="146" edge="1" parent="139" source="142" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="143">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="147" parent="137" style="swimlane;whiteSpace=wrap;html=1;fillColor=#ECFDF5;strokeColor=#10B981;strokeWidth=2;startSize=35;arcSize=6;" value="&lt;b style=&quot;font-size:15px; color:#064E3B;&quot;&gt;2.2 POA TRANSPOSITION (HAY-DAVIES / PEREZ)&lt;/b&gt;" vertex="1">
+          <mxGeometry height="715.3548387096774" width="410" x="500" y="137.54838709677415" as="geometry" />
+        </mxCell>
+        <mxCell id="148" parent="147" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#059669;strokeWidth=1.5;shadow=1;" value="&lt;b&gt;Angle of Incidence (AOI) on Tilted Surface&lt;/b&gt;&lt;br&gt;&lt;div style='font-size:12px; margin:6px 0; background-color:#ECFDF5; padding:4px; border-radius:4px;'&gt;&lt;b style='color:#065F46;'&gt;cos(&amp;theta;) = cos(&amp;theta;&lt;sub&gt;z&lt;/sub&gt;) cos(&amp;beta;) + sin(&amp;theta;&lt;sub&gt;z&lt;/sub&gt;) sin(&amp;beta;) cos(&amp;gamma;&lt;sub&gt;s&lt;/sub&gt; - &amp;gamma;&lt;sub&gt;m&lt;/sub&gt;)&lt;/b&gt;&lt;/div&gt;&lt;div style='font-size:11px; text-align:left; color:#334155;'&gt;• &amp;beta; = Panel Tilt Angle&lt;br&gt;• &amp;gamma;&lt;sub&gt;m&lt;/sub&gt; = 180.0&amp;deg; + orientation_deg_from_south&lt;/div&gt;" vertex="1">
+          <mxGeometry height="102.96774193548387" width="340" x="35" y="59.61290322580645" as="geometry" />
+        </mxCell>
+        <mxCell id="149" parent="147" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#059669;strokeWidth=1.5;shadow=1;" value="&lt;b&gt;3 Plane-of-Array Irradiance Components&lt;/b&gt;&lt;br&gt;&lt;table style='width:100%; font-size:11px; margin-top:5px; text-align:left;'&gt;&lt;tr&gt;&lt;td&gt;&lt;b&gt;Direct Beam:&lt;/b&gt;&lt;/td&gt;&lt;td&gt;POA&lt;sub&gt;beam&lt;/sub&gt; = DNI&lt;sub&gt;cs&lt;/sub&gt; &amp;times; max(0, cos &amp;theta;)&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;b&gt;Ground Albedo:&lt;/b&gt;&lt;/td&gt;&lt;td&gt;POA&lt;sub&gt;ground&lt;/sub&gt; = GHI&lt;sub&gt;cs&lt;/sub&gt; &amp;times; 0.20 &amp;times; (1 - cos &amp;beta;) / 2&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;b&gt;Sky Diffuse:&lt;/b&gt;&lt;/td&gt;&lt;td&gt;POA&lt;sub&gt;diffuse&lt;/sub&gt; = Hay-Davies anisotropic sky diffuse&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;" vertex="1">
+          <mxGeometry height="124.64516129032258" width="340" x="35" y="189.67741935483872" as="geometry" />
+        </mxCell>
+        <mxCell id="150" parent="147" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D1FAE5;strokeColor=#047857;strokeWidth=2;shadow=1;" value="&lt;b&gt;Total Clear-Sky POA Irradiance Formula&lt;/b&gt;&lt;br&gt;&lt;div style='font-size:14px; margin:8px 0; background-color:#D1FAE5; padding:6px; border-radius:4px;'&gt;&lt;b style='color:#065F46;'&gt;POA&lt;sub&gt;cs&lt;/sub&gt;(b) = POA&lt;sub&gt;beam&lt;/sub&gt; + POA&lt;sub&gt;diffuse&lt;/sub&gt; + POA&lt;sub&gt;ground&lt;/sub&gt;&lt;/b&gt;&lt;/div&gt;&lt;span style='font-size:11px; color:#475569;'&gt;If &amp;alpha;(b) &amp;lt; 3.0&amp;deg; &amp;rarr; POA&lt;sub&gt;cs&lt;/sub&gt;(b) &amp;equiv; 0.00 W/m&amp;sup2;&lt;/span&gt;" vertex="1">
+          <mxGeometry height="92.12903225806453" width="340" x="35" y="341.4193548387097" as="geometry" />
+        </mxCell>
+        <mxCell id="151" parent="147" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#A7F3D0;strokeColor=#065F46;strokeWidth=2.5;shadow=1;" value="&lt;b style='font-size:14px; color:#064E3B;'&gt;Astronomical Physics Reference Array&lt;/b&gt;&lt;br&gt;&lt;div style='font-size:16px; margin:6px 0;'&gt;&lt;b style='color:#065F46;'&gt;POA&lt;sub&gt;cs&lt;/sub&gt; &amp;isin; &amp;#8477;&lt;sup&gt;96&lt;/sup&gt; [W/m&amp;sup2;]&lt;/b&gt;&lt;/div&gt;&lt;span style='font-size:11px; color:#475569;'&gt;Deterministic clear-sky envelope representing maximum theoretical solar irradiance profile for the site geometry.&lt;/span&gt;" vertex="1">
+          <mxGeometry height="119.2258064516129" width="340" x="35" y="460.64516129032256" as="geometry" />
+        </mxCell>
+        <mxCell id="152" parent="147" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D1FAE5;strokeColor=#047857;strokeWidth=2;shadow=1;" value="&lt;b style='font-size:13px; color:#064E3B;'&gt;Output Delivered to Engine&lt;/b&gt;&lt;br&gt;&lt;code&gt;compute_clearsky_poa_96block()&lt;/code&gt;" vertex="1">
+          <mxGeometry height="59.61290322580645" width="340" x="35" y="628.6451612903226" as="geometry" />
+        </mxCell>
+        <mxCell id="153" edge="1" parent="147" source="148" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="149">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="154" edge="1" parent="147" source="149" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="150">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="155" edge="1" parent="147" source="150" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="151">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="156" edge="1" parent="147" source="151" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="152">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="157" edge="1" parent="137" source="142" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#7C3AED;strokeWidth=2;" target="148">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="460" y="530" />
+              <mxPoint x="460" y="249" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="158" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="" vertex="1">
+          <mxGeometry height="60" width="120" x="3670" y="1480" as="geometry" />
+        </mxCell>
+        <mxCell id="159" connectable="0" parent="1" style="group" value="" vertex="1">
+          <mxGeometry height="940" width="1850" x="8640.0" y="690" as="geometry" />
+        </mxCell>
+        <mxCell id="160" parent="159" style="rounded=0;whiteSpace=wrap;html=1;fillColor=light-dark(#ede3f2, #392f3f);strokeColor=light-dark(#000000, #9577a3);strokeWidth=2;" value="" vertex="1">
+          <mxGeometry height="940" width="1850" as="geometry" />
+        </mxCell>
+        <mxCell id="161" connectable="0" parent="159" style="group" value="" vertex="1">
+          <mxGeometry height="870" width="1750" x="50" y="61.450000000000045" as="geometry" />
+        </mxCell>
+        <mxCell id="162" parent="161" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;shadow=1;arcSize=8;align=center;verticalAlign=middle;gradientColor=#ffd966;" value="&lt;b style=&quot;color: rgb(15, 23, 42);&quot;&gt;&lt;font style=&quot;font-size: 35px;&quot;&gt;PHASE 5: STATUTORY LEAD TIME &amp;amp; FREEZE BOUNDARY PARTITIONING&amp;nbsp;&lt;/font&gt;&lt;/b&gt;" vertex="1">
+          <mxGeometry height="110" width="1330" x="180" y="-40" as="geometry" />
+        </mxCell>
+        <mxCell id="163" parent="161" style="swimlane;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;strokeWidth=2;startSize=32;arcSize=6;" value="&lt;b style='font-size:15px; color:#0F172A;'&gt;STATUTORY 96-BLOCK TIMELINE PARTITION (REVISION AT TIME T&lt;sub&gt;now&lt;/sub&gt; = 11:15, B&lt;sub&gt;now&lt;/sub&gt; = 45)&lt;/b&gt;" vertex="1">
+          <mxGeometry height="180" width="1320" x="215" y="100" as="geometry" />
+        </mxCell>
+        <mxCell id="164" parent="163" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DBEAFE;strokeColor=#2563EB;strokeWidth=2;shadow=1;" value="&lt;b style='font-size:14px; color:#1E3A8A;'&gt;ZONE 1: PAST BLOCKS (Blocks 1 to 45)&lt;/b&gt;&lt;br&gt;&lt;b&gt;Time: 00:00 to 11:15 IST&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:11px; color:#334155;'&gt;Historical Generation Confirmed&lt;br&gt;Locked to confirmed SCADA meter actuals &amp;amp; previously published schedule&lt;/span&gt;" vertex="1">
+          <mxGeometry height="95" width="390" x="20" y="50" as="geometry" />
+        </mxCell>
+        <mxCell id="165" parent="163" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEE2E2;strokeColor=#DC2626;strokeWidth=2.5;shadow=1;" value="&lt;b style='font-size:14px; color:#991B1B;'&gt;ZONE 2: STATUTORY FREEZE LAG&lt;/b&gt;&lt;br&gt;&lt;b style='color:#DC2626;'&gt;Blocks 46 to 48 (45-Min Lag) or 46 to 51 (90-Min Lag)&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:11px; color:#450A0A;'&gt;Time: 11:15 to 12:00 IST (or 12:45 IST)&lt;br&gt;&lt;b&gt;STRICTLY FROZEN BYTE-FOR-BYTE&lt;/b&gt; from previous published schedule&lt;/span&gt;" vertex="1">
+          <mxGeometry height="95" width="380" x="455" y="50" as="geometry" />
+        </mxCell>
+        <mxCell id="166" parent="163" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D1FAE5;strokeColor=#059669;strokeWidth=2;shadow=1;" value="&lt;b style='font-size:14px; color:#064E3B;'&gt;ZONE 3: ACTIONABLE BLOCKS (Blocks 49 to 96)&lt;/b&gt;&lt;br&gt;&lt;b style='color:#047857;'&gt;Time: 12:00 to 24:00 IST&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:11px; color:#064E3B;'&gt;Active Dispatch Horizon for Schedule Revision&lt;br&gt;Updated with fresh multi-model consensus, thermal derate &amp;amp; LLM adjustments&lt;/span&gt;" vertex="1">
+          <mxGeometry height="95" width="420" x="860" y="50" as="geometry" />
+        </mxCell>
+        <mxCell id="167" parent="161" style="swimlane;whiteSpace=wrap;html=1;fillColor=#EFF6FF;strokeColor=#3B82F6;strokeWidth=2;startSize=35;arcSize=6;" value="&lt;b style=&quot;font-size:15px; color:#1E3A8A;&quot;&gt;5.1 REGULATORY LEAD TIME MATRIX&lt;/b&gt;" vertex="1">
+          <mxGeometry height="540" width="530" y="300" as="geometry" />
+        </mxCell>
+        <mxCell id="168" parent="167" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DBEAFE;strokeColor=#2563EB;strokeWidth=1.5;shadow=1;" value="&lt;b&gt;Grid Code Regulatory Rationale&lt;/b&gt;&lt;br&gt;&lt;div style='font-size:11px; text-align:left; margin-top:5px; line-height:1.5; color:#1E3A8A;'&gt;System Operators (SLDC / RLDC) require advance notice before any revised generator schedule becomes effective. Changes submitted at time T&lt;sub&gt;now&lt;/sub&gt; are legally locked for the statutory lead time to allow grid balancing.&lt;/div&gt;" vertex="1">
+          <mxGeometry height="80" width="470" x="30" y="55" as="geometry" />
+        </mxCell>
+        <mxCell id="169" parent="167" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#64748B;strokeWidth=1.5;shadow=1;" value="&lt;b&gt;State Grid Code Statutory Lag Matrix&lt;/b&gt;&lt;br&gt;&lt;table style='width:100%; font-size:11px; margin-top:6px; text-align:left;'&gt;&lt;tr style='background-color:#DBEAFE;'&gt;&lt;th&gt;Statutory Lag&lt;/th&gt;&lt;th&gt;Blocks&lt;/th&gt;&lt;th&gt;Regulatory Jurisdiction &amp;amp; Grid Codes&lt;/th&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;b style='color:#1D4ED8;'&gt;45 Minutes&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;3 Blocks&lt;/b&gt;&lt;/td&gt;&lt;td&gt;Maharashtra (MERC), Telangana (TGSERC)&lt;br&gt;&lt;i style='color:#475569;'&gt;Standard western/southern fast revision cycle&lt;/i&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;b style='color:#1D4ED8;'&gt;90 Minutes&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;6 Blocks&lt;/b&gt;&lt;/td&gt;&lt;td&gt;Madhya Pradesh (MPERC)&lt;br&gt;&lt;i style='color:#475569;'&gt;Standard central grid 6-block advance notice&lt;/i&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;" vertex="1">
+          <mxGeometry height="135" width="390" x="70" y="160" as="geometry" />
+        </mxCell>
+        <mxCell id="170" parent="167" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8FAFC;strokeColor=#3B82F6;strokeWidth=1.5;shadow=1;" value="&lt;b&gt;Dynamic Plant Profile Lookup&lt;/b&gt;&lt;br&gt;&lt;div style='font-size:11px; text-align:left; margin-top:5px; line-height:1.5;'&gt;&lt;code&gt;freeze_lag_minutes = profile.freeze_lag_minutes&lt;/code&gt;&lt;br&gt;&lt;code&gt;freeze_blocks = freeze_lag_minutes // 15&lt;/code&gt;&lt;br&gt;&lt;hr style='border:0.5px solid #CBD5E1; margin:6px 0;'&gt;&amp;bull; If 45 min &amp;rarr; &lt;b&gt;freeze_blocks = 3&lt;/b&gt;&lt;br&gt;&amp;bull; If 90 min &amp;rarr; &lt;b&gt;freeze_blocks = 6&lt;/b&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="110" width="360" x="85" y="320" as="geometry" />
+        </mxCell>
+        <mxCell id="171" parent="167" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DBEAFE;strokeColor=#1E40AF;strokeWidth=2;shadow=1;" value="&lt;b style='font-size:13px; color:#1E3A8A;'&gt;Statutory Lead Time Parameter&lt;/b&gt;&lt;br&gt;&lt;code&gt;freeze_blocks &amp;isin; {3, 6}&lt;/code&gt;" vertex="1">
+          <mxGeometry height="55" width="290" x="120" y="460" as="geometry" />
+        </mxCell>
+        <mxCell id="172" edge="1" parent="167" source="168" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="169">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="173" edge="1" parent="167" source="169" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="170">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="174" edge="1" parent="167" source="170" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="171">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="175" parent="161" style="swimlane;whiteSpace=wrap;html=1;fillColor=#FEFCE8;strokeColor=#EAB308;strokeWidth=2;startSize=35;arcSize=6;" value="&lt;b style=&quot;font-size:15px; color:#854D0E;&quot;&gt;5.2 FREEZE BOUNDARY PARTITIONING MATHEMATICS&lt;/b&gt;" vertex="1">
+          <mxGeometry height="520" width="560" x="610" y="300" as="geometry" />
+        </mxCell>
+        <mxCell id="176" parent="175" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#CA8A04;strokeWidth=2;shadow=1;" value="&lt;b&gt;Actionable Block Governing Formula&lt;/b&gt;&lt;br&gt;For current revision block B&lt;sub&gt;now&lt;/sub&gt;:&lt;br&gt;&lt;div style='font-size:15px; margin:8px 0; background-color:#FEF9C3; padding:6px; border-radius:4px;'&gt;&lt;b style='color:#78350F;'&gt;B&lt;sub&gt;actionable&lt;/sub&gt; = B&lt;sub&gt;now&lt;/sub&gt; + Freeze_Lag_Blocks + 1&lt;/b&gt;&lt;/div&gt;&lt;span style='font-size:11px; color:#475569;'&gt;Establishes exact demarcation between immutable past/freeze and active dispatch&lt;/span&gt;" vertex="1">
+          <mxGeometry height="105" width="490" x="35" y="50" as="geometry" />
+        </mxCell>
+        <mxCell id="177" parent="175" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#CA8A04;strokeWidth=1.5;shadow=1;" value="&lt;b&gt;Calculated Demarcation Scenarios (at 11:15 IST, B&lt;sub&gt;now&lt;/sub&gt; = 45)&lt;/b&gt;&lt;br&gt;&lt;table style='width:100%; font-size:11px; margin-top:6px; text-align:left;'&gt;&lt;tr style='background-color:#FEF9C3;'&gt;&lt;th&gt;Case&lt;/th&gt;&lt;th&gt;Computation&lt;/th&gt;&lt;th&gt;Frozen Range&lt;/th&gt;&lt;th&gt;Actionable Range&lt;/th&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;b&gt;45-Min Lag&lt;/b&gt;&lt;/td&gt;&lt;td&gt;45 + 3 + 1 = &lt;b style='color:#166534;'&gt;49&lt;/b&gt;&lt;/td&gt;&lt;td&gt;Blocks 1 to 48 (00:00 - 12:00)&lt;/td&gt;&lt;td&gt;&lt;b&gt;Blocks 49 to 96&lt;/b&gt; (12:00 - 24:00)&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;b&gt;90-Min Lag&lt;/b&gt;&lt;/td&gt;&lt;td&gt;45 + 6 + 1 = &lt;b style='color:#166534;'&gt;52&lt;/b&gt;&lt;/td&gt;&lt;td&gt;Blocks 1 to 51 (00:00 - 12:45)&lt;/td&gt;&lt;td&gt;&lt;b&gt;Blocks 52 to 96&lt;/b&gt; (12:45 - 24:00)&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;" vertex="1">
+          <mxGeometry height="125" width="490" x="35" y="165" as="geometry" />
+        </mxCell>
+        <mxCell id="178" parent="175" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8FAFC;strokeColor=#CA8A04;strokeWidth=1.5;shadow=1;" value="&lt;b&gt;Schedule Stitching Engine Logic&lt;/b&gt;&lt;br&gt;&lt;div style='font-size:12px; margin-top:5px; text-align:left; line-height:1.6;'&gt;&amp;bull; &lt;b&gt;For Block b &amp;lt; B&lt;sub&gt;actionable&lt;/sub&gt; (Blocks 1 to B&lt;sub&gt;actionable&lt;/sub&gt; - 1):&lt;/b&gt;&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&lt;b style='color:#DC2626;'&gt;P&lt;sub&gt;schedule&lt;/sub&gt;(b) = P&lt;sub&gt;previous_published&lt;/sub&gt;(b)&lt;/b&gt; (Preserved byte-for-byte)&lt;br&gt;&amp;bull; &lt;b&gt;For Block b &amp;ge; B&lt;sub&gt;actionable&lt;/sub&gt; (Blocks B&lt;sub&gt;actionable&lt;/sub&gt; to 96):&lt;/b&gt;&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&lt;b style='color:#16A34A;'&gt;P&lt;sub&gt;schedule&lt;/sub&gt;(b) = P&lt;sub&gt;fresh_forecast&lt;/sub&gt;(b)&lt;/b&gt; (Fresh AI consensus)&lt;/div&gt;" vertex="1">
+          <mxGeometry height="115" width="490" x="35" y="310" as="geometry" />
+        </mxCell>
+        <mxCell id="179" parent="175" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEF9C3;strokeColor=#CA8A04;strokeWidth=2;shadow=1;" value="&lt;b style='font-size:13px; color:#854D0E;'&gt;Partitioned Block Index Boundaries&lt;/b&gt;&lt;br&gt;&lt;code&gt;B_frozen_end = B_actionable - 1&lt;/code&gt; | &lt;code&gt;B_actionable_start = B_actionable&lt;/code&gt;" vertex="1">
+          <mxGeometry height="55" width="490" x="35" y="450" as="geometry" />
+        </mxCell>
+        <mxCell id="180" edge="1" parent="175" source="176" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="177">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="181" edge="1" parent="175" source="177" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="178">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="182" edge="1" parent="175" source="178" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="179">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="183" parent="161" style="swimlane;whiteSpace=wrap;html=1;fillColor=#ECFDF5;strokeColor=#10B981;strokeWidth=2;startSize=35;arcSize=6;" value="&lt;b style=&quot;font-size:15px; color:#064E3B;&quot;&gt;5.3 SCHEDULE CONVERSION &amp;amp; S3 DELIVERABLES&lt;/b&gt;" vertex="1">
+          <mxGeometry height="570" width="500" x="1250" y="300" as="geometry" />
+        </mxCell>
+        <mxCell id="184" parent="183" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#10B981;strokeWidth=1.5;shadow=1;" value="&lt;b&gt;1. Snapshot Actionable CSV&lt;/b&gt;&lt;br&gt;&lt;code&gt;schedule_from_{B_actionable}_{timestamp}.csv&lt;/code&gt;&lt;br&gt;&lt;span style='font-size:11px; color:#475569;'&gt;Contains fresh predictions from block B&lt;sub&gt;actionable&lt;/sub&gt; to 96 only&lt;/span&gt;" vertex="1">
+          <mxGeometry height="75" width="430" x="35" y="55" as="geometry" />
+        </mxCell>
+        <mxCell id="185" parent="183" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D1FAE5;strokeColor=#059669;strokeWidth=2;shadow=1;" value="&lt;b&gt;2. Official Published Schedule CSV&lt;/b&gt;&lt;br&gt;&lt;code&gt;current_final_schedule.csv&lt;/code&gt;&lt;br&gt;&lt;div style='font-size:11px; text-align:left; margin-top:4px;'&gt;&amp;bull; Complete stitched 96-block dispatch matrix&lt;br&gt;&amp;bull; Preserves immutable frozen history &amp;amp; updates actionable blocks&lt;br&gt;&amp;bull; Official record submitted to grid operators (SLDC)&lt;/div&gt;" vertex="1">
+          <mxGeometry height="95" width="430" x="35" y="150" as="geometry" />
+        </mxCell>
+        <mxCell id="186" parent="183" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#10B981;strokeWidth=1.5;shadow=1;" value="&lt;b&gt;3. Commercial Deviation Audit CSV&lt;/b&gt;&lt;br&gt;&lt;code&gt;{PLANT}_{DATE}_penalty_schedule.csv&lt;/code&gt;&lt;br&gt;&lt;div style='font-size:11px; text-align:left; margin-top:4px;'&gt;&amp;bull; Computes error against actual generation for frozen blocks&lt;br&gt;&amp;bull; Evaluates statutory tolerance band margin (&amp;plusmn;10% or &amp;plusmn;15%)&lt;br&gt;&amp;bull; Commercial DSM settlement ledger tracking net surplus / shortfall&lt;/div&gt;" vertex="1">
+          <mxGeometry height="100" width="430" x="35" y="265" as="geometry" />
+        </mxCell>
+        <mxCell id="187" parent="183" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ECFDF5;strokeColor=#047857;strokeWidth=1.5;shadow=1;" value="&lt;b&gt;Atomic S3 Cloud Upload Pipeline&lt;/b&gt;&lt;br&gt;&lt;code&gt;s3://vedanjay-schedules-test/.../generated/&lt;/code&gt;&lt;br&gt;&lt;div style='font-size:11px; text-align:left; margin-top:4px; color:#064E3B;'&gt;&amp;bull; Uploads Snapshot, Current-Final, Penalty &amp;amp; Metadata JSON&lt;br&gt;&amp;bull; Releases idempotency execution lock (.idempotency/lock)&lt;/div&gt;" vertex="1">
+          <mxGeometry height="85" width="430" x="35" y="385" as="geometry" />
+        </mxCell>
+        <mxCell id="188" parent="183" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#A7F3D0;strokeColor=#065F46;strokeWidth=2;shadow=1;" value="&lt;b style='font-size:13px; color:#064E3B;'&gt;Statutory Schedule Successfully Deployed&lt;/b&gt;&lt;br&gt;S3 Revision Cycle Complete" vertex="1">
+          <mxGeometry height="55" width="430" x="35" y="500" as="geometry" />
+        </mxCell>
+        <mxCell id="189" edge="1" parent="183" source="184" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="185">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="190" edge="1" parent="183" source="185" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="186">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="191" edge="1" parent="183" source="186" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="187">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="192" edge="1" parent="183" source="187" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="188">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="193" edge="1" parent="161" source="171" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#2563EB;strokeWidth=2;" target="176">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="570" y="790" />
+              <mxPoint x="570" y="400" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="194" edge="1" parent="161" source="179" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#CA8A04;strokeWidth=2;" target="184">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1210" y="778" />
+              <mxPoint x="1210" y="392" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="195" edge="1" parent="1" source="101" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;" target="82">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="950" y="714" />
+              <mxPoint x="950" y="-540" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+      <mxCell id="rem_p6_container" parent="1" style="swimlane;whiteSpace=wrap;html=1;fillColor=#EFF6FF;strokeColor=#3B82F6;strokeWidth=2;startSize=45;arcSize=6;shadow=1;collapsible=0;" value="&lt;b style=&quot;font-size:17px; color:#1E3A8A;&quot;&gt;PHASE 6: INGESTION BRIDGE, INDICATORS &amp;amp; STRUCTURED JSON SERIALIZATION&lt;/b&gt;" vertex="1"><mxGeometry x="4240.0" y="690.0" width="940" height="2100" as="geometry" /></mxCell><mxCell id="rem_p6_sec1_title" parent="rem_p6_container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DBEAFE;strokeColor=#3B82F6;strokeWidth=1.5;fontColor=#1E40AF;fontStyle=1;fontSize=13;align=left;spacingLeft=15;" value="6.1 EXPLICIT INPUT RECEPTORS (WIRED DIRECTLY FROM INITIAL PART)" vertex="1"><mxGeometry x="25" y="65" width="890" height="35" as="geometry" /></mxCell><mxCell id="rem_p6_receptors_grid" parent="rem_p6_container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#93C5FD;strokeWidth=1.5;shadow=1;align=left;spacingLeft=12;spacingRight=12;" value="&lt;table style=&quot;width:100%; font-size:11px; color:#0F172A; border-collapse:collapse;&quot;&gt;   &lt;tr style=&quot;background:#EFF6FF; color:#1E3A8A; font-weight:bold;&quot;&gt;     &lt;td style=&quot;padding:5px; border:1px solid #BFDBFE;&quot;&gt;Input Stream&lt;/td&gt;     &lt;td style=&quot;padding:5px; border:1px solid #BFDBFE;&quot;&gt;Source Module&lt;/td&gt;     &lt;td style=&quot;padding:5px; border:1px solid #BFDBFE;&quot;&gt;Received Value at Cutoff&lt;/td&gt;     &lt;td style=&quot;padding:5px; border:1px solid #BFDBFE;&quot;&gt;Role in LLM Pipeline&lt;/td&gt;   &lt;/tr&gt;   &lt;tr&gt;     &lt;td style=&quot;padding:5px; border:1px solid #E2E8F0;&quot;&gt;&lt;b style=&quot;color:#0284C7;&quot;&gt;P&lt;sub&gt;base&lt;/sub&gt;(b)&lt;/b&gt;&lt;/td&gt;     &lt;td style=&quot;padding:5px; border:1px solid #E2E8F0;&quot;&gt;Phase 4 (Sandia Derate)&lt;/td&gt;     &lt;td style=&quot;padding:5px; border:1px solid #E2E8F0;&quot;&gt;4.92 MW (Block 49)&lt;/td&gt;     &lt;td style=&quot;padding:5px; border:1px solid #E2E8F0;&quot;&gt;Central anchor for next 12 blocks&lt;/td&gt;   &lt;/tr&gt;   &lt;tr style=&quot;background:#F8FAFC;&quot;&gt;     &lt;td style=&quot;padding:5px; border:1px solid #E2E8F0;&quot;&gt;&lt;b style=&quot;color:#D97706;&quot;&gt;P&lt;sub&gt;cs&lt;/sub&gt;(b)&lt;/b&gt;&lt;/td&gt;     &lt;td style=&quot;padding:5px; border:1px solid #E2E8F0;&quot;&gt;Phase 2 (Ineichen Clear-Sky)&lt;/td&gt;     &lt;td style=&quot;padding:5px; border:1px solid #E2E8F0;&quot;&gt;6.30 MW (Block 49)&lt;/td&gt;     &lt;td style=&quot;padding:5px; border:1px solid #E2E8F0;&quot;&gt;Clear-sky reference denominator&lt;/td&gt;   &lt;/tr&gt;   &lt;tr&gt;     &lt;td style=&quot;padding:5px; border:1px solid #E2E8F0;&quot;&gt;&lt;b style=&quot;color:#10B981;&quot;&gt;P&lt;sub&gt;live&lt;/sub&gt; &amp;amp; POA&lt;/b&gt;&lt;/td&gt;     &lt;td style=&quot;padding:5px; border:1px solid #E2E8F0;&quot;&gt;Phase 3 (SCADA / Satellite)&lt;/td&gt;     &lt;td style=&quot;padding:5px; border:1px solid #E2E8F0;&quot;&gt;3.85 MW | 710.5 W/m&amp;sup2;&lt;/td&gt;     &lt;td style=&quot;padding:5px; border:1px solid #E2E8F0;&quot;&gt;Ground truth actual generation&lt;/td&gt;   &lt;/tr&gt;   &lt;tr style=&quot;background:#F8FAFC;&quot;&gt;     &lt;td style=&quot;padding:5px; border:1px solid #E2E8F0;&quot;&gt;&lt;b style=&quot;color:#4F46E5;&quot;&gt;Plant Specs&lt;/b&gt;&lt;/td&gt;     &lt;td style=&quot;padding:5px; border:1px solid #E2E8F0;&quot;&gt;Phase 1 (Site Profile)&lt;/td&gt;     &lt;td style=&quot;padding:5px; border:1px solid #E2E8F0;&quot;&gt;5.50 MW AC | &amp;plusmn;15% Band&lt;/td&gt;     &lt;td style=&quot;padding:5px; border:1px solid #E2E8F0;&quot;&gt;Inverter clamp &amp;amp; DSM penalty rules&lt;/td&gt;   &lt;/tr&gt;   &lt;tr&gt;     &lt;td style=&quot;padding:5px; border:1px solid #E2E8F0;&quot;&gt;&lt;b style=&quot;color:#059669;&quot;&gt;Weather Ind&lt;/b&gt;&lt;/td&gt;     &lt;td style=&quot;padding:5px; border:1px solid #E2E8F0;&quot;&gt;Phase 3 (Ensemble Average)&lt;/td&gt;     &lt;td style=&quot;padding:5px; border:1px solid #E2E8F0;&quot;&gt;Cloud 82% | CAPE 450 J/kg&lt;/td&gt;     &lt;td style=&quot;padding:5px; border:1px solid #E2E8F0;&quot;&gt;Atmospheric regime classification&lt;/td&gt;   &lt;/tr&gt; &lt;/table&gt;" vertex="1"><mxGeometry x="25" y="115" width="890" height="155" as="geometry" /></mxCell><mxCell id="rem_p6_calc_box" parent="rem_p6_container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8FAFC;strokeColor=#4F46E5;strokeWidth=2;shadow=1;align=left;spacingLeft=15;spacingRight=15;" value="&lt;b style=&quot;color:#312E81; font-size:13px;&quot;&gt;6.2 REAL CLEARNESS RATIO (Kt) &amp;amp; LIVE RESIDUAL COMPUTATION&lt;/b&gt;&lt;hr style=&quot;border:0.5px solid #CBD5E1; margin:5px 0;&quot;&gt;&lt;div style=&quot;font-size:11.5px; color:#1E293B; line-height:1.5;&quot;&gt;&amp;bull; &lt;b&gt;Real Clearness Index Ratio (Kt):&lt;/b&gt;&lt;br&gt;&amp;nbsp;&amp;nbsp;&lt;span style=&quot;background:#EEF2FF; padding:2px 8px; border-radius:4px; font-family:monospace; font-weight:bold; color:#3730A3;&quot;&gt;K&lt;sub&gt;t&lt;/sub&gt; = clip( P&lt;sub&gt;live&lt;/sub&gt; / P&lt;sub&gt;cs&lt;/sub&gt;, 0.00, 1.25 ) = 3.85 / 6.30 = 0.611 &amp;rarr; 0.78 (smoothed)&lt;/span&gt;&lt;br&gt;&amp;bull; &lt;b&gt;Live Tracking Residual:&lt;/b&gt;&lt;br&gt;&amp;nbsp;&amp;nbsp;&lt;span style=&quot;background:#FEF2F2; padding:2px 8px; border-radius:4px; font-family:monospace; font-weight:bold; color:#991B1B;&quot;&gt;Residual = P&lt;sub&gt;live&lt;/sub&gt; &amp;minus; P&lt;sub&gt;base&lt;/sub&gt; = 3.85 &amp;minus; 4.92 = &amp;minus;1.07 MW&lt;/span&gt;&lt;br&gt;&amp;bull; &lt;b&gt;Physical Meaning:&lt;/b&gt; Identifies that the site is experiencing passing cloud attenuation.&lt;/div&gt;" vertex="1"><mxGeometry x="25" y="285" width="890" height="125" as="geometry" /></mxCell><mxCell id="rem_p6_sec2_title" parent="rem_p6_container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DCFCE7;strokeColor=#10B981;strokeWidth=1.5;fontColor=#065F46;fontStyle=1;fontSize=13;align=left;spacingLeft=15;" value="6.3 SERIALIZED JSON PAYLOAD TEMPLATES (BUILT FROM UPSTREAM INPUTS)" vertex="1"><mxGeometry x="25" y="425" width="890" height="35" as="geometry" /></mxCell><mxCell id="rem_json_weather_box" parent="rem_p6_container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#059669;strokeWidth=1.5;shadow=1;align=left;spacingLeft=10;spacingRight=10;" value="&lt;b style=&quot;color:#047857; font-size:12px;&quot;&gt;JSON TEMPLATE 1: weather_ind&lt;/b&gt;&lt;hr style=&quot;border:0.5px solid #A7F3D0; margin:4px 0;&quot;&gt;&lt;pre style=&quot;background:#F8FAFC; border:1px solid #E2E8F0; padding:6px; border-radius:4px; font-family:monospace; font-size:10.5px; color:#0F172A; margin:0; line-height:1.3;&quot;&gt;{   &lt;b style=&quot;color:#0284C7;&quot;&gt;&quot;cloud_cover_pct&quot;&lt;/b&gt;: 82.0,   &lt;b style=&quot;color:#0284C7;&quot;&gt;&quot;cape_j_kg&quot;&lt;/b&gt;: 450.0,   &lt;b style=&quot;color:#0284C7;&quot;&gt;&quot;precip_mm&quot;&lt;/b&gt;: 0.0,   &lt;b style=&quot;color:#0284C7;&quot;&gt;&quot;temp_c&quot;&lt;/b&gt;: 31.4 }&lt;/pre&gt;" vertex="1"><mxGeometry x="25" y="475" width="430" height="130" as="geometry" /></mxCell><mxCell id="rem_json_telemetry_box" parent="rem_p6_container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#059669;strokeWidth=1.5;shadow=1;align=left;spacingLeft=10;spacingRight=10;" value="&lt;b style=&quot;color:#047857; font-size:12px;&quot;&gt;JSON TEMPLATE 2: telemetry_ind&lt;/b&gt;&lt;hr style=&quot;border:0.5px solid #A7F3D0; margin:4px 0;&quot;&gt;&lt;pre style=&quot;background:#F8FAFC; border:1px solid #E2E8F0; padding:6px; border-radius:4px; font-family:monospace; font-size:10.5px; color:#0F172A; margin:0; line-height:1.3;&quot;&gt;{   &lt;b style=&quot;color:#0284C7;&quot;&gt;&quot;latest_mw&quot;&lt;/b&gt;: 3.85,   &lt;b style=&quot;color:#0284C7;&quot;&gt;&quot;physics_predicted_mw&quot;&lt;/b&gt;: 4.92,   &lt;b style=&quot;color:#0284C7;&quot;&gt;&quot;residual_mw&quot;&lt;/b&gt;: -1.07,   &lt;b style=&quot;color:#0284C7;&quot;&gt;&quot;solar_elevation_deg&quot;&lt;/b&gt;: 58.4,   &lt;b style=&quot;color:#0284C7;&quot;&gt;&quot;clearness_ratio&quot;&lt;/b&gt;: 0.78,   &lt;b style=&quot;color:#0284C7;&quot;&gt;&quot;is_non_meter_site&quot;&lt;/b&gt;: false,   &lt;b style=&quot;color:#0284C7;&quot;&gt;&quot;telemetry_source&quot;&lt;/b&gt;: &quot;SCADA_METER_S3&quot;,   &lt;b style=&quot;color:#0284C7;&quot;&gt;&quot;live_poa_wm2&quot;&lt;/b&gt;: 710.5 }&lt;/pre&gt;" vertex="1"><mxGeometry x="480" y="475" width="435" height="185" as="geometry" /></mxCell><mxCell id="rem_json_blocks_box" parent="rem_p6_container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#059669;strokeWidth=1.5;shadow=1;align=left;spacingLeft=10;spacingRight=10;" value="&lt;div style=&quot;display:flex; justify-content:space-between;&quot;&gt;&lt;b style=&quot;color:#047857; font-size:12px;&quot;&gt;JSON TEMPLATE 3: next_12_blocks&lt;/b&gt;&lt;span style=&quot;color:#475569; font-size:10.5px;&quot;&gt;Actionable Horizon Anchor Array (Blocks 49 - 60)&lt;/span&gt;&lt;/div&gt;&lt;hr style=&quot;border:0.5px solid #A7F3D0; margin:4px 0;&quot;&gt;&lt;pre style=&quot;background:#F8FAFC; border:1px solid #E2E8F0; padding:6px; border-radius:4px; font-family:monospace; font-size:10.5px; color:#0F172A; margin:0; line-height:1.3;&quot;&gt;[   { &quot;block&quot;: 49, &quot;time_interval&quot;: &quot;12:00-12:15&quot;, &quot;predicted_mw&quot;: 4.88, &quot;gti_wm2&quot;: 725.1 },   { &quot;block&quot;: 50, &quot;time_interval&quot;: &quot;12:15-12:30&quot;, &quot;predicted_mw&quot;: 4.95, &quot;gti_wm2&quot;: 738.4 },   { &quot;block&quot;: 51, &quot;time_interval&quot;: &quot;12:30-12:45&quot;, &quot;predicted_mw&quot;: 4.91, &quot;gti_wm2&quot;: 731.0 },   { &quot;block&quot;: 52, &quot;time_interval&quot;: &quot;12:45-13:00&quot;, &quot;predicted_mw&quot;: 4.82, &quot;gti_wm2&quot;: 718.5 },   { &quot;block&quot;: 53, &quot;time_interval&quot;: &quot;13:00-13:15&quot;, &quot;predicted_mw&quot;: 4.68, &quot;gti_wm2&quot;: 697.8 },   { &quot;block&quot;: 54, &quot;time_interval&quot;: &quot;13:15-13:30&quot;, &quot;predicted_mw&quot;: 4.51, &quot;gti_wm2&quot;: 672.3 },   { &quot;block&quot;: 55, &quot;time_interval&quot;: &quot;13:30-13:45&quot;, &quot;predicted_mw&quot;: 4.30, &quot;gti_wm2&quot;: 641.0 },   { &quot;block&quot;: 56, &quot;time_interval&quot;: &quot;13:45-14:00&quot;, &quot;predicted_mw&quot;: 4.05, &quot;gti_wm2&quot;: 603.9 },   { &quot;block&quot;: 57, &quot;time_interval&quot;: &quot;14:00-14:15&quot;, &quot;predicted_mw&quot;: 3.76, &quot;gti_wm2&quot;: 560.7 },   { &quot;block&quot;: 58, &quot;time_interval&quot;: &quot;14:15-14:30&quot;, &quot;predicted_mw&quot;: 3.43, &quot;gti_wm2&quot;: 511.6 },   { &quot;block&quot;: 59, &quot;time_interval&quot;: &quot;14:30-14:45&quot;, &quot;predicted_mw&quot;: 3.07, &quot;gti_wm2&quot;: 457.9 },   { &quot;block&quot;: 60, &quot;time_interval&quot;: &quot;14:45-15:00&quot;, &quot;predicted_mw&quot;: 2.68, &quot;gti_wm2&quot;: 400.1 } ]&lt;/pre&gt;" vertex="1"><mxGeometry x="25" y="675" width="890" height="260" as="geometry" /></mxCell><mxCell id="rem_p6_decision_gate" parent="rem_p6_container" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#D97706;strokeWidth=2;shadow=1;fontColor=#92400E;fontStyle=1;fontSize=12;align=center;" value="Is Plant Classified as&lt;br&gt;&lt;b&gt;NON_METER_SITE&lt;/b&gt;&lt;br&gt;or SCADA Offline?" vertex="1"><mxGeometry x="340" y="955" width="260" height="95" as="geometry" /></mxCell><mxCell id="rem_p6_bypass_box" parent="rem_p6_container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFBEB;strokeColor=#D97706;strokeWidth=1.5;shadow=1;align=left;spacingLeft=10;spacingRight=10;" value="&lt;div style=&quot;font-size:12px; font-weight:bold; color:#B45309;&quot;&gt;DETERMINISTIC FALLBACK BYPASS&lt;/div&gt;&lt;hr style=&quot;border:0.5px solid #FDE68A; margin:3px 0;&quot;&gt;&lt;div style=&quot;font-size:10.5px; color:#0F172A; line-height:1.4;&quot;&gt;&amp;bull; Bypasses LLM API call entirely.&lt;br&gt;&amp;bull; &lt;code&gt;regime=CLEAR_SKY&lt;/code&gt;, &lt;code&gt;bias=1.00&lt;/code&gt;.&lt;br&gt;&amp;bull; &lt;code&gt;is_trip_or_curtailment=False&lt;/code&gt;.&lt;br&gt;&amp;bull; Feeds raw P&lt;sub&gt;base&lt;/sub&gt; directly to Phase 8.&lt;/div&gt;" vertex="1"><mxGeometry x="25" y="1070" width="420" height="95" as="geometry" /></mxCell><mxCell id="rem_p6_proceed_box" parent="rem_p6_container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EFF6FF;strokeColor=#3B82F6;strokeWidth=1.5;shadow=1;align=center;" value="&lt;b style=&quot;color:#1E40AF; font-size:12.5px;&quot;&gt;PROCEED TO LLM STRATEGIC ARBITER&lt;/b&gt;&lt;br&gt;&lt;span style=&quot;font-size:10.5px; color:#475569;&quot;&gt;SCADA Ground Truth Confirmed &amp;bull; Assemble Natural Language Prompt&lt;/span&gt;" vertex="1"><mxGeometry x="495" y="1075" width="420" height="85" as="geometry" /></mxCell><mxCell id="rem_e_p6_1" edge="1" parent="rem_p6_container" source="rem_p6_receptors_grid" target="rem_p6_calc_box" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#4F46E5;strokeWidth=1.5;"><mxGeometry relative="1" as="geometry" /></mxCell><mxCell id="rem_e_p6_2" edge="1" parent="rem_p6_container" source="rem_p6_calc_box" target="rem_json_weather_box" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#059669;strokeWidth=1.5;"><mxGeometry relative="1" as="geometry" /></mxCell><mxCell id="rem_e_p6_3" edge="1" parent="rem_p6_container" source="rem_p6_calc_box" target="rem_json_telemetry_box" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#059669;strokeWidth=1.5;"><mxGeometry relative="1" as="geometry" /></mxCell><mxCell id="rem_e_p6_4" edge="1" parent="rem_p6_container" source="rem_p6_calc_box" target="rem_json_blocks_box" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#059669;strokeWidth=1.5;"><mxGeometry relative="1" as="geometry" /></mxCell><mxCell id="rem_e_p6_5" edge="1" parent="rem_p6_container" source="rem_json_blocks_box" target="rem_p6_decision_gate" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#D97706;strokeWidth=2;"><mxGeometry relative="1" as="geometry" /></mxCell><mxCell id="rem_e_p6_6" edge="1" parent="rem_p6_container" source="rem_p6_decision_gate" target="rem_p6_bypass_box" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#D97706;strokeWidth=2;" value="&lt;b style=&quot;color:#B45309;&quot;&gt;YES (Non-Meter)&lt;/b&gt;"><mxGeometry relative="1" as="geometry" /></mxCell><mxCell id="rem_e_p6_7" edge="1" parent="rem_p6_container" source="rem_p6_decision_gate" target="rem_p6_proceed_box" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#2563EB;strokeWidth=2;" value="&lt;b style=&quot;color:#1E40AF;&quot;&gt;NO (Metered SCADA)&lt;/b&gt;"><mxGeometry relative="1" as="geometry" /></mxCell><mxCell id="rem_p7_container" parent="1" style="swimlane;whiteSpace=wrap;html=1;fillColor=#FAF5FF;strokeColor=#A855F7;strokeWidth=2;startSize=45;arcSize=6;shadow=1;collapsible=0;" value="&lt;b style=&quot;font-size:17px; color:#581C87;&quot;&gt;PHASE 7: LLM STRATEGIC ARBITER (OPENROUTER GPT-5.6 LUNA)&lt;/b&gt;" vertex="1"><mxGeometry x="5220.0" y="690.0" width="1380" height="2100" as="geometry" /></mxCell><mxCell id="rem_p7_prompt_header" parent="rem_p7_container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3E8FF;strokeColor=#A855F7;strokeWidth=1.5;fontColor=#6B21A8;fontStyle=1;fontSize=13;align=left;spacingLeft=15;" value="7.1 NATURAL LANGUAGE PROMPT TEMPLATE (ASSEMBLED IN STRATEGIC_ARBITER.PY)" vertex="1"><mxGeometry x="25" y="65" width="1330" height="35" as="geometry" /></mxCell><mxCell id="rem_p7_prompt_box" parent="rem_p7_container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#A855F7;strokeWidth=1.5;shadow=1;align=left;spacingLeft=12;spacingRight=12;" value="&lt;div style=&quot;font-size:11px; font-family:monospace; color:#0F172A; line-height:1.35;&quot;&gt; &lt;span style=&quot;background:#FCE7F3; color:#9D174D; padding:2px 6px; border-radius:3px; font-weight:bold;&quot;&gt;[SYSTEM PERSONA &amp;amp; ROLE - FROM PHASE 1 SPECS]&lt;/span&gt;&lt;br&gt; You are the Chief Renewable Energy Scheduling Strategist and Forecaster for &lt;b style=&quot;color:#7C3AED;&quot;&gt;{plant_name}&lt;/b&gt; Solar Power Plant.&lt;br&gt; Target Date: &lt;b&gt;{target_date_str}&lt;/b&gt; | Revision Time: &lt;b&gt;{target_time_str}&lt;/b&gt;&lt;br&gt; Capacity: &lt;b&gt;{ac_cap}&lt;/b&gt; MW AC | PPA Tariff: Rs &lt;b&gt;{ppa_rate}&lt;/b&gt;/kWh | Tolerance Band: &lt;b&gt;&amp;plusmn;{tol_band*100}%&lt;/b&gt; (&amp;plusmn;{ac_cap*tol_band:.2f} MW)&lt;br&gt;&lt;br&gt;  &lt;span style=&quot;background:#E0F2FE; color:#0369A1; padding:2px 6px; border-radius:3px; font-weight:bold;&quot;&gt;[ATMOSPHERIC INDICATORS - FROM PHASE 3 NWP ENSEMBLE]&lt;/span&gt;&lt;br&gt; - Cloud Cover Mean: &lt;b style=&quot;color:#0284C7;&quot;&gt;{weather_indicators['cloud_cover_pct']}%&lt;/b&gt; | CAPE Instability: &lt;b style=&quot;color:#0284C7;&quot;&gt;{weather_indicators['cape_j_kg']} J/kg&lt;/b&gt;&lt;br&gt; - Surface Precipitation: &lt;b style=&quot;color:#0284C7;&quot;&gt;{weather_indicators['precip_mm']} mm&lt;/b&gt; | 2m Ambient Temperature: &lt;b style=&quot;color:#0284C7;&quot;&gt;{weather_indicators['temp_c']} &amp;deg;C&lt;/b&gt;&lt;br&gt;&lt;br&gt;  &lt;span style=&quot;background:#DCFCE7; color:#166534; padding:2px 6px; border-radius:3px; font-weight:bold;&quot;&gt;[LIVE SCADA TELEMETRY &amp;amp; RESIDUAL - FROM PHASE 2 &amp;amp; 3]&lt;/span&gt;&lt;br&gt; - Telemetry Source: &lt;b style=&quot;color:#15803D;&quot;&gt;{live_telemetry['telemetry_source']}&lt;/b&gt; | Live Generation: &lt;b style=&quot;color:#15803D;&quot;&gt;{live_telemetry['latest_mw']} MW&lt;/b&gt; | Live POA: &lt;b style=&quot;color:#15803D;&quot;&gt;{live_telemetry['live_poa_wm2']} W/m&amp;sup2;&lt;/b&gt;&lt;br&gt; - Physics Baseline at this time: &lt;b style=&quot;color:#15803D;&quot;&gt;{live_telemetry['physics_predicted_mw']} MW&lt;/b&gt; | Solar Elevation: &lt;b style=&quot;color:#15803D;&quot;&gt;{live_telemetry['solar_elevation_deg']}&amp;deg;&lt;/b&gt;&lt;br&gt; - Real Clearness Ratio (Kt): &lt;b style=&quot;color:#15803D;&quot;&gt;{live_telemetry['clearness_ratio']}&lt;/b&gt; | Live Residual: &lt;b style=&quot;color:#15803D;&quot;&gt;{live_telemetry['residual_mw']} MW&lt;/b&gt;&lt;br&gt;&lt;br&gt;  &lt;span style=&quot;background:#FEF3C7; color:#92400E; padding:2px 6px; border-radius:3px; font-weight:bold;&quot;&gt;[NEXT 12 ACTIONABLE DISPATCH BLOCKS - FROM PHASE 4 BASE FORECAST]&lt;/span&gt;&lt;br&gt;   - Block 49 (12:00-12:15): Physics Baseline = 4.88 MW | Consensus GTI = 725.1 W/m&amp;sup2;&lt;br&gt;   - Block 50 (12:15-12:30): Physics Baseline = 4.95 MW | Consensus GTI = 738.4 W/m&amp;sup2;&lt;br&gt;   - ... [Blocks 51 to 60 formatted sequentially with physics anchors] ...&lt;br&gt;&lt;br&gt;  &lt;span style=&quot;background:#FEE2E2; color:#991B1B; padding:2px 6px; border-radius:3px; font-weight:bold;&quot;&gt;[REGULATORY DSM PENALTY ASYMMETRY &amp;amp; HARD CONSTRAINTS]&lt;/span&gt;&lt;br&gt; 1. Indian CERC/State DSM rules penalize under-generation heavily (up to 2&amp;times; PPA tariff). Mild over-generation inside band is safe.&lt;br&gt; 2. &lt;b style=&quot;color:#DC2626;&quot;&gt;NON-TRIP ENFORCEMENT:&lt;/b&gt; Do NOT predict hardware inverter trips or equipment outages. The schedule strictly reflects available meteorological potential. &lt;b style=&quot;color:#B91C1C;&quot;&gt;Set &amp;quot;is_trip_or_curtailment&amp;quot; strictly to false.&lt;/b&gt;&lt;br&gt; 3. &lt;b style=&quot;color:#0284C7;&quot;&gt;CLEAR-SKY FLOOR:&lt;/b&gt; If Kt &amp;ge; 0.85 &amp;amp; cloud &amp;le; 25%, DO NOT cut below physics baseline!&lt;br&gt; 4. &lt;b style=&quot;color:#475569;&quot;&gt;OVERCAST CEILING:&lt;/b&gt; If cloud &amp;ge; 80% or rain active, clamp predictions strictly within diffuse overcast boundary.&lt;br&gt;&lt;br&gt;  &lt;span style=&quot;background:#EDE9FE; color:#5B21B6; padding:2px 6px; border-radius:3px; font-weight:bold;&quot;&gt;[REQUIRED JSON OUTPUT SCHEMA]&lt;/span&gt;&lt;br&gt; {&lt;br&gt; &amp;nbsp;&amp;nbsp;&amp;quot;regime&amp;quot;: &amp;quot;CLEAR_SKY&amp;quot; | &amp;quot;PARTLY_CLOUDY&amp;quot; | &amp;quot;CONVECTIVE_MONSOON&amp;quot; | &amp;quot;OVERCAST&amp;quot;,&lt;br&gt; &amp;nbsp;&amp;nbsp;&amp;quot;quantile_bias_factor&amp;quot;: 1.0,&lt;br&gt; &amp;nbsp;&amp;nbsp;&amp;quot;preferred_agency&amp;quot;: &amp;quot;BALANCED&amp;quot; | &amp;quot;ECMWF&amp;quot; | &amp;quot;ICON&amp;quot; | &amp;quot;GEFS&amp;quot;,&lt;br&gt; &amp;nbsp;&amp;nbsp;&amp;quot;is_trip_or_curtailment&amp;quot;: false,&lt;br&gt; &amp;nbsp;&amp;nbsp;&amp;quot;reasoning&amp;quot;: &amp;quot;Operational rationale for 12-block predictions&amp;quot;,&lt;br&gt; &amp;nbsp;&amp;nbsp;&amp;quot;block_predictions&amp;quot;: { &amp;quot;49&amp;quot;: 4.60, &amp;quot;50&amp;quot;: 4.65, ... }&lt;br&gt; } &lt;/div&gt;" vertex="1"><mxGeometry x="25" y="110" width="1330" height="580" as="geometry" /></mxCell><mxCell id="rem_p7_llm_header" parent="rem_p7_container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DBEAFE;strokeColor=#3B82F6;strokeWidth=1.5;fontColor=#1E40AF;fontStyle=1;fontSize=13;align=left;spacingLeft=15;" value="7.2 LLM INFERENCE LAYER &amp;amp; RESILIENT CLOUD DISPATCH (OPENROUTER GATEWAY)" vertex="1"><mxGeometry x="25" y="705" width="1330" height="35" as="geometry" /></mxCell><mxCell id="rem_p7_api_call_box" parent="rem_p7_container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#3B82F6;strokeWidth=1.5;shadow=1;align=left;spacingLeft=15;spacingRight=15;" value="&lt;div style=&quot;font-size:13.5px; font-weight:bold; color:#1E40AF;&quot;&gt;HTTPS POST &amp;rarr; OpenRouter API Gateway&lt;/div&gt;&lt;hr style=&quot;border:0.5px solid #BFDBFE; margin:4px 0;&quot;&gt;&lt;div style=&quot;font-size:11px; color:#0F172A; line-height:1.5;&quot;&gt;&amp;bull; &lt;b&gt;API Endpoint:&lt;/b&gt; &lt;code style=&quot;background:#EFF6FF; padding:1px 4px; border-radius:3px; color:#1D4ED8;&quot;&gt;https://openrouter.ai/api/v1/chat/completions&lt;/code&gt;&lt;br&gt;&amp;bull; &lt;b&gt;Target Foundation Model:&lt;/b&gt; &lt;code style=&quot;background:#FEF3C7; padding:1px 4px; border-radius:3px; color:#92400E; font-weight:bold;&quot;&gt;openai/gpt-5.6-luna&lt;/code&gt;&lt;br&gt;&amp;bull; &lt;b&gt;Hyperparameters:&lt;/b&gt; &lt;span style=&quot;background:#F1F5F9; padding:2px 5px; border-radius:3px;&quot;&gt;temperature = 0.20&lt;/span&gt; | &lt;span style=&quot;background:#F1F5F9; padding:2px 5px; border-radius:3px;&quot;&gt;max_tokens = 1500&lt;/span&gt;&lt;br&gt;&amp;bull; &lt;b&gt;Enforced Output Schema:&lt;/b&gt; &lt;span style=&quot;background:#DCFCE7; padding:2px 5px; border-radius:3px; color:#166534; font-weight:bold;&quot;&gt;response_format = {&amp;quot;type&amp;quot;: &amp;quot;json_object&amp;quot;}&lt;/span&gt;&lt;br&gt;&amp;bull; &lt;b&gt;Fault-Tolerant Key Rotation:&lt;/b&gt; Rotates across 3 API keys with exponential backoff retry on HTTP 429 / 503.&lt;/div&gt;" vertex="1"><mxGeometry x="25" y="750" width="1330" height="120" as="geometry" /></mxCell><mxCell id="rem_p7_out_header" parent="rem_p7_container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DCFCE7;strokeColor=#10B981;strokeWidth=1.5;fontColor=#065F46;fontStyle=1;fontSize=13;align=left;spacingLeft=15;" value="7.3 VALIDATED LLM OUTPUT JSON STRUCTURE (PRODUCED IN REAL RUN)" vertex="1"><mxGeometry x="25" y="885" width="1330" height="35" as="geometry" /></mxCell><mxCell id="rem_p7_out_json_box" parent="rem_p7_container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#10B981;strokeWidth=1.5;shadow=1;align=left;spacingLeft=12;spacingRight=12;" value="&lt;div style=&quot;display:flex; justify-content:space-between;&quot;&gt;&lt;b style=&quot;color:#065F46; font-size:12.5px;&quot;&gt;ACTUAL LLM STRATEGIC OUTPUT (JSON INSTANCE)&lt;/b&gt;&lt;span style=&quot;color:#475569; font-size:10.5px;&quot;&gt;Parsed into StrategicAdvice DataClass&lt;/span&gt;&lt;/div&gt;&lt;hr style=&quot;border:0.5px solid #A7F3D0; margin:4px 0;&quot;&gt;&lt;pre style=&quot;background:#F8FAFC; border:1px solid #E2E8F0; padding:6px; border-radius:4px; font-family:monospace; font-size:11px; color:#0F172A; margin:0; line-height:1.35;&quot;&gt;{   &lt;b style=&quot;color:#0284C7;&quot;&gt;&quot;regime&quot;&lt;/b&gt;: &quot;PARTLY_CLOUDY&quot;,   &lt;b style=&quot;color:#0284C7;&quot;&gt;&quot;quantile_bias_factor&quot;&lt;/b&gt;: 0.94,   &lt;b style=&quot;color:#0284C7;&quot;&gt;&quot;preferred_agency&quot;&lt;/b&gt;: &quot;ECMWF&quot;,   &lt;b style=&quot;color:#DC2626;&quot;&gt;&quot;is_trip_or_curtailment&quot;&lt;/b&gt;: false,     // Enforced False by code post-processor   &lt;b style=&quot;color:#0284C7;&quot;&gt;&quot;reasoning&quot;&lt;/b&gt;: &quot;SCADA shows Kt=0.78 with -1.07 MW residual due to passing cumulus banks. CAPE is moderate (450 J/kg). Down-biasing upcoming 4 blocks by 6% to protect against shortfall penalties while preserving smooth solar diurnal ramp.&quot;,   &lt;b style=&quot;color:#0284C7;&quot;&gt;&quot;block_predictions&quot;&lt;/b&gt;: {     &quot;49&quot;: 4.60,     &quot;50&quot;: 4.65,     &quot;51&quot;: 4.62,     &quot;52&quot;: 4.55,     &quot;53&quot;: 4.41,     &quot;54&quot;: 4.25,     &quot;55&quot;: 4.05,     &quot;56&quot;: 3.82,     &quot;57&quot;: 3.55,     &quot;58&quot;: 3.23,     &quot;59&quot;: 2.89,     &quot;60&quot;: 2.52   } }&lt;/pre&gt;" vertex="1"><mxGeometry x="25" y="930" width="1330" height="310" as="geometry" /></mxCell><mxCell id="rem_p7_safety_box" parent="rem_p7_container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#7C3AED;strokeWidth=1.5;shadow=1;align=left;spacingLeft=12;spacingRight=12;" value="&lt;div style=&quot;font-size:12.5px; font-weight:bold; color:#5B21B6;&quot;&gt;7.4 PROGRAMMATIC PARSE SANITIZATION &amp;amp; HARDWARE TRIP LOCKOUT&lt;/div&gt;&lt;hr style=&quot;border:0.5px solid #DDD6FE; margin:4px 0;&quot;&gt;&lt;div style=&quot;font-size:11px; color:#0F172A; line-height:1.45;&quot;&gt;&amp;bull; &lt;b&gt;Markdown Stripping:&lt;/b&gt; Automatically strips &lt;code&gt;```json ... ```&lt;/code&gt; fences if returned by LLM.&lt;br&gt;&amp;bull; &lt;b&gt;No-Trip Hard Lock:&lt;/b&gt; &lt;code style=&quot;background:#FEE2E2; color:#991B1B; padding:1px 4px; border-radius:3px;&quot;&gt;advice.is_trip_or_curtailment = False&lt;/code&gt; (Inverter trips are handled by grid controllers, not forecast models).&lt;br&gt;&amp;bull; &lt;b&gt;Quantile Bias Clamping:&lt;/b&gt; Clear-sky &amp;rarr; &lt;code&gt;clip(bias, 1.00, 1.08)&lt;/code&gt; | Cloudy &amp;rarr; &lt;code&gt;clip(bias, 0.60, 1.08)&lt;/code&gt;.&lt;br&gt;&amp;bull; &lt;b&gt;Inverter Ceiling Clamp:&lt;/b&gt; Clamps every block to &lt;code&gt;[0.0, P_AC_max]&lt;/code&gt; using Phase 1 capacity limits.&lt;/div&gt;" vertex="1"><mxGeometry x="25" y="1255" width="1330" height="100" as="geometry" /></mxCell><mxCell id="rem_e_p7_1" edge="1" parent="rem_p7_container" source="rem_p7_prompt_box" target="rem_p7_api_call_box" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#A855F7;strokeWidth=2;"><mxGeometry relative="1" as="geometry" /></mxCell><mxCell id="rem_e_p7_2" edge="1" parent="rem_p7_container" source="rem_p7_api_call_box" target="rem_p7_out_json_box" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#10B981;strokeWidth=2;"><mxGeometry relative="1" as="geometry" /></mxCell><mxCell id="rem_e_p7_3" edge="1" parent="rem_p7_container" source="rem_p7_out_json_box" target="rem_p7_safety_box" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#7C3AED;strokeWidth=2;"><mxGeometry relative="1" as="geometry" /></mxCell><mxCell id="rem_p8_container" parent="1" style="swimlane;whiteSpace=wrap;html=1;fillColor=#ECFDF5;strokeColor=#10B981;strokeWidth=2;startSize=45;arcSize=6;shadow=1;collapsible=0;" value="&lt;b style=&quot;font-size:17px; color:#064E3B;&quot;&gt;PHASE 8: FOUR PHYSICAL GUARDRAILS &amp;amp; FINAL SCHEDULE COMPILATION&lt;/b&gt;" vertex="1"><mxGeometry x="6640.0" y="690.0" width="980" height="2100" as="geometry" /></mxCell><mxCell id="rem_g1_box" parent="rem_p8_container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#EF4444;strokeWidth=1.5;shadow=1;align=left;spacingLeft=12;spacingRight=12;" value="&lt;div style=&quot;font-size:12.5px; font-weight:bold; color:#B91C1C;&quot;&gt;GUARDRAIL 1: Solar Geometry Hard Cutoff (Night Hours Zeroing)&lt;/div&gt;&lt;hr style=&quot;border:0.5px solid #FCA5A5; margin:4px 0;&quot;&gt;&lt;div style=&quot;font-size:11px; color:#0F172A; line-height:1.4;&quot;&gt;&amp;bull; &lt;b&gt;Rule:&lt;/b&gt; If Block b &amp;lt; 24 (Before 05:45 IST) OR Block b &amp;gt; 74 (After 18:30 IST):&lt;br&gt;&amp;nbsp;&amp;nbsp;&lt;span style=&quot;background:#FEE2E2; color:#991B1B; padding:2px 6px; border-radius:3px; font-family:monospace; font-weight:bold;&quot;&gt;P&lt;sub&gt;schedule&lt;/sub&gt;(b) = 0.00 MW | GTI(b) = 0.0 W/m&amp;sup2;&lt;/span&gt;&lt;br&gt;&amp;bull; Enforces zero generation during darkness regardless of model output.&lt;/div&gt;" vertex="1"><mxGeometry x="25" y="65" width="930" height="90" as="geometry" /></mxCell><mxCell id="rem_g2_box" parent="rem_p8_container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#D97706;strokeWidth=1.5;shadow=1;align=left;spacingLeft=12;spacingRight=12;" value="&lt;div style=&quot;font-size:12.5px; font-weight:bold; color:#B45309;&quot;&gt;GUARDRAIL 2: Clear-Sky Negative Cut Lockout (Floor Guarantee)&lt;/div&gt;&lt;hr style=&quot;border:0.5px solid #FDE68A; margin:4px 0;&quot;&gt;&lt;div style=&quot;font-size:11px; color:#0F172A; line-height:1.4;&quot;&gt;&amp;bull; &lt;b&gt;Trigger:&lt;/b&gt; If K&lt;sub&gt;t&lt;/sub&gt; &amp;ge; 0.85 OR Regime == &amp;quot;CLEAR_SKY&amp;quot; OR Cloud Cover &amp;le; 30%:&lt;br&gt;&amp;nbsp;&amp;nbsp;&lt;span style=&quot;background:#FEF3C7; color:#92400E; padding:2px 6px; border-radius:3px; font-family:monospace; font-weight:bold;&quot;&gt;If pred_mw &amp;lt; physics_base_mw &amp;rarr; pred_mw = physics_base_mw&lt;/span&gt;&lt;br&gt;&amp;bull; Protects midday clear-sky output from artificial down-biasing.&lt;/div&gt;" vertex="1"><mxGeometry x="25" y="170" width="930" height="90" as="geometry" /></mxCell><mxCell id="rem_g3_box" parent="rem_p8_container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#0284C7;strokeWidth=1.5;shadow=1;align=left;spacingLeft=12;spacingRight=12;" value="&lt;div style=&quot;font-size:12.5px; font-weight:bold; color:#0369A1;&quot;&gt;GUARDRAIL 3: Overcast Optical Cloud Ceiling (Upper Ceiling Bound)&lt;/div&gt;&lt;hr style=&quot;border:0.5px solid #BAE6FD; margin:4px 0;&quot;&gt;&lt;div style=&quot;font-size:11px; color:#0F172A; line-height:1.4;&quot;&gt;&amp;bull; &lt;b&gt;Trigger:&lt;/b&gt; If K&lt;sub&gt;t&lt;/sub&gt; &amp;lt; 0.50 OR Regime in (&amp;quot;OVERCAST&amp;quot;, &amp;quot;RAIN&amp;quot;) OR Cloud Cover &amp;ge; 75%:&lt;br&gt;&amp;nbsp;&amp;nbsp;&lt;span style=&quot;background:#E0F2FE; color:#0369A1; padding:2px 6px; border-radius:3px; font-family:monospace; font-weight:bold;&quot;&gt;overcast_max = max( physics_base_mw &amp;times; 1.10, P&lt;sub&gt;AC,max&lt;/sub&gt; &amp;times; 0.25 )&lt;/span&gt;&lt;br&gt;&amp;nbsp;&amp;nbsp;&lt;span style=&quot;background:#E0F2FE; color:#0369A1; padding:2px 6px; border-radius:3px; font-family:monospace; font-weight:bold;&quot;&gt;If pred_mw &amp;gt; overcast_max &amp;rarr; pred_mw = overcast_max&lt;/span&gt;&lt;br&gt;&amp;bull; Forbids over-predicting during monsoon fronts, stopping DSM shortfall penalties.&lt;/div&gt;" vertex="1"><mxGeometry x="25" y="275" width="930" height="105" as="geometry" /></mxCell><mxCell id="rem_g4_box" parent="rem_p8_container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#7C3AED;strokeWidth=1.5;shadow=1;align=left;spacingLeft=12;spacingRight=12;" value="&lt;div style=&quot;font-size:12.5px; font-weight:bold; color:#5B21B6;&quot;&gt;GUARDRAIL 4: Ramp-Rate Continuity Filter (Anti-Jump Smoothing)&lt;/div&gt;&lt;hr style=&quot;border:0.5px solid #DDD6FE; margin:4px 0;&quot;&gt;&lt;div style=&quot;font-size:11px; color:#0F172A; line-height:1.4;&quot;&gt;&amp;bull; &lt;b&gt;Max Ramp Step:&lt;/b&gt; &lt;span style=&quot;background:#EDE9FE; color:#5B21B6; padding:2px 6px; border-radius:3px; font-family:monospace; font-weight:bold;&quot;&gt;max_ramp = max( 0.50 MW, P&lt;sub&gt;AC,max&lt;/sub&gt; &amp;times; 0.10 )&lt;/span&gt;&lt;br&gt;&amp;bull; &lt;b&gt;Continuity Clamp:&lt;/b&gt; If | pred_mw &amp;minus; prev_val | &amp;gt; max_ramp &amp;rarr; &lt;code&gt;pred_mw = prev_val &amp;plusmn; max_ramp&lt;/code&gt;&lt;br&gt;&amp;bull; Eliminates unrealistic step-discontinuities between consecutive blocks.&lt;/div&gt;" vertex="1"><mxGeometry x="25" y="395" width="930" height="95" as="geometry" /></mxCell><mxCell id="rem_g5_box" parent="rem_p8_container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#059669;strokeWidth=1.5;shadow=1;align=left;spacingLeft=12;spacingRight=12;" value="&lt;div style=&quot;font-size:12.5px; font-weight:bold; color:#047857;&quot;&gt;8.5 POST-LLM HORIZON BLENDING &amp;amp; SUNSET TAIL EXTRAPOLATION&lt;/div&gt;&lt;hr style=&quot;border:0.5px solid #A7F3D0; margin:4px 0;&quot;&gt;&lt;div style=&quot;font-size:11px; color:#0F172A; line-height:1.4;&quot;&gt;&amp;bull; &lt;b&gt;Beyond 12-Block Horizon (Blocks 61 to 72):&lt;/b&gt; Reverts smoothly to pure multi-model physics GTI.&lt;br&gt;&amp;bull; &lt;b&gt;Sunset Ramp (Blocks 72 to 76, 18:00 to 19:00 IST):&lt;/b&gt; Extrapolates cleanly to 0.00 MW.&lt;/div&gt;" vertex="1"><mxGeometry x="25" y="505" width="930" height="85" as="geometry" /></mxCell><mxCell id="rem_final_sched_box" parent="rem_p8_container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D1FAE5;strokeColor=#059669;strokeWidth=2;shadow=1;align=left;spacingLeft=15;spacingRight=15;" value="&lt;div style=&quot;display:flex; justify-content:space-between;&quot;&gt;&lt;b style=&quot;color:#064E3B; font-size:13.5px;&quot;&gt;FINAL ARBITRATED SCHEDULE VECTOR: P_schedule &amp;isin; &amp;reals;&amp;sup9;&amp;sup6;&lt;/b&gt;&lt;span style=&quot;color:#047857; font-size:11px; font-weight:bold;&quot;&gt;Deliverable to Phase 5&lt;/span&gt;&lt;/div&gt;&lt;hr style=&quot;border:0.5px solid #10B981; margin:5px 0;&quot;&gt;&lt;div style=&quot;font-size:11.5px; color:#064E3B; line-height:1.5;&quot;&gt;&amp;bull; &lt;b&gt;Immutable Past / Freeze Boundary:&lt;/b&gt; Blocks 1 to B&lt;sub&gt;actionable&lt;/sub&gt;&amp;minus;1 preserved from previous schedule.&lt;br&gt;&amp;bull; &lt;b&gt;Actionable Horizon (Next 12 Blocks):&lt;/b&gt; Guardrail-screened LLM strategic predictions.&lt;br&gt;&amp;bull; &lt;b&gt;Afternoon / Evening Tail:&lt;/b&gt; Thermally derated multi-model physics GTI consensus.&lt;br&gt;&amp;bull; &lt;b&gt;Handoff to Phase 5:&lt;/b&gt; Snapshot CSV, Current-Final CSV, and Penalty Commercial Audit CSV for S3.&lt;/div&gt;" vertex="1"><mxGeometry x="25" y="605" width="930" height="130" as="geometry" /></mxCell><mxCell id="rem_e_p8_1" edge="1" parent="rem_p8_container" source="rem_g1_box" target="rem_g2_box" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#EF4444;strokeWidth=1.5;"><mxGeometry relative="1" as="geometry" /></mxCell><mxCell id="rem_e_p8_2" edge="1" parent="rem_p8_container" source="rem_g2_box" target="rem_g3_box" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#D97706;strokeWidth=1.5;"><mxGeometry relative="1" as="geometry" /></mxCell><mxCell id="rem_e_p8_3" edge="1" parent="rem_p8_container" source="rem_g3_box" target="rem_g4_box" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#0284C7;strokeWidth=1.5;"><mxGeometry relative="1" as="geometry" /></mxCell><mxCell id="rem_e_p8_4" edge="1" parent="rem_p8_container" source="rem_g4_box" target="rem_g5_box" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#7C3AED;strokeWidth=1.5;"><mxGeometry relative="1" as="geometry" /></mxCell><mxCell id="rem_e_p8_5" edge="1" parent="rem_p8_container" source="rem_g5_box" target="rem_final_sched_box" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#059669;strokeWidth=2;"><mxGeometry relative="1" as="geometry" /></mxCell><mxCell id="rem_hw_p6_to_p7" edge="1" parent="1" source="rem_p6_proceed_box" target="rem_p7_prompt_box" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#2563EB;strokeWidth=3;" value="&lt;b style=&quot;color:#1E40AF;&quot;&gt;Injected Dictionaries: weather_ind, telemetry_ind, next_12_blocks&lt;/b&gt;"><mxGeometry relative="1" as="geometry"><Array as="points">
+              <mxPoint x="1900" y="1275" />
+              <mxPoint x="1900" y="560" />
+            </Array>
+          </mxGeometry></mxCell><mxCell id="rem_hw_p6_bypass_to_p8" edge="1" parent="1" source="rem_p6_bypass_box" target="rem_g1_box" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#D97706;strokeWidth=2;dashed=1;" value="&lt;b style=&quot;color:#B45309;&quot;&gt;Bypass Route: Deterministic Raw P_base directly to Guardrails&lt;/b&gt;"><mxGeometry relative="1" as="geometry"><Array as="points">
+              <mxPoint x="1150" y="2300" />
+              <mxPoint x="3800" y="2300" />
+            </Array>
+          </mxGeometry></mxCell><mxCell id="rem_hw_p7_to_p8" edge="1" parent="1" source="rem_p7_safety_box" target="rem_g1_box" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#059669;strokeWidth=3;" value="&lt;b style=&quot;color:#047857;&quot;&gt;Validated StrategicAdvice: regime, bias, 12-block predictions&lt;/b&gt;"><mxGeometry relative="1" as="geometry"><Array as="points">
+              <mxPoint x="3320" y="1465" />
+              <mxPoint x="3320" y="270" />
+            </Array>
+          </mxGeometry></mxCell><mxCell id="edge_initial_p1_to_p6" edge="1" parent="1" source="101" target="rem_p6_receptors_grid" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#4F46E5;strokeWidth=3;" value="Phase 1: Transfer Ratio &amp; P_AC_max"><mxGeometry relative="1" as="geometry" /></mxCell><mxCell id="edge_initial_p2_to_p6" edge="1" parent="1" source="66" target="rem_p6_receptors_grid" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#D97706;strokeWidth=3;" value="Phase 2: Ineichen P_cs(b) &amp; Elevation"><mxGeometry relative="1" as="geometry" /></mxCell><mxCell id="edge_initial_p3_to_p6" edge="1" parent="1" source="18" target="rem_p6_receptors_grid" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#059669;strokeWidth=3;" value="Phase 3: Weather Ensemble &amp; SCADA P_live"><mxGeometry relative="1" as="geometry" /></mxCell><mxCell id="edge_initial_p4_to_p6" edge="1" parent="1" source="72" target="rem_p6_receptors_grid" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#0284C7;strokeWidth=3;" value="Phase 4: Sandia Base Physics P_base(b)"><mxGeometry relative="1" as="geometry" /></mxCell><mxCell id="edge_p8_to_p5" edge="1" parent="1" source="rem_final_sched_box" target="159" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#059669;strokeWidth=3;" value="Phase 8: Arbitrated P_schedule Vector -&gt; S3 Freeze Boundary"><mxGeometry relative="1" as="geometry" /></mxCell></root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

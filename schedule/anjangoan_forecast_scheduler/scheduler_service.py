@@ -595,8 +595,14 @@ def run_schedule_job(
     penalty_csv = generated_root / _penalty_schedule_name(target_date)
     latest_metadata = generated_root / f"{target_date}_latest_metadata.json"
 
-    shutil.copyfile(snapshot_source, snapshot_csv)
-    _download_previous_current_final_schedule(bucket, schedule_prefix, target_date, current_final_csv)
+    force_all = event and (str(event.get("force", "")).lower() in ("1", "true", "yes") or str(event.get("clean_seed", "")).lower() in ("1", "true", "yes"))
+    if force_all:
+        if current_final_csv.exists():
+            current_final_csv.unlink(missing_ok=True)
+        if latest_csv.exists():
+            latest_csv.unlink(missing_ok=True)
+    else:
+        _download_previous_current_final_schedule(bucket, schedule_prefix, target_date, current_final_csv)
     snapshot_rows, preserved_rows, merged_rows = _merge_latest_schedule(snapshot_source, latest_csv)
     shutil.copyfile(latest_csv, snapshot_csv)
     current_final_rows = _write_current_final_schedule(latest_csv, current_final_csv, target_date, target_time)

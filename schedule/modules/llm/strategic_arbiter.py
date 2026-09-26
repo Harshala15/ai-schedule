@@ -85,70 +85,38 @@ class LLMStrategicArbiter:
         else:
             blocks_formatted = "  (No specific block list provided; recommend global bias factor)"
 
-        is_non_meter = bool(live_telemetry.get("is_non_meter_site", False))
-        telemetry_source = live_telemetry.get("telemetry_source", "PHYSICAL_SCADA")
-
-        if is_non_meter:
-            telemetry_section = f"""ESTIMATED SATELLITE TELEMETRY & MULTI-MODEL SPREAD (Non-meter site):
-- Telemetry Source: {telemetry_source} (Physical SCADA meter is not present; using meteorological satellite radiation input)
-- Current Estimated Generation: {live_telemetry.get('latest_mw', 'N/A')} MW
-- Physics Baseline Forecast at this time: {live_telemetry.get('physics_predicted_mw', 'N/A')} MW
-- Solar Elevation Angle: {live_telemetry.get('solar_elevation_deg', 0.0):.1f} deg
-- Clearness Ratio (Kt): {live_telemetry.get('clearness_ratio', 1.0):.2f}"""
-            trip_instruction = f"""- NON-METER METEOROLOGICAL REASONING RULES:
-  * This is a designated NON-METER site without physical SCADA feedback. Missing ground meter telemetry does NOT mean a trip.
-  * Set "is_trip_or_curtailment" strictly to false.
-  * MULTI-MODEL CONSENSUS: Evaluate cloud cover, CAPE convective instability, and precipitation to position the schedule within the ±{tol_band*100:.0f}% tolerance band.
-  * CLEAR-SKY INTEGRITY: Under clear sky (Kt >= 0.85 or cloud cover <= 25%), preserve the full convex solar arc (do NOT flatten or slash below physics baseline).
-  * CONVECTIVE CLOUD POSITIONING: Under moderate/uncertain clouds (cloud cover 30-70%), apply an asymmetric risk-neutral positioning (quantile_bias_factor 0.90 to 0.96) to shield against shortfall penalties."""
-        else:
-            poa_line = f"\n- On-Site SCADA Pyranometer POA: {live_telemetry['live_poa_wm2']:.1f} W/m2" if live_telemetry.get("live_poa_wm2") is not None else ""
-            telemetry_section = f"""LIVE SCADA TELEMETRY & MODEL RESIDUALS (at revision cutoff):
-- Telemetry Source: {telemetry_source}
-- Latest SCADA Meter Generation: {live_telemetry.get('latest_mw', 'N/A')} MW{poa_line}
-- Physics Baseline Forecast at this time: {live_telemetry.get('physics_predicted_mw', 'N/A')} MW
-- Real Clearness Ratio (Kt): {live_telemetry.get('clearness_ratio', 1.0):.2f}"""
-            trip_instruction = """- PURE METEOROLOGICAL SCHEDULING (ENERCAST / INDUSTRY STANDARD):
-  * Do NOT predict hardware inverter trips or equipment outages. The schedule strictly reflects available meteorological generation potential.
-  * Set "is_trip_or_curtailment" strictly to false.
-
-- DIRECTIONAL INTEGRITY RULES (PHYSICAL GUARDRAILS):
-  * CLEAR-SKY PRESERVATION: If ground conditions are CLEAR (Kt >= 0.85, cloud cover <= 25%), DO NOT make negative downward cuts below the physics baseline! Clear-sky generation must follow the unobstructed physical solar curve.
-  * OVERCAST BOUNDING: If cloud cover is high (>= 80%) or rain is active, DO NOT predict high clear-sky generation. Bound predictions strictly to the overcast diffuse envelope."""
-
-        prompt = f"""You are the Chief Renewable Energy Scheduling Strategist and Forecaster for {plant_name} Solar Power Plant.
+        prompt = f"""You are the Chief Renewable Energy Meteorological Scheduling Strategist for {plant_name} Solar Power Plant.
 Target Date: {target_date_str} | Revision Time: {target_time_str}
 Capacity: {ac_cap:.1f} MW AC | PPA Tariff: Rs {ppa_rate:.2f}/kWh | Tolerance Band: {tol_band * 100:.1f}% (+/- {ac_cap * tol_band:.2f} MW)
 
-ATMOSPHERIC & WEATHER INDICATORS:
-- Cloud Cover Mean: {weather_indicators.get('cloud_cover_pct', 'N/A')}%
-- Maximum CAPE (Thunderstorm instability): {weather_indicators.get('cape_j_kg', 0)} J/kg
+ATMOSPHERIC & WEATHER ENSEMBLE INDICATORS:
+- Total Cloud Cover Mean: {weather_indicators.get('cloud_cover_pct', 'N/A')}%
+- Low Cloud Cover: {weather_indicators.get('cloud_cover_low_pct', 'N/A')}%
+- Maximum CAPE (Thunderstorm / Convective instability): {weather_indicators.get('cape_j_kg', 0)} J/kg
 - Precipitation Forecast: {weather_indicators.get('precip_mm', 0.0)} mm
 - 2m Ambient Temperature: {weather_indicators.get('temp_c', 28.0)} C
-
-{telemetry_section}
 
 NEXT 12 ACTIONABLE DISPATCH BLOCKS (Physics Baseline Anchor):
 {blocks_formatted}
 
-REGULATORY INCENTIVE & RISK INSTRUCTION:
-Under Indian CERC/State DSM rules:
-- Under-generation shortfall penalties are severe and punitive (up to 2x PPA tariff).
-- Mild over-generation inside the tolerance band (0% to +{tol_band * 100:.0f}%) is safe or credit-earning.
-{trip_instruction}
+PURE METEOROLOGICAL SCHEDULING & RISK INSTRUCTIONS:
+- You operate strictly on macro-atmospheric science over a 3-hour horizon. Do NOT assume or rely on short-term ground meter noise; immediate 30-minute electrical dispatch is already governed by deterministic SCADA logic.
+- Under Indian CERC/State DSM rules:
+  * Under-generation shortfall penalties are severe and punitive (up to 2x PPA tariff).
+  * Mild over-generation inside the tolerance band (0% to +{tol_band * 100:.0f}%) is safe or credit-earning.
+- CLEAR-SKY PRESERVATION: If atmospheric indicators indicate CLEAR (cloud cover <= 25%), preserve the full convex solar arc. DO NOT make negative downward cuts below the physics baseline!
+- CONVECTIVE CLOUD POSITIONING: Under moderate/uncertain clouds (cloud cover 30-70% or CAPE > 1000 J/kg), apply risk-conscious positioning (quantile_bias_factor 0.90 to 0.96) to shield against shortfall penalties.
+- OVERCAST BOUNDING: If cloud cover >= 80% or rain is active, bound predictions strictly to the overcast diffuse envelope.
 
 TASKS:
 1. Classify the day's meteorological regime: ["CLEAR_SKY", "PARTLY_CLOUDY", "CONVECTIVE_MONSOON", "OVERCAST"].
 2. Predict the generation (in MW) for EACH of the next 12 blocks in "block_predictions":
    - Use the physics baseline as the core anchor.
-   - For non-meter sites, follow the physical solar irradiance curve without artificial plateauing or flatlining.
-   - Adjust each block realistically:
-     * If plant is over-performing (residual > 0) with high clearness (Kt >= 0.75), increase by 0.1 to 0.3 MW above baseline to capture higher actuals.
-     * If plant is under-performing (residual < 0) or clouds are increasing, adjust down by 0.1 to 0.4 MW to avoid shortfall penalty.
+   - Adjust realistically according to atmospheric cloudiness and convective risk.
    - Maintain a smooth physical solar ramp (no abrupt jumps > 0.5 MW between consecutive 15-min blocks).
    - Keep each block within physical bounds: 0.0 <= MW <= {ac_cap:.1f} MW.
 3. Recommend preferred ensemble agency: ["BALANCED", "ECMWF", "ICON", "GEFS"].
-4. Flag if live drop is equipment trip/curtailment vs actual clouds.
+4. Set "is_trip_or_curtailment" to false (electrical trips are handled outside meteorology).
 
 Respond ONLY with a JSON object in this exact schema:
 {{
@@ -156,7 +124,7 @@ Respond ONLY with a JSON object in this exact schema:
   "quantile_bias_factor": 1.0,
   "preferred_agency": "BALANCED",
   "is_trip_or_curtailment": false,
-  "reasoning": "Brief operational rationale for the 12-block prediction",
+  "reasoning": "Brief operational rationale for the 12-block prediction based on atmospheric indicators",
   "block_predictions": {{
     "55": 5.25,
     "56": 5.15
