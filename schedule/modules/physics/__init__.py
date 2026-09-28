@@ -1,2 +1,0 @@
-"""Physics anchor helpers."""
-
