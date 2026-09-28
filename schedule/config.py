@@ -336,6 +336,9 @@ _PLANT_FALLBACKS = {
         "capacity_mw": 18.63,
         "dc_capacity_mw": 23.027,
         "max_feed_in_mw": 18.63,
+        "penalty_regulation": "Maharashtra",
+        "tolerance_band_mw": 1.863,
+        "band_percentage": 0.10,
     },
     "CHANDAWASA": {
         "latitude": 24.166208,

@@ -1342,17 +1342,16 @@ class IntellisEnsembleGTIAI:
                     safe_count += 1
                 tot_pen += b_copy.get("block_penalty_inr", 0.0)
             else:
-                # Actionable dispatch horizon architecture:
-                # 1. Blocks 1-2 (immediate 30 min, delta_blocks 0 & 1): Meter-Adjusted to instantly catch equipment trips and grid curtailments.
-                # 2. Block 3 (30-45 min, delta_blocks 2): Smooth transition bridge (50% Meter, 50% Pure Weather).
-                # 3. Block 4+ (beyond 45 min, delta_blocks >= 3): 100% Pure Weather, anchored strictly to meteorological physics.
-                delta_blocks = b_idx - (actionable_block - 1)
+                # Physical dispatch horizon architecture:
+                # Cloud shadow persistence physically decays within 30-45 minutes from ground observation.
+                # Measure elapsed time from the live SCADA reading (curr_idx), NOT the statutory freeze boundary.
+                elapsed_blocks = b_idx - curr_idx  # 1 block = 15 min elapsed
 
                 fcst_gti = b_dict["predicted_gti_wm2"]
                 fcst_kt = min(1.05, fcst_gti / max(15.0, cs_poa[b_idx]))
 
-                if delta_blocks == 0:
-                    # Block 1 (+00 to +15 min): 100% Meter-Adjusted telemetry
+                if elapsed_blocks <= 1:
+                    # Immediate +00 to +15 min from SCADA observation: 100% Meter-Adjusted telemetry
                     eff_kt = max(0.15, min(1.05, kt_obs + trend_momentum))
                     target_poa = eff_kt * cs_poa[b_idx]
                     b_hr = (b_dict["block"] * 15) // 60
@@ -1362,8 +1361,8 @@ class IntellisEnsembleGTIAI:
                     raw_mw = target_poa * self.profile.transfer_ratio * temp_factor
                     adj_mw = min(self.profile.ac_capacity_mw, max(0.0, raw_mw))
                     adj_mw = round(adj_mw, 2)
-                elif delta_blocks == 1:
-                    # Block 2 (+15 to +30 min): 100% Meter-Adjusted telemetry
+                elif elapsed_blocks == 2:
+                    # +15 to +30 min from SCADA observation: 100% Meter-Adjusted telemetry
                     eff_kt = max(0.15, min(1.05, kt_obs + trend_momentum * 0.50))
                     target_poa = eff_kt * cs_poa[b_idx]
                     b_hr = (b_dict["block"] * 15) // 60
@@ -1373,8 +1372,8 @@ class IntellisEnsembleGTIAI:
                     raw_mw = target_poa * self.profile.transfer_ratio * temp_factor
                     adj_mw = min(self.profile.ac_capacity_mw, max(0.0, raw_mw))
                     adj_mw = round(adj_mw, 2)
-                elif delta_blocks == 2:
-                    # Block 3 (+30 to +45 min): Smooth transition bridge (50% Meter, 50% Pure Weather)
+                elif elapsed_blocks == 3:
+                    # +30 to +45 min from SCADA observation: Smooth transition bridge (50% Meter, 50% Pure Weather)
                     eff_kt = max(0.15, min(1.05, 0.50 * kt_obs + 0.50 * fcst_kt))
                     target_poa = eff_kt * cs_poa[b_idx]
                     b_hr = (b_dict["block"] * 15) // 60
@@ -1385,7 +1384,10 @@ class IntellisEnsembleGTIAI:
                     adj_mw = min(self.profile.ac_capacity_mw, max(0.0, raw_mw))
                     adj_mw = round(adj_mw, 2)
                 else:
-                    # Block 4+ (beyond 45 min): 100% Pure Weather Ensemble
+                    # Beyond 45 min from SCADA observation (elapsed_blocks >= 4):
+                    # Cloud shadow autocorrelation has physically expired.
+                    # For 90-min statutory freeze sites (MP/CERC), all actionable blocks fall here
+                    # and are strictly anchored to the meteorological NWP weather ensemble.
                     target_poa = fcst_gti
                     adj_mw = b_dict["predicted_mw"]
 
@@ -1767,10 +1769,10 @@ class IntellisEnsembleGTIAI:
         elif abs(advice.quantile_bias_factor - 1.0) > 0.005:
             q_factor = advice.quantile_bias_factor
             # Under confirmed clear sky, lock out negative cuts below 1.0
-            if (real_clearness_ratio >= 0.85 or today_regime == "CLEAR") and not advice.is_trip_or_curtailment:
+            if is_clear_sky and not advice.is_trip_or_curtailment:
                 q_factor = max(1.0, q_factor)
             # Under overcast conditions, lock out upward inflation above 1.02
-            elif (today_regime == "OVERCAST" or real_clearness_ratio < 0.50) and not advice.is_trip_or_curtailment:
+            elif is_overcast and not advice.is_trip_or_curtailment:
                 q_factor = min(1.02, q_factor)
 
             for b in sched["blocks"]:

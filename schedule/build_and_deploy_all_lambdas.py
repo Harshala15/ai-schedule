@@ -8,7 +8,7 @@ REGION = "ap-south-1"
 PROFILE = "intellis-608"
 ACCOUNT_ID = "608744602858"
 REPO = "intellis-ai-scheduler"
-TAG = "intellis-ai-20260925-v1"
+TAG = "intellis-ai-20260926-v1"
 ECR_REGISTRY = f"{ACCOUNT_ID}.dkr.ecr.{REGION}.amazonaws.com"
 IMAGE_URI = f"{ECR_REGISTRY}/{REPO}:{TAG}"
 
@@ -128,4 +128,4 @@ print("==================================================================")
 import pandas as pd
 df_summary = pd.DataFrame(deployment_results)
 print(df_summary.to_string(index=False))
-df_summary.to_csv(r"d:\14 sept intellis\scratch\lambda_deployment_summary_20260924.csv", index=False)
+df_summary.to_csv(r"d:\14 sept intellis\scratch\lambda_deployment_summary_20260926.csv", index=False)
