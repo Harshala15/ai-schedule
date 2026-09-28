@@ -1,1 +1,0 @@
-﻿"""Kothagudem FTP Fetcher package."""

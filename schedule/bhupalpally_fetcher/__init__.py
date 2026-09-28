@@ -1,1 +1,0 @@
-"""Bhupalpally FTP fetcher package."""
