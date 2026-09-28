@@ -13,9 +13,11 @@ into a canonical 15-minute 96-block schema:
 
 from __future__ import annotations
 
+import datetime as dt
 import math
 import os
 from pathlib import Path
+import re
 from typing import Any
 
 import numpy as np
@@ -324,3 +326,76 @@ def load_and_normalize_meter_csv(
         df = pd.read_csv(p, sep=None, engine="python", encoding="utf-8", errors="ignore")
 
     return normalize_meter_dataframe(df, meter_config=meter_config, source_file=p.name)
+
+
+_TIMESTAMP_FORMATS = (
+    "%Y-%m-%d %H:%M:%S",
+    "%Y-%m-%d %H:%M",
+    "%d-%m-%Y %H:%M:%S",
+    "%d-%m-%Y %H:%M",
+    "%d/%m/%Y %H:%M:%S",
+    "%d/%m/%Y %H:%M",
+    "%Y/%m/%d %H:%M:%S",
+    "%Y/%m/%d %H:%M",
+    "%m/%d/%Y %H:%M:%S",
+    "%m/%d/%Y %H:%M",
+    "%Y-%m-%dT%H:%M:%S",
+    "%Y-%m-%dT%H:%M",
+    "%Y-%m-%dT%H:%M:%SZ",
+    "%Y-%m-%dT%H:%M:%S.%f",
+)
+
+
+def normalize_timestamp_str(raw_ts: str | Any) -> str | None:
+    """Parses raw timestamp string and returns '%Y-%m-%d %H:%M:%S' or None."""
+    if raw_ts is None:
+        return None
+    raw_ts = str(raw_ts).strip()
+    if not raw_ts:
+        return None
+
+    clean_ts = raw_ts[:-1] if raw_ts.endswith(("Z", "z")) else raw_ts
+    match = re.match(r"^(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(?::\d{2})?(?:\.\d+)?)(?:[+-]\d{2}:?\d{2})?$", clean_ts)
+    if match:
+        clean_ts = match.group(1)
+
+    if "T" in clean_ts and "." in clean_ts:
+        try:
+            head, _, _ = clean_ts.partition(".")
+            clean_space = head.replace("T", " ")
+            return dt.datetime.strptime(clean_space, "%Y-%m-%d %H:%M:%S").strftime("%Y-%m-%d %H:%M:%S")
+        except Exception:
+            pass
+    elif "T" in clean_ts:
+        clean_space = clean_ts.replace("T", " ")
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+            try:
+                return dt.datetime.strptime(clean_space, fmt).strftime("%Y-%m-%d %H:%M:%S")
+            except ValueError:
+                pass
+
+    for ts_to_try in (clean_ts, raw_ts):
+        for fmt in _TIMESTAMP_FORMATS:
+            try:
+                return dt.datetime.strptime(ts_to_try, fmt).strftime("%Y-%m-%d %H:%M:%S")
+            except ValueError:
+                continue
+    return None
+
+
+def find_timestamp_column(fieldnames: list[str]) -> str | None:
+    """Find the timestamp column from header names using priority candidates."""
+    if not fieldnames:
+        return None
+    normalized_fields = {re.sub(r"\s+", " ", f.replace("\ufeff", "").strip()).lower(): f for f in fieldnames if f}
+    candidates = (
+        "block_end", "block_start", "timestamp", "datetime", "date_time",
+        "time", "start", "start (asia/calcutta)", "start (asia/kolkata)",
+    )
+    for cand in candidates:
+        if cand in normalized_fields:
+            return normalized_fields[cand]
+    for key, original in normalized_fields.items():
+        if "time" in key or "date" in key:
+            return original
+    return None

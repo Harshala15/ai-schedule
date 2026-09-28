@@ -14,6 +14,7 @@ from pathlib import Path
 
 import config
 from modules import schedule_utils as shared_schedule_utils
+from modules.meter import meter_normalizer
 from core import settings, storage
 
 
@@ -146,29 +147,7 @@ def _clip_meter_to_cutoff(source_csv: Path, destination_csv: Path, cutoff_dt: dt
             lines.append(line)
         reader = csv.DictReader(lines)
         fieldnames = list(reader.fieldnames or [])
-        column_profile = daily_feedback.PLANT_ACTUAL_METER_COLUMNS.get(  # type: ignore[attr-defined]
-            (config.PLANT_NAME or "").strip().upper(),
-            {},
-        )
-        timestamp_candidates = tuple(
-            dict.fromkeys(
-                (
-                    *column_profile.get("timestamp", ()),
-                    *daily_feedback.RAW_METER_TIMESTAMP_COLUMNS,  # type: ignore[attr-defined]
-                    "DateTime",
-                    "Datetime",
-                    "TIME",
-                    "Time",
-                    "Start",
-                    "Start (Asia/Calcutta)",
-                    "Start (Asia/Kolkata)",
-                )
-            )
-        )
-        timestamp_column = daily_feedback._pick_first_existing_column(  # type: ignore[attr-defined]
-            fieldnames,
-            timestamp_candidates,
-        )
+        timestamp_column = meter_normalizer.find_timestamp_column(fieldnames)
         rows = list(reader)
 
     if timestamp_column is None:
@@ -179,10 +158,13 @@ def _clip_meter_to_cutoff(source_csv: Path, destination_csv: Path, cutoff_dt: dt
 
     kept_rows = []
     for row in rows:
-        normalized = daily_feedback._normalize_timestamp(row.get(timestamp_column))  # type: ignore[attr-defined]
+        normalized = meter_normalizer.normalize_timestamp_str(row.get(timestamp_column))
         if normalized is None:
             continue
-        row_dt = dt.datetime.strptime(normalized, "%Y-%m-%d %H:%M:%S")
+        try:
+            row_dt = dt.datetime.strptime(normalized, "%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            continue
         if row_dt > cutoff_dt:
             continue
         kept_rows.append(row)

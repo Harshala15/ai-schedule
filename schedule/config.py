@@ -697,78 +697,7 @@ CAPTURE_TIMES = [
 ]
 
 # ---- Paths ----
-STORAGE_STATE_PATH = _storage_path("windy_login.json")
-SCREENSHOT_DIR = _storage_path("windy_screenshots") / f"{PLANT_LAT}_{PLANT_LON}"
-VIDEO_DIR = _storage_path("windy_videos")
-PREDICTIONS_DIR = _storage_path("energy_predictions")
-FEATURES_LOG_DIR = _storage_path("features_log")
-MODELS_DIR = _storage_path("models")
-ACCURACY_REPORTS_DIR = _storage_path("accuracy_reports")
-FEEDBACK_ANALYSIS_DIR = _storage_path("feedback_analysis")
-_DEFAULT_HISTORIC_CASES_DIR = _storage_path("historic_cases") if PLANT_NAME.upper() == "SIRMOUR" else _storage_path("historic_cases") / PLANT_NAME
-HISTORIC_CASES_DIR = _read_env_path("HISTORIC_CASES_DIR", _DEFAULT_HISTORIC_CASES_DIR)
-
-# ---- Daily actuals feedback automation ----
-# Local/manual feedback drop folder for when you want to process a raw
-# meter-export CSV outside the Lambda raw-meter flow.
-# The actual learning logic lives in daily_feedback.py and can also be
-# driven directly from the plant's raw meter files.
-ACTUALS_INBOX_DIR = _storage_path("daily_actuals_inbox")
-ACTUALS_INBOX_PROCESSED_DIR = ACTUALS_INBOX_DIR / "processed"
-
-# Rolling day-level accuracy/pattern context fed into the LLM prompt (see
-# llm_predictor.py) -- keeps only the most recent CONTEXT_WINDOW_DAYS days,
-# dropping the oldest each time a new day is added.
-PREDICTION_CONTEXT_PATH = _storage_path("prediction_context") / f"{PLANT_NAME}_context.json"
-METER_HISTORY_DIR = _storage_path("meter_history")
-PVLIB_SUMMARY_DIR = _storage_path("pvlib_summary")
-PLANT_PERFORMANCE_DIR = _storage_path("plant_performance")
-ECMWF_WEATHER_DIR = _storage_path("ecmwf_weather")
-CONTEXT_WINDOW_DAYS = 3
-
-# ---- Manual prediction input (see manual_prediction.py) ----
-# Drop a manually-captured screenshot set, video, and actual-meter CSV
-# here to run the pipeline without the automated Windy capture.
-MANUAL_INPUT_DIR = _storage_path("manual_input")
-MANUAL_INPUT_SCREENSHOTS_DIR = MANUAL_INPUT_DIR / "screenshots"
-MANUAL_INPUT_VIDEO_DIR = MANUAL_INPUT_DIR / "video"
-MANUAL_INPUT_ACTUALS_DIR = MANUAL_INPUT_DIR / "actuals"
-# Test-run predictions and their feature log always land here -- kept
-# completely separate from energy_predictions/ and features_log/ (the
-# real per-day production files and CBR case store), so testing never
-# mixes into or pollutes them.
-MANUAL_INPUT_OUTPUT_DIR = MANUAL_INPUT_DIR / "output"
-
-# ---- Schedule-generation evaluation (see backtest_schedule.py) ----
-# Reconstructed full-day schedules (one real-time-accurate schedule per
-# evaluated date) land here -- isolated from energy_predictions/ and
-# features_log/ (real production + CBR case store) and from
-# manual_input/output/ (one-off manual tests), since this is a distinct,
-# multi-step evaluation run comparing a whole reconstructed day against
-# the real meter data.
-EVALUATION_OUTPUT_DIR = _storage_path("evaluation_schedules")
-
-# ---- Case-Based Reasoning retrieval ----
-# These weights express the relative importance of visual conditions and
-# solar position when comparing a new situation with past feature rows.
-# Values are applied after per-column z-score normalization.
-CBR_TOP_K = 8
-CBR_FEATURE_WEIGHTS = {
-    "solar_elevation_deg": 2.5,
-    "minute_of_day": 1.5,
-    "clouds_bright_pixel_pct": 2.0,
-    "satellite_bright_pixel_pct": 2.0,
-    "motion_coverage_end_pct": 1.8,
-    "motion_score": 1.3,
-    "motion_directional_consistency": 0.8,
-    "motion_direction_deg": 1.2,
-    "rain_bright_pixel_pct": 1.0,
-    "solarpower_bright_pixel_pct": 1.0,
-    "clouds_brightness_std": 1.8,
-    "satellite_brightness_std": 1.8,
-}
-
-MODEL_PATH = MODELS_DIR / "generation_model.pkl"
+HISTORIC_CASES_DIR = _storage_path("historic_cases")
 
 # ---- Enercast-calibrated optimization & asymmetric risk parameters ----
 CLEAR_SKY_HEADROOM_FACTOR = _read_env_float("CLEAR_SKY_HEADROOM_FACTOR", 0.93)
