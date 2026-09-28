@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from modules.llm import predictor
+import config
 
 
 @dataclass
@@ -201,4 +202,172 @@ Respond ONLY with a JSON object in this exact schema:
             )
         except Exception as parse_err:
             print(f"  [WARN] LLM Strategic Arbiter JSON parse error: {parse_err}; using default baseline.")
+            return default_advice
+
+    def get_wind_strategic_guidance(
+        self,
+        target_date_str: str,
+        target_time_str: str,
+        wind_indicators: dict[str, Any] | None = None,
+        next_12_blocks: list[dict[str, Any]] | None = None,
+    ) -> StrategicAdvice:
+        """Consults the LLM for wind strategic advice and next-12-block predictions with immediate deterministic fallback."""
+        default_advice = StrategicAdvice(
+            regime="STEADY_WIND",
+            quantile_bias_factor=1.0,
+            preferred_agency="BALANCED",
+            is_trip_or_curtailment=False,
+            reasoning="Default aero-dynamic wind physics baseline.",
+            block_predictions={},
+            source="WIND_PHYSICS_BASELINE",
+        )
+
+        enabled = os.getenv("ENABLE_LLM_STRATEGIC_ARBITER", "true").strip().lower() in {"1", "true", "yes", "on"}
+        if not enabled:
+            return default_advice
+
+        is_disabled, _ = predictor._is_llm_disabled_for_plant()
+        if is_disabled:
+            return default_advice
+
+        api_keys = predictor._load_openrouter_api_keys()
+        if not api_keys:
+            return default_advice
+
+        wind_indicators = wind_indicators or {}
+        plant_name = str(getattr(self.profile, "plant_name", getattr(config, "PLANT_NAME", "WIND"))).strip().upper()
+        rated_cap = float(
+            getattr(self.profile, "rated_capacity_mw", None)
+            or getattr(self.profile, "capacity_mw", None)
+            or getattr(config, "PLANT_CAPACITY_MW", 10.0)
+        )
+        ppa_rate = float(
+            getattr(self.profile, "ppa_rate_inr_per_kwh", None)
+            or getattr(config, "PLANT_PPA_RATE_INR_PER_KWH", 4.0)
+        )
+        tol_band_mw = float(
+            getattr(self.profile, "tolerance_band_mw", None)
+            or getattr(config, "PLANT_TOLERANCE_BAND_MW", round(rated_cap * 0.10, 3))
+        )
+        tol_band_pct = float(
+            getattr(self.profile, "band_percentage", None)
+            or (getattr(config, "PLANT_TOLERANCE_BAND_PCT", 10.0) / 100.0)
+        )
+        hub_h = float(getattr(self.profile, "hub_height_m", 100.0))
+        turbine_model = str(getattr(self.profile, "turbine_model", "Standard Wind Turbine"))
+        n_turb = int(getattr(self.profile, "num_turbines", 1))
+
+        blocks_formatted = ""
+        if next_12_blocks:
+            lines = []
+            for b in next_12_blocks:
+                lines.append(
+                    f"  - Block {b['block']} ({b.get('time_interval', '')}): "
+                    f"Physics Baseline = {float(b.get('schedule_mw', b.get('intellis_mw', 0.0))):.2f} MW | "
+                    f"Hub Wind Speed = {float(b.get('wind_speed_hub_m_s', 0.0)):.2f} m/s | "
+                    f"Air Density = {float(b.get('air_density_kg_m3', 1.15)):.3f} kg/m3"
+                )
+            blocks_formatted = "\n".join(lines)
+        else:
+            blocks_formatted = "  (No specific block list provided; recommend global bias factor)"
+
+        prompt = f"""You are the Chief Renewable Energy Meteorological Scheduling Strategist for {plant_name} Wind Power Plant.
+Target Date: {target_date_str} | Revision Time: {target_time_str}
+Capacity: {rated_cap:.1f} MW Rated | PPA Tariff: Rs {ppa_rate:.2f}/kWh | Tolerance Band: {tol_band_pct * 100:.1f}% (+/- {tol_band_mw:.2f} MW)
+Turbines: {n_turb} units ({turbine_model}) | Hub Height: {hub_h}m
+
+ATMOSPHERIC & WIND ENSEMBLE DYNAMICS:
+- Mean Hub Wind Speed: {wind_indicators.get('mean_wind_speed', 'N/A')} m/s
+- Mean Air Density: {wind_indicators.get('mean_air_density', 1.15)} kg/m3
+- Surface Temperature: {wind_indicators.get('temp_c', 26.0)} C
+- Gust Factor / Turbulence Risk: {wind_indicators.get('turbulence_risk', 'LOW')}
+
+NEXT 12 ACTIONABLE DISPATCH BLOCKS (Physics Aero-Power Baseline):
+{blocks_formatted}
+
+DSM RISK & WIND SCHEDULING INSTRUCTIONS:
+- You operate strictly on atmospheric wind shear, boundary-layer turbulence, and DSM penalty minimization over a 3-hour horizon.
+- Under Indian CERC/State DSM rules:
+  * Shortfall penalties (actual generation below schedule minus tolerance band) are punitive (up to 2x PPA tariff).
+  * Mild over-generation within the safe tolerance band (+{tol_band_pct * 100:.0f}%) is safe or credit-earning.
+- When wind speeds hover near cut-in velocity (3.0 m/s), maintain conservative positioning to prevent severe shortfall penalties from calm dropouts.
+- When wind speeds are steady and moderate (6 to 11 m/s), preserve the aerodynamic power curve.
+- Ensure smooth aerodynamic ramp rates (avoid abrupt jumps > {max(1.0, rated_cap * 0.15):.1f} MW between consecutive 15-minute blocks).
+- Keep each block within physical bounds: 0.0 <= MW <= {rated_cap:.1f} MW.
+
+TASKS:
+1. Classify the wind atmospheric regime: ["STEADY_HIGH_WIND", "DIURNAL_THERMAL_BREEZE", "GUSTY_TURBULENT", "LOW_WIND_CUTIN_RISK"].
+2. Predict the generation (in MW) for EACH of the next 12 blocks in "block_predictions".
+3. Recommend quantile_bias_factor (between 0.85 and 1.10).
+4. Provide operational reasoning.
+
+Respond ONLY with a JSON object in this exact schema:
+{{
+  "regime": "STEADY_HIGH_WIND",
+  "quantile_bias_factor": 1.0,
+  "preferred_agency": "BALANCED",
+  "is_trip_or_curtailment": false,
+  "reasoning": "Operational meteorological rationale for wind generation forecast",
+  "block_predictions": {{
+    "58": 24.50,
+    "59": 25.10
+  }}
+}}"""
+
+        model_names = predictor._load_openrouter_model_names()
+        max_retries = predictor._llm_max_retries()
+        base_delay = predictor._llm_retry_base_delay_seconds()
+
+        raw_response = ""
+        for key_label, api_key in api_keys:
+            raw_response, err = predictor._call_openrouter_with_key(
+                api_key=api_key,
+                key_label=key_label,
+                prompt=prompt,
+                max_retries=max_retries,
+                base_delay=base_delay,
+                model_names=model_names,
+            )
+            if raw_response:
+                break
+
+        if not raw_response:
+            return default_advice
+
+        try:
+            cleaned = raw_response.strip()
+            if cleaned.startswith("```"):
+                cleaned = re.sub(r"^```[a-zA-Z]*\n?", "", cleaned)
+                cleaned = re.sub(r"\n?```$", "", cleaned)
+            data = json.loads(cleaned)
+
+            regime = str(data.get("regime", "STEADY_HIGH_WIND")).upper().strip()
+            bias = float(data.get("quantile_bias_factor", 1.0))
+            bias = max(0.70, min(1.15, bias))  # Sanity clamp for wind
+
+            agency = str(data.get("preferred_agency", "BALANCED")).upper().strip()
+            reasoning = str(data.get("reasoning", "")).strip()
+
+            raw_preds = data.get("block_predictions", {})
+            block_preds: dict[str, float] = {}
+            if isinstance(raw_preds, dict):
+                for k, v in raw_preds.items():
+                    try:
+                        val = float(v)
+                        val = max(0.0, min(rated_cap, val))
+                        block_preds[str(k).strip()] = round(val, 2)
+                    except (ValueError, TypeError):
+                        continue
+
+            return StrategicAdvice(
+                regime=regime,
+                quantile_bias_factor=bias,
+                preferred_agency=agency,
+                is_trip_or_curtailment=False,
+                reasoning=reasoning,
+                block_predictions=block_preds,
+                source="WIND_LLM_STRATEGIC_ARBITER",
+            )
+        except Exception as parse_err:
+            print(f"  [WARN] Wind LLM Strategic Arbiter JSON parse error: {parse_err}; using default baseline.")
             return default_advice

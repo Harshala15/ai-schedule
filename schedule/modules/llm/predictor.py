@@ -34,7 +34,12 @@ def _llm_chunk_size(anchor_predictions: list) -> int:
 
 
 def _env_flag(name: str, default: str = "false") -> bool:
-    return os.getenv(name, default).strip().lower() in {"1", "true", "yes", "on"}
+    val = os.getenv(name)
+    if val is None and hasattr(config, "_read_env_value"):
+        val = config._read_env_value(name)
+    if not val:
+        val = default
+    return str(val).strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _is_llm_disabled_for_plant() -> tuple[bool, str]:
@@ -98,7 +103,10 @@ def _load_openrouter_api_keys() -> list[tuple[str, str]]:
             break
 
     plant_key_name = f"OPENROUTER_API_KEY{_plant_env_suffix()}"
-    _add(plant_key_name, os.getenv(plant_key_name, ""))
+    plant_val = os.getenv(plant_key_name, "")
+    if not plant_val and hasattr(config, "_read_env_value"):
+        plant_val = config._read_env_value(plant_key_name)
+    _add(plant_key_name, plant_val)
     _add("OPENROUTER_API_KEY", os.getenv("OPENROUTER_API_KEY", getattr(config, "OPENROUTER_API_KEY", "")))
     return keys
 

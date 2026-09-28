@@ -323,7 +323,13 @@ def run_schedule_job(
     schedule_prefix: str,
     event: dict | None = None,
 ) -> dict:
-    plant_name = os.getenv("PLANT_NAME") or getattr(settings, "PLANT_NAME", "BHUPALPALLY")
+    plant_name = (
+        (event or {}).get("plant_name")
+        or (event or {}).get("plant")
+        or os.getenv("PLANT_NAME")
+        or getattr(config, "PLANT_NAME", "")
+        or getattr(settings, "PLANT_NAME", "BHUPALPALLY")
+    )
     config.load_plant_profile(plant_name)
     target_date, target_time, target_dt = _parse_target_datetime(event)
     selection = _pick_latest_capture_bundle(bucket, capture_prefix, meter_prefix, target_dt)
@@ -341,6 +347,7 @@ def run_schedule_job(
     is_wind_site = config.is_wind_plant()
     snapshot_source = work_output_dir / f"{config.PLANT_NAME}_energy_generation_{target_date}.csv"
     solar_sched_result = None
+    wind_sched_result = None
     if is_wind_site:
         from modules.weather.wind_ensemble import calculate_wind_schedule_96block, WindTurbineProfile
         wind_prof = WindTurbineProfile.from_plant_profile(getattr(config, "PLANT_PROFILE", {}) or config.PLANT_NAME)
@@ -356,6 +363,64 @@ def run_schedule_job(
             enable_bias_correction=True,
             enable_telemetry_blending=True,
         )
+
+        # -------------------------------------------------------------
+        # LLM Strategic Arbiter Integration for Wind Power Plants
+        # -------------------------------------------------------------
+        wind_sched_result = {"llm_strategy": {}}
+        try:
+            import numpy as np
+            from modules.llm.strategic_arbiter import LLMStrategicArbiter
+            arbiter = LLMStrategicArbiter(plant_profile=wind_prof)
+            lag_mins = int(getattr(config, "PLANT_PROFILE", {}).get("freeze_lag_minutes", 90) or 90)
+            lag_blocks = lag_mins // config.BLOCK_MINUTES
+            actionable_block = min(96, snapshot_block + lag_blocks)
+            next_12_blocks = [
+                b for b in wind_sched["blocks"]
+                if actionable_block <= b["block"] < actionable_block + 12
+            ]
+            wind_indicators = {
+                "mean_wind_speed": round(float(np.mean([b.get("wind_speed_hub_m_s", 0.0) for b in next_12_blocks])), 2) if next_12_blocks else 0.0,
+                "mean_air_density": round(float(np.mean([b.get("air_density_kg_m3", 1.15) for b in next_12_blocks])), 3) if next_12_blocks else 1.15,
+                "temp_c": 26.0,
+                "turbulence_risk": "LOW",
+            }
+            advice = arbiter.get_wind_strategic_guidance(
+                target_date_str=target_date,
+                target_time_str=target_time,
+                wind_indicators=wind_indicators,
+                next_12_blocks=next_12_blocks,
+            )
+            print(f"  [WIND LLM STRATEGY] Regime: {advice.regime} | Risk Quantile: {advice.quantile_bias_factor:.3f} | Agency: {advice.preferred_agency}")
+            print(f"                     Reasoning: {advice.reasoning}")
+            wind_sched_result["llm_strategy"] = {
+                "regime": advice.regime,
+                "quantile_bias_factor": advice.quantile_bias_factor,
+                "preferred_agency": advice.preferred_agency,
+                "reasoning": advice.reasoning,
+                "source": advice.source,
+            }
+
+            if advice.block_predictions:
+                print(f"  [WIND LLM PREDICTIONS] Applying direct LLM predictions to {len(advice.block_predictions)} blocks...")
+                for b in wind_sched["blocks"]:
+                    b_str = str(b["block"])
+                    if b["block"] >= actionable_block and b_str in advice.block_predictions:
+                        pred_mw = float(advice.block_predictions[b_str])
+                        pred_mw = max(0.0, min(wind_prof.rated_capacity_mw, pred_mw))
+                        b["schedule_mw"] = round(pred_mw, 2)
+                        b["intellis_mw"] = round(pred_mw, 2)
+            elif advice.quantile_bias_factor != 1.0:
+                print(f"  [WIND LLM BIAS] Scaling actionable blocks by quantile_bias_factor: {advice.quantile_bias_factor:.3f}")
+                for b in wind_sched["blocks"]:
+                    if b["block"] >= actionable_block:
+                        scaled_mw = float(b["schedule_mw"]) * advice.quantile_bias_factor
+                        scaled_mw = max(0.0, min(wind_prof.rated_capacity_mw, scaled_mw))
+                        b["schedule_mw"] = round(scaled_mw, 2)
+                        b["intellis_mw"] = round(scaled_mw, 2)
+        except Exception as wind_llm_err:
+            print(f"  [WARN] Wind LLM Strategic Arbiter invocation skipped: {wind_llm_err}")
+
         fieldnames = [
             "Block",
             "Time Interval (15 minute interval)",
@@ -442,6 +507,8 @@ def run_schedule_job(
     metadata["is_wind_plant"] = bool(is_wind_site)
     if is_wind_site:
         metadata["weather_summary_type"] = "wind_ensemble"
+        if isinstance(wind_sched_result, dict) and "llm_strategy" in wind_sched_result:
+            metadata["llm_strategy"] = wind_sched_result["llm_strategy"]
     elif isinstance(solar_sched_result, dict) and "llm_strategy" in solar_sched_result:
         metadata["llm_strategy"] = solar_sched_result["llm_strategy"]
     snapshot_metadata.write_text(json.dumps(metadata, indent=2), encoding="utf-8")

@@ -67,6 +67,9 @@ schedule/bhpl-env-update.json
 # Ephemeral backtest & test outputs
 *.stackdump
 *_work/
+_scheduler_work/
+schedule/_scheduler_work/
+schedule/schedules/
 schedule/meter_data/
 schedule/meter_history/
 schedule/state/
