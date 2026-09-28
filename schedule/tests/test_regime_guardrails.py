@@ -570,6 +570,18 @@ class TestPlantwiseStateToleranceBands(unittest.TestCase):
         self.assertEqual(config.PLANT_TOLERANCE_BAND_PCT, 15.0)
         self.assertAlmostEqual(config.PLANT_TOLERANCE_BAND_MW, 4.200, places=3)
 
+    def test_rewa_plants_tolerance_band_is_5_percent(self):
+        import config
+        # REWASPRNG: 250.0 MW AC -> 12.500 MW band (5%)
+        config.load_plant_profile("REWASPRNG")
+        self.assertEqual(config.PLANT_TOLERANCE_BAND_PCT, 5.0)
+        self.assertAlmostEqual(config.PLANT_TOLERANCE_BAND_MW, 12.500, places=3)
+
+        # REWASEIT: 250.0 MW AC -> 12.500 MW band (5%)
+        config.load_plant_profile("REWASEIT")
+        self.assertEqual(config.PLANT_TOLERANCE_BAND_PCT, 5.0)
+        self.assertAlmostEqual(config.PLANT_TOLERANCE_BAND_MW, 12.500, places=3)
+
 
 
 class TestEnercastBehaviorAndSynthesisFixes(unittest.TestCase):

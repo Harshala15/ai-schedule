@@ -379,8 +379,8 @@ _PLANT_FALLBACKS = {
         "orientation_deg_from_south": 0.0,
         "ppa_rate_inr_per_kwh": 3.2515,
         "penalty_regulation": "Madhya Pradesh",
-        "tolerance_band_mw": 25.0,
-        "band_percentage": 0.10,
+        "tolerance_band_mw": 12.5,
+        "band_percentage": 0.05,
         "eeg_id": "RewaSprng",
     },
     "REWASEIT": {
@@ -393,8 +393,8 @@ _PLANT_FALLBACKS = {
         "orientation_deg_from_south": 0.0,
         "ppa_rate_inr_per_kwh": 3.2515,
         "penalty_regulation": "Madhya Pradesh",
-        "tolerance_band_mw": 25.0,
-        "band_percentage": 0.10,
+        "tolerance_band_mw": 12.5,
+        "band_percentage": 0.05,
         "eeg_id": "RewaSeit",
     },
     "CLIMATEDETOX": {
@@ -577,6 +577,10 @@ def get_plant_tolerance_band_pct(penalty_regulation: str | None = None, plant_na
     reg = (penalty_regulation or PLANT_PENALTY_REGULATION or "").strip().lower()
     name = (plant_name or PLANT_NAME or "").strip().upper()
 
+    # Rewa Solar Park specific mandate (±5% tolerance band)
+    if name in {"REWASPRNG", "REWASEIT"}:
+        return 5.0
+
     if "madhya pradesh" in reg or "mperc" in reg:
         return 10.0
     if "maharashtra" in reg or "merc" in reg:
@@ -588,7 +592,7 @@ def get_plant_tolerance_band_pct(penalty_regulation: str | None = None, plant_na
     mp_plants = {
         "SIRMOUR", "GSNP", "GSPPL", "BAMKHAL", "BALAKWADA", "ANDAD",
         "ANJANGAON", "ANJANGOAN", "SAWDA", "GUGARIYAKHEDI", "NANDGAON",
-        "CHANDAWASA", "CHANDWASA", "REWASPRNG", "REWASEIT"
+        "CHANDAWASA", "CHANDWASA"
     }
     if name in mp_plants:
         return 10.0
