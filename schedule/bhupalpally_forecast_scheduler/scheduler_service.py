@@ -13,7 +13,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import config
-import run_pipeline
 from modules.feedback import daily_feedback
 from modules.storage import prediction_store
 from modules.storage import state_sync
