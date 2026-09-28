@@ -1,0 +1,25 @@
+{
+  "plant_name": "PRANAV",
+  "latitude": 19.888836,
+  "longitude": 74.256206,
+  "dc_capacity_kw": 5560,
+  "maximum_feed_in_ac_kw": 4000,
+  "tracker_type": "None",
+  "orientation_deg_from_south": 0,
+  "tilt_deg": 18,
+  "eeg_id": "PRANAV",
+  "performance_ratio": 0.78,
+  "ppa_rate_inr_per_kwh": 3.0,
+  "penalty_regulation": "Maharashtra",
+  "tolerance_band_percent": 10.0,
+  "band_percentage": 0.10,
+  "tolerance_band_mw": 0.400,
+  "freeze_lag_minutes": 45,
+  "meter_data": {
+    "is_non_meter_site": true,
+    "has_meter": false,
+    "is_virtual": true,
+    "meter_type": "SOLAR_VIRTUAL_METER",
+    "description": "Non-meter solar plant in Maharashtra (MERC). Operates with satellite virtual radiation and NWP multi-model physics without live SCADA meter actuals."
+  }
+}

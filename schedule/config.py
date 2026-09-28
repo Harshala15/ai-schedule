@@ -439,6 +439,51 @@ _PLANT_FALLBACKS = {
         "band_percentage": 0.10,
         "eeg_id": "UPL",
     },
+    "LOKGREENB2": {
+        "latitude": 19.861784,
+        "longitude": 74.237923,
+        "capacity_mw": 3.30,
+        "dc_capacity_mw": 4.26,
+        "max_feed_in_mw": 3.30,
+        "tilt_deg": 17.0,
+        "orientation_deg_from_south": 0.0,
+        "ppa_rate_inr_per_kwh": 3.00,
+        "penalty_regulation": "Maharashtra",
+        "tolerance_band_mw": 0.330,
+        "band_percentage": 0.10,
+        "freeze_lag_minutes": 45,
+        "eeg_id": "LOKGREENB2",
+    },
+    "PRANAV": {
+        "latitude": 19.888836,
+        "longitude": 74.256206,
+        "capacity_mw": 4.00,
+        "dc_capacity_mw": 5.56,
+        "max_feed_in_mw": 4.00,
+        "tilt_deg": 18.0,
+        "orientation_deg_from_south": 0.0,
+        "ppa_rate_inr_per_kwh": 3.00,
+        "penalty_regulation": "Maharashtra",
+        "tolerance_band_mw": 0.400,
+        "band_percentage": 0.10,
+        "freeze_lag_minutes": 45,
+        "eeg_id": "PRANAV",
+    },
+    "SIDDEHESH": {
+        "latitude": 19.885672,
+        "longitude": 74.257863,
+        "capacity_mw": 3.00,
+        "dc_capacity_mw": 4.26,
+        "max_feed_in_mw": 3.00,
+        "tilt_deg": 18.0,
+        "orientation_deg_from_south": 0.0,
+        "ppa_rate_inr_per_kwh": 3.00,
+        "penalty_regulation": "Maharashtra",
+        "tolerance_band_mw": 0.300,
+        "band_percentage": 0.10,
+        "freeze_lag_minutes": 45,
+        "eeg_id": "SIDDEHESH",
+    },
 }
 SITES = _PLANT_FALLBACKS
 _fallback = _PLANT_FALLBACKS.get(_DEFAULT_PLANT_NAME.upper(), _PLANT_FALLBACKS["SIRMOUR"])
@@ -597,7 +642,7 @@ def get_plant_tolerance_band_pct(penalty_regulation: str | None = None, plant_na
     if name in mp_plants:
         return 10.0
 
-    mh_plants = {"CME", "OSEPL", "ZTRIC", "CLIMATEDETOX", "EMIL", "UPL"}
+    mh_plants = {"CME", "OSEPL", "ZTRIC", "CLIMATEDETOX", "EMIL", "UPL", "LOKGREENB2", "PRANAV", "SIDDEHESH"}
     if name in mh_plants:
         return 10.0
 

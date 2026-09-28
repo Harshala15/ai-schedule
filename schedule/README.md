@@ -111,7 +111,7 @@ python run_local.py --plant SIRMOUR --time 09:45 --output my_test_schedule.csv
   - Revisions become active at Block $N + 7$.
   - Tolerance band: **$\pm 10\%$**.
 - **Telangana & Maharashtra MERC Sites (45-Minute Lag / 3 Blocks)**:
-  - *Sites*: `KOTHAGUDEM`, `BHUPALPALLY`, `KASIPET`, `JEWLI`, `CME`, `OSEPL`, `ZTRIC`, `EMIL`, `UPL`, `CLIMATEDETOX`.
+  - *Sites*: `KOTHAGUDEM`, `BHUPALPALLY`, `KASIPET`, `JEWLI`, `CME`, `OSEPL`, `ZTRIC`, `EMIL`, `UPL`, `CLIMATEDETOX`, `LOKGREENB2`, `PRANAV`, `SIDDEHESH`.
   - Revisions become active at Block $N + 4$.
   - Tolerance band: **$\pm 15\%$** (TG & Jewli Wind), **$\pm 10\%$** (MH Solar).
 

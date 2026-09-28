@@ -548,6 +548,21 @@ class TestPlantwiseStateToleranceBands(unittest.TestCase):
         self.assertEqual(config.PLANT_TOLERANCE_BAND_PCT, 10.0)
         self.assertAlmostEqual(config.PLANT_TOLERANCE_BAND_MW, 1.863, places=3)
 
+        # LOKGREENB2: 3.3 MW AC -> 0.330 MW band (10%)
+        config.load_plant_profile("LOKGREENB2")
+        self.assertEqual(config.PLANT_TOLERANCE_BAND_PCT, 10.0)
+        self.assertAlmostEqual(config.PLANT_TOLERANCE_BAND_MW, 0.330, places=3)
+
+        # PRANAV: 4.0 MW AC -> 0.400 MW band (10%)
+        config.load_plant_profile("PRANAV")
+        self.assertEqual(config.PLANT_TOLERANCE_BAND_PCT, 10.0)
+        self.assertAlmostEqual(config.PLANT_TOLERANCE_BAND_MW, 0.400, places=3)
+
+        # SIDDEHESH: 3.0 MW AC -> 0.300 MW band (10%)
+        config.load_plant_profile("SIDDEHESH")
+        self.assertEqual(config.PLANT_TOLERANCE_BAND_PCT, 10.0)
+        self.assertAlmostEqual(config.PLANT_TOLERANCE_BAND_MW, 0.300, places=3)
+
     def test_telangana_plants_tolerance_band_is_15_percent(self):
         import config
         # Kasipet: 15.0 MW AC -> 2.250 MW band

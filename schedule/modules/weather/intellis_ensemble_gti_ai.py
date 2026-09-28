@@ -75,7 +75,10 @@ PUBLIC_ENSEMBLE_URL = "https://ensemble-api.open-meteo.com/v1/ensemble"
 
 # Explicit non-meter sites where physical SCADA telemetry is absent
 # and satellite solar radiation API (GTI) acts as the virtual meter input
-NON_METER_SITES = {"ANDAD", "GUGARIYAKHEDI", "SAWDA", "BALAKWADA", "CME", "CLIMATEDETOX", "EMIL", "UPL", "REWASEIT"}
+NON_METER_SITES = {
+    "ANDAD", "GUGARIYAKHEDI", "SAWDA", "BALAKWADA", "CME", "CLIMATEDETOX",
+    "EMIL", "UPL", "REWASEIT", "SIDDEHESH", "PRANAV", "LOKGREENB2"
+}
 
 
 @dataclass
@@ -147,7 +150,9 @@ def load_plant_profile(plant_name: str = "GSNP") -> PlantProfile:
 
     # State-Aware DSM Tolerance Band
     reg_lower = reg.lower()
-    if any(s in reg_lower for s in ["maharashtra", "merc", "karnataka", "kerc", "telangana", "tserc"]):
+    if any(s in reg_lower for s in ["maharashtra", "merc"]):
+        band_pct = 0.10
+    elif any(s in reg_lower for s in ["telangana", "tserc", "karnataka", "kerc"]):
         band_pct = 0.15
     else:
         band_pct = 0.10

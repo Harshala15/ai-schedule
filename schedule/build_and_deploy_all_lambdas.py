@@ -36,6 +36,9 @@ ALL_LAMBDAS = [
     "CLIMATEDETOX-ai-intellis-scheduler",
     "EMIL-ai-intellis-scheduler",
     "UPL-ai-intellis-scheduler",
+    "LOKGREENB2-ai-intellis-scheduler",
+    "PRANAV-ai-intellis-scheduler",
+    "SIDDEHESH-ai-intellis-scheduler",
 ]
 
 print("==================================================================")
