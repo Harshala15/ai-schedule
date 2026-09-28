@@ -185,9 +185,6 @@ def _clip_meter_to_cutoff(source_csv: Path, destination_csv: Path, cutoff_dt: dt
     return destination_csv, len(rows), len(kept_rows)
 
 
-def _generate_pre_revision_feedback(
-
-
 def _read_csv_rows(csv_path: Path) -> tuple[list[str], list[dict]]:
     with open(csv_path, "r", newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
@@ -251,9 +248,6 @@ def _snapshot_metadata(
     selection: CaptureSelection,
     forecast_start: str,
     forecast_end: str,
-    ecmwf_weather_key: str,
-    pvlib_summary: str,
-    plant_performance_summary: str,
     snapshot_csv_key: str,
     latest_csv_key: str,
     current_final_csv_key: str,
@@ -290,9 +284,6 @@ def _snapshot_metadata(
         "meter_rows_available": selection.meter_rows_available,
         "meter_rows_used": selection.meter_rows_used,
         "weather_summary": selection.weather_summary,
-        "ecmwf_weather_key": ecmwf_weather_key,
-        "pvlib_summary": pvlib_summary,
-        "plant_performance_summary": plant_performance_summary,
         "context_summary": context_summary,
         "context_entries": context_entries,
         "plant_name": config.PLANT_NAME,
@@ -435,9 +426,6 @@ def run_schedule_job(
         selection=selection,
         forecast_start=forecast_start_label,
         forecast_end=forecast_end_label,
-        ecmwf_weather_key="",
-        pvlib_summary="",
-        plant_performance_summary="",
         snapshot_csv_key=f"{schedule_prefix.rstrip('/')}/{target_date}/{snapshot_csv.name}",
         latest_csv_key=f"{schedule_prefix.rstrip('/')}/{target_date}/{latest_csv.name}",
         current_final_csv_key=f"{schedule_prefix.rstrip('/')}/{target_date}/{current_final_csv.name}",

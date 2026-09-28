@@ -6,10 +6,10 @@ import sys
 from pathlib import Path
 
 # Add schedule directory to path
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import config
-from modules.weather import openmeteo_ensemble, ecmwf_weather
+from modules.weather import openmeteo_ensemble
 
 
 def run_tests():
@@ -68,18 +68,6 @@ def run_tests():
     print(f"  Interpolated 15-min GTI output: {interp_15min}")
     assert len(interp_15min) == 4, "Interpolation output count mismatch"
     assert all(val > 0 for val in interp_15min), "Interpolated GTI must be positive"
-
-    print("\n3. Testing ecmwf_weather.fetch_ecmwf_weather_summary() integration...")
-    weather_summary = ecmwf_weather.fetch_ecmwf_weather_summary(
-        latitude=config.PLANT_LAT,
-        longitude=config.PLANT_LON,
-        reference_time=test_dt,
-        hours_ahead=3,
-    )
-    print(f"  Source: {weather_summary.get('source')}")
-    print(f"  Rows count: {len(weather_summary.get('rows', []))}")
-    print("\n  Prompt text preview:")
-    print("  " + "\n  ".join(weather_summary.get("prompt_text", "").splitlines()[:7]))
 
     print("\n" + "=" * 60)
     print("ALL TESTS COMPLETED SUCCESSFULLY!")
