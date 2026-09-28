@@ -6,6 +6,7 @@ import csv
 import datetime as dt
 import json
 import math
+import os
 import re
 import shutil
 from dataclasses import dataclass
@@ -18,7 +19,8 @@ from modules.storage import state_sync
 from modules import plant_performance_utils as shared_performance_utils
 from modules import pvlib_utils as shared_pvlib_utils
 from modules import schedule_utils as shared_schedule_utils
-from anjangoan_forecast_scheduler import ecmwf_weather, settings, storage
+from modules.weather import ecmwf_weather
+from core import settings, storage
 
 
 @dataclass(frozen=True)
@@ -126,12 +128,10 @@ def _pick_latest_capture_bundle(
             f"  [WARN] No meter file found under metered_data or meter_data for {meter_prefix.rstrip('/')}/{date_str}/; "
             "continuing without intraday actuals."
         )
-        meter_objects = _list_capture_objects(bucket, meter_prefix)
 
     selected_meter = None
     if meter_objects:
-        meter_objects.sort(key=lambda obj: (obj.last_modified or dt.datetime.min.replace(tzinfo=dt.timezone.utc), obj.key))
-        selected_meter = meter_objects[-1]
+        selected_meter = shared_schedule_utils.select_preferred_meter_object(meter_objects, config.PLANT_NAME)
 
     work_root = _storage_subpath("_scheduler_work", date_str, target_dt.strftime("%H-%M"))
     screenshot_dir = work_root / "screenshots"
@@ -154,11 +154,20 @@ def _pick_latest_capture_bundle(
     if selected_meter is not None:
         raw_meter_path = meter_dir / Path(selected_meter.key).name
         storage.download_file(bucket, selected_meter.key, raw_meter_path)
-        clipped_meter_path, meter_rows_available, meter_rows_used = _clip_meter_to_cutoff(
-            raw_meter_path,
-            meter_dir / f"{Path(selected_meter.key).stem}_upto_{target_dt.strftime('%H-%M')}.csv",
-            target_dt,
-        )
+        try:
+            clipped_meter_path, meter_rows_available, meter_rows_used = _clip_meter_to_cutoff(
+                raw_meter_path,
+                meter_dir / f"{Path(selected_meter.key).stem}_upto_{target_dt.strftime('%H-%M')}.csv",
+                target_dt,
+            )
+        except Exception as e:
+            if config.is_wind_plant():
+                print(f"  [INFO] Wind plant meter data clipping bypassed ({e}); using virtual telemetry.")
+                clipped_meter_path = None
+                meter_rows_available = 0
+                meter_rows_used = 0
+            else:
+                raise
 
     enercast_path = None
 
@@ -171,8 +180,8 @@ def _pick_latest_capture_bundle(
         reference_time=target_dt,
         hours_ahead=settings.FORECAST_HORIZON_HOURS,
         timezone=settings.DEFAULT_TIMEZONE,
-        tilt=settings.ECMWF_TILT_DEGREES,
-        azimuth=settings.ECMWF_AZIMUTH_DEGREES,
+        tilt=int(round(getattr(config, "PLANT_TILT_DEG", 15.0) or 15.0)),
+        azimuth=int(round(config.to_openmeteo_azimuth(getattr(config, "PLANT_ORIENTATION_FROM_SOUTH_DEG", 0.0) or 0.0))),
     )
     weather_artifact = _store_ecmwf_weather_report(date_str, target_dt.strftime("%H-%M"), weather_report)
     context_payload = _load_prediction_context_payload()
@@ -302,24 +311,36 @@ def _store_ecmwf_weather_report(target_date: str, target_time: str, weather_repo
 
 def _clip_meter_to_cutoff(source_csv: Path, destination_csv: Path, cutoff_dt: dt.datetime) -> tuple[Path, int, int]:
     """Write a meter CSV trimmed to the revision cutoff."""
-    with open(source_csv, "r", newline="", encoding="utf-8") as handle:
-        sample = handle.read(2048)
-        delim = ";" if (";" in sample and sample.count(";") > sample.count(",")) else ","
-        handle.seek(0)
-        reader = csv.DictReader(handle, delimiter=delim)
+    with open(source_csv, "r", newline="", encoding="utf-8", errors="ignore") as handle:
+        lines = []
+        for line in handle:
+            if not lines and not line.strip():
+                continue
+            lines.append(line)
+        reader = csv.DictReader(lines)
         fieldnames = list(reader.fieldnames or [])
-        plant = (config.PLANT_NAME or "").strip().upper()
-        column_profile = getattr(daily_feedback, "PLANT_ACTUAL_METER_COLUMNS", {}).get(plant, {})
-        timestamp_candidates = column_profile.get("timestamp", getattr(daily_feedback, "RAW_METER_TIMESTAMP_COLUMNS", ()))
-        all_ts_candidates = tuple(dict.fromkeys((
-            getattr(daily_feedback, "TIMESTAMP_COLUMN", "Time"),
-            *timestamp_candidates,
-            *getattr(daily_feedback, "RAW_METER_TIMESTAMP_COLUMNS", ()),
-            "TIME", "Time", "Timestamp", "TimeStamp", "DateTime", "Datetime", "block_start", "block_end", "Block Start", "Block End", "Start (Asia/Calcutta)", "Start (Asia/Kolkata)", "Start"
-        )))
+        column_profile = daily_feedback.PLANT_ACTUAL_METER_COLUMNS.get(  # type: ignore[attr-defined]
+            (config.PLANT_NAME or "").strip().upper(),
+            {},
+        )
+        timestamp_candidates = tuple(
+            dict.fromkeys(
+                (
+                    *column_profile.get("timestamp", ()),
+                    *daily_feedback.RAW_METER_TIMESTAMP_COLUMNS,  # type: ignore[attr-defined]
+                    "DateTime",
+                    "Datetime",
+                    "TIME",
+                    "Time",
+                    "Start",
+                    "Start (Asia/Calcutta)",
+                    "Start (Asia/Kolkata)",
+                )
+            )
+        )
         timestamp_column = daily_feedback._pick_first_existing_column(  # type: ignore[attr-defined]
             fieldnames,
-            all_ts_candidates,
+            timestamp_candidates,
         )
         rows = list(reader)
 
@@ -339,15 +360,16 @@ def _clip_meter_to_cutoff(source_csv: Path, destination_csv: Path, cutoff_dt: dt
             continue
         kept_rows.append(row)
 
-    destination_csv.parent.mkdir(parents=True, exist_ok=True)
     if not kept_rows:
+        destination_csv.parent.mkdir(parents=True, exist_ok=True)
         with open(destination_csv, "w", newline="", encoding="utf-8") as handle:
-            writer = csv.DictWriter(handle, fieldnames=fieldnames, delimiter=delim, extrasaction="ignore")
+            writer = csv.DictWriter(handle, fieldnames=fieldnames, extrasaction="ignore")
             writer.writeheader()
         return destination_csv, len(rows), 0
 
+    destination_csv.parent.mkdir(parents=True, exist_ok=True)
     with open(destination_csv, "w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fieldnames, delimiter=delim, extrasaction="ignore")
+        writer = csv.DictWriter(handle, fieldnames=fieldnames, extrasaction="ignore")
         writer.writeheader()
         for row in kept_rows:
             writer.writerow(row)
@@ -545,7 +567,8 @@ def run_schedule_job(
     schedule_prefix: str,
     event: dict | None = None,
 ) -> dict:
-    config.load_plant_profile(getattr(settings, "PLANT_NAME", "ANJANGOAN"))
+    plant_name = os.getenv("PLANT_NAME") or getattr(settings, "PLANT_NAME", "BHUPALPALLY")
+    config.load_plant_profile(plant_name)
     target_date, target_time, target_dt = _parse_target_datetime(event)
     selection = _pick_latest_capture_bundle(bucket, capture_prefix, meter_prefix, target_dt)
 
@@ -562,8 +585,13 @@ def run_schedule_job(
         shutil.rmtree(work_output_dir)
     work_output_dir.mkdir(parents=True, exist_ok=True)
     meter_history_text = _build_recent_meter_history_text(bucket, meter_prefix, target_date, work_output_dir.parent)
-    pvlib_text = _build_pvlib_text(forecast_start_dt, settings.FORECAST_BLOCKS)
-    plant_performance_text = _build_recent_plant_performance_text(bucket, meter_prefix, target_date, work_output_dir.parent)
+    is_wind_site = config.is_wind_plant()
+    if is_wind_site:
+        pvlib_text = "Wind plant: PVLib/GTI solar summary is not applicable."
+        plant_performance_text = "Wind plant schedule generated using wind ensemble forecast."
+    else:
+        pvlib_text = _build_pvlib_text(forecast_start_dt, settings.FORECAST_BLOCKS)
+        plant_performance_text = _build_recent_plant_performance_text(bucket, meter_prefix, target_date, work_output_dir.parent)
     _generate_pre_revision_feedback(
         bucket,
         schedule_prefix,
@@ -574,16 +602,57 @@ def run_schedule_job(
     )
 
     snapshot_source = work_output_dir / f"{config.PLANT_NAME}_energy_generation_{target_date}.csv"
-    from modules.weather.intellis_ensemble_gti_ai import IntellisEnsembleGTIAI, load_plant_profile
-    prof = load_plant_profile(config.PLANT_NAME)
-    ai_engine = IntellisEnsembleGTIAI(plant_profile=prof)
-    ai_engine.generate_revision_schedule_csv(
-        target_date_str=target_date,
-        target_time_str=target_time,
-        output_csv_path=snapshot_source,
-        live_meter_csv_path=selection.meter_path,
-        enercast_intraday_csv_path=selection.enercast_path,
-    )
+    solar_sched_result = None
+    if is_wind_site:
+        from modules.weather.wind_ensemble import calculate_wind_schedule_96block, WindTurbineProfile
+        wind_prof = WindTurbineProfile.from_plant_profile(getattr(config, "PLANT_PROFILE", {}) or config.PLANT_NAME)
+        snapshot_block = ((target_dt.hour * 60 + target_dt.minute) // config.BLOCK_MINUTES) + 1
+        wind_sched = calculate_wind_schedule_96block(
+            config.PLANT_LAT,
+            config.PLANT_LON,
+            target_date,
+            profile=wind_prof,
+            scada_actuals=selection.meter_path,
+            current_block=snapshot_block,
+            enable_slot_selection=True,
+            enable_bias_correction=True,
+            enable_telemetry_blending=True,
+        )
+        fieldnames = [
+            "Block",
+            "Time Interval (15 minute interval)",
+            "wind_speed_hub_m_s",
+            "air_density_kg_m3",
+            "intellis_gti",
+            "intellis_mw",
+            "schedule_mw",
+        ]
+        rows_to_write = []
+        for b in wind_sched["blocks"]:
+            rows_to_write.append({
+                "Block": b["block"],
+                "Time Interval (15 minute interval)": b["time_interval"],
+                "wind_speed_hub_m_s": b.get("wind_speed_hub_m_s"),
+                "air_density_kg_m3": b.get("air_density_kg_m3"),
+                "intellis_gti": b["intellis_gti"],
+                "intellis_mw": b["intellis_mw"],
+                "schedule_mw": b["schedule_mw"],
+            })
+        shared_schedule_utils.write_csv(snapshot_source, fieldnames, rows_to_write)
+    else:
+        from modules.weather.intellis_ensemble_gti_ai import IntellisEnsembleGTIAI, load_plant_profile
+        prof = load_plant_profile(config.PLANT_NAME)
+        ai_engine = IntellisEnsembleGTIAI(plant_profile=prof)
+        solar_sched_result = ai_engine.generate_revision_schedule_csv(
+            target_date_str=target_date,
+            target_time_str=target_time,
+            output_csv_path=snapshot_source,
+            live_meter_csv_path=selection.meter_path,
+            enercast_intraday_csv_path=selection.enercast_path,
+        )
+
+    if not snapshot_source.exists():
+        raise FileNotFoundError(f"Expected schedule output was not produced: {snapshot_source}")
 
     snapshot_block = ((target_dt.hour * 60 + target_dt.minute) // config.BLOCK_MINUTES) + 1
     snapshot_stamp = f"{target_date.replace('-', '')}t{target_dt.strftime('%H%M%S')}"
@@ -594,8 +663,10 @@ def run_schedule_job(
     penalty_csv = generated_root / _penalty_schedule_name(target_date)
     latest_metadata = generated_root / f"{target_date}_latest_metadata.json"
 
+    shutil.copyfile(snapshot_source, snapshot_csv)
+    # If revision is run with force or clean_seed, do not seed from stale uncalibrated runs
     force_all = event and (str(event.get("force", "")).lower() in ("1", "true", "yes") or str(event.get("clean_seed", "")).lower() in ("1", "true", "yes"))
-    if force_all:
+    if force_all or (target_time in ("00:00", "01:15") and event and str(event.get("force", "")).lower() in ("1", "true", "yes")):
         if current_final_csv.exists():
             current_final_csv.unlink(missing_ok=True)
         if latest_csv.exists():
@@ -633,6 +704,12 @@ def run_schedule_job(
         penalty_rows=penalty_summary["total_blocks"],
     )
     metadata["snapshot_rows"] = snapshot_rows
+    metadata["plant_type"] = getattr(config, "PLANT_TYPE", "")
+    metadata["is_wind_plant"] = bool(is_wind_site)
+    if is_wind_site:
+        metadata["weather_summary_type"] = "wind_ensemble"
+    elif isinstance(solar_sched_result, dict) and "llm_strategy" in solar_sched_result:
+        metadata["llm_strategy"] = solar_sched_result["llm_strategy"]
     snapshot_metadata.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
     latest_metadata.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
 
@@ -640,6 +717,15 @@ def run_schedule_job(
     storage.upload_file(bucket, metadata["latest_csv_key"], latest_csv, content_type="text/csv")
     storage.upload_file(bucket, f"{schedule_prefix.rstrip('/')}/{target_date}/{current_final_csv.name}", current_final_csv, content_type="text/csv")
     storage.upload_file(bucket, metadata["penalty_csv_key"], penalty_csv, content_type="text/csv")
+    
+    # Dual-sync CHANDAWASA and CHANDWASA aliases for dashboard compatibility
+    if config.PLANT_NAME.upper() in ("CHANDAWASA", "CHANDWASA"):
+        alt_name = "CHANDWASA" if config.PLANT_NAME.upper() == "CHANDAWASA" else "CHANDAWASA"
+        alt_prefix = schedule_prefix.replace(config.PLANT_NAME, alt_name).replace(config.PLANT_NAME.lower(), alt_name.lower())
+        alt_final_name = current_final_csv.name.replace(config.PLANT_NAME, alt_name)
+        storage.upload_file(bucket, f"{alt_prefix.rstrip('/')}/{target_date}/{alt_final_name}", current_final_csv, content_type="text/csv")
+        storage.upload_file(bucket, f"{alt_prefix.rstrip('/')}/{target_date}/{latest_csv.name}", latest_csv, content_type="text/csv")
+
     legacy_current_final_csv = generated_root / "current_final_schedule.csv"
     if legacy_current_final_csv != current_final_csv:
         shutil.copyfile(current_final_csv, legacy_current_final_csv)
@@ -653,8 +739,3 @@ def run_schedule_job(
         state_sync.push_state_to_s3(bucket=bucket)
 
     return metadata
-
-
-
-
-

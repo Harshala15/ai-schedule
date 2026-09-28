@@ -1,2 +1,0 @@
-﻿"""ANJANGOAN Forecast Scheduler package."""
-

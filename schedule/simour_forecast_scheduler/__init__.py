@@ -1,2 +1,0 @@
-"""SIMOUR forecast scheduler package."""
-

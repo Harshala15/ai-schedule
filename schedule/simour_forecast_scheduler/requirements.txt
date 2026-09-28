@@ -1,9 +1,0 @@
-boto3
-numpy
-opencv-python-headless
-pandas
-pvlib
-openmeteo-requests
-requests-cache
-retry-requests
-google-genai
