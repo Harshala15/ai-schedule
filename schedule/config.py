@@ -768,15 +768,6 @@ CBR_FEATURE_WEIGHTS = {
     "satellite_brightness_std": 1.8,
 }
 
-for _dir in (SCREENSHOT_DIR, VIDEO_DIR, PREDICTIONS_DIR, FEATURES_LOG_DIR, MODELS_DIR, ACCURACY_REPORTS_DIR,
-             HISTORIC_CASES_DIR, ACTUALS_INBOX_DIR, ACTUALS_INBOX_PROCESSED_DIR, PREDICTION_CONTEXT_PATH.parent, METER_HISTORY_DIR, PVLIB_SUMMARY_DIR, PLANT_PERFORMANCE_DIR, ECMWF_WEATHER_DIR,
-             MANUAL_INPUT_SCREENSHOTS_DIR, MANUAL_INPUT_VIDEO_DIR, MANUAL_INPUT_ACTUALS_DIR, MANUAL_INPUT_OUTPUT_DIR,
-             EVALUATION_OUTPUT_DIR):
-    try:
-        _dir.mkdir(parents=True, exist_ok=True)
-    except (PermissionError, OSError):
-        pass
-
 MODEL_PATH = MODELS_DIR / "generation_model.pkl"
 
 # ---- Enercast-calibrated optimization & asymmetric risk parameters ----
