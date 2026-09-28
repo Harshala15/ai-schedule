@@ -34,7 +34,6 @@ from pathlib import Path
 import numpy as np
 
 import config
-from modules.storage import state_sync
 
 # ---- Adjust these to match your actual SCADA export's column names ----
 TIMESTAMP_COLUMN = "TimeStamp"
@@ -511,19 +510,7 @@ def _log_accuracy(metrics: dict, date_str: str = None) -> None:
 
 
 def _push_state_to_s3_if_enabled() -> None:
-    """Mirror the local persistent state to S3 when state sync is enabled."""
-    if not state_sync.is_enabled():
-        return
-
-    try:
-        result = state_sync.push_state_to_s3()
-        if result.uploaded or result.deleted_remote:
-            print(
-                f"  Synced persistent state to S3: uploaded {result.uploaded} file(s) "
-                f"and removed {result.deleted_remote} stale object(s)."
-            )
-    except Exception as exc:
-        print(f"  [WARN] Could not sync persistent state to S3: {exc}")
+    return
 
 
 def _daily_revision_feedback_path(date_str: str) -> Path:
