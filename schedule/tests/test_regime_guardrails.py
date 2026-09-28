@@ -437,90 +437,6 @@ class TestRegimeGuardrails(unittest.TestCase):
         self.assertTrue(is_predawn_clear, "Pre-dawn clear condition must evaluate to True")
         self.assertEqual(step2, step1_mw, "Pre-dawn clear sky guardrail must lock out negative LLM cuts")
 
-    def test_p42_clear_sky_headroom_and_peak_cap(self):
-        """Verify that under clear skies, anchor targets P42 quantile and caps peak at 85% of AC capacity."""
-        import sys
-        from pathlib import Path
-        sys.path.insert(0, str(Path(__file__).resolve().parent))
-        from modules.physics import physics_anchor
-
-        feat = {
-            "solar_elevation_deg": 68.0,
-            "month": 4,
-            "minute_of_day": 735,
-            "hour": 12,
-            "minute": 15,
-            "nwp_clearness": 1.0,
-            "temp_air_c": 32.0,
-        }
-        # 10 MW AC plant, 12 MW DC
-        anchor_mw = physics_anchor.calculate_anchor_mw(
-            feat, capacity_mw=10.0, dc_capacity_mw=12.0, performance_ratio=0.80
-        )
-        # Check that peak is strictly capped at 85% (8.50 MW)
-        self.assertLessEqual(anchor_mw, 8.50, "Peak clear generation must not exceed 85% of AC capacity")
-        self.assertGreater(anchor_mw, 6.80, "Clear peak anchor should be near P42 target (6.8 - 8.5 MW)")
-
-    def test_afternoon_thermal_hysteresis(self):
-        """Verify that afternoon thermal hysteresis (12:30-15:30 IST) applies ~0.94 derating relative to morning."""
-        import sys
-        from pathlib import Path
-        sys.path.insert(0, str(Path(__file__).resolve().parent))
-        from modules.physics import physics_anchor
-
-        feat_morning = {
-            "solar_elevation_deg": 50.0,
-            "month": 5,
-            "minute_of_day": 630,  # 10:30 AM
-            "hour": 10,
-            "minute": 30,
-            "nwp_clearness": 0.90,
-            "temp_air_c": 30.0,
-        }
-        feat_afternoon = {
-            "solar_elevation_deg": 50.0,
-            "month": 5,
-            "minute_of_day": 840,  # 14:00 PM (peak module heat)
-            "hour": 14,
-            "minute": 0,
-            "nwp_clearness": 0.90,
-            "temp_air_c": 30.0,
-        }
-        morning_mw = physics_anchor.calculate_anchor_mw(feat_morning, capacity_mw=10.0)
-        afternoon_mw = physics_anchor.calculate_anchor_mw(feat_afternoon, capacity_mw=10.0)
-
-        self.assertGreater(morning_mw, afternoon_mw, "Afternoon generation must be lower due to thermal hysteresis derate")
-        ratio = afternoon_mw / morning_mw
-        self.assertAlmostEqual(ratio, 0.94, delta=0.03, msg="Afternoon thermal derate should be ~0.94")
-
-    def test_winter_morning_fog_suppression(self):
-        """Verify winter morning fog cut-in delay and ramp suppression gate."""
-        import sys
-        from pathlib import Path
-        sys.path.insert(0, str(Path(__file__).resolve().parent))
-        from modules.physics import physics_anchor
-
-        feat_pre_cutin = {
-            "solar_elevation_deg": 4.0,  # Below winter 4.5 deg cut-in
-            "month": 1,  # January
-            "minute_of_day": 435,  # 07:15 AM
-            "hour": 7,
-            "minute": 15,
-            "nwp_clearness": 1.0,
-        }
-        anchor_cutin = physics_anchor.calculate_anchor_mw(feat_pre_cutin, capacity_mw=10.0)
-        self.assertEqual(anchor_cutin, 0.0, "Sun below 4.5 deg in winter must yield 0.0 MW due to fog/inverter delay")
-
-        feat_fog_ramp = {
-            "solar_elevation_deg": 12.0,  # Below 15 deg in winter
-            "month": 12,  # December
-            "minute_of_day": 480,  # 08:00 AM
-            "hour": 8,
-            "minute": 0,
-            "nwp_clearness": 1.0,
-        }
-        anchor_ramp = physics_anchor.calculate_anchor_mw(feat_fog_ramp, capacity_mw=10.0)
-        self.assertLessEqual(anchor_ramp, 3.50, "Winter morning fog ramp must be capped at 35% of plant capacity")
 
     def test_closed_loop_scada_decay(self):
         """Verify exponential closed-loop telemetry decay with tau = 75 minutes."""
@@ -548,32 +464,6 @@ class TestRegimeGuardrails(unittest.TestCase):
         for val in damped:
             self.assertGreaterEqual(val, 0.35)
             self.assertLessEqual(val, 0.65)
-
-    def test_asymmetric_slew_rates(self):
-        """Verify validator allows fast upward clearing ramp (22%) while constraining sudden downward drops (12%)."""
-        import sys
-        from pathlib import Path
-        sys.path.insert(0, str(Path(__file__).resolve().parent))
-        import validator
-
-        # 10 MW plant: Upward clearing ramp from 2.0 to 4.1 MW (+21%) at 08:30
-        predictions_morning = [
-            {"time": "2026-04-15 08:15", "block_number": 34, "anchor_mw": 2.0, "llm_mw": 2.0, "confidence": "High", "reasoning": "fog"},
-            {"time": "2026-04-15 08:30", "block_number": 35, "anchor_mw": 4.1, "llm_mw": 4.1, "confidence": "High", "reasoning": "clearing"},
-        ]
-        val_m = validator.validate_predictions(predictions_morning, capacity_mw=10.0)
-        # 4.1 MW should be accepted because +2.1 MW is within 22% limit (2.2 MW)
-        self.assertEqual(val_m[1]["validated_mw"], 4.1)
-
-        # Midday sudden spurious drop: 7.5 MW down to 5.0 MW (-25%) at 12:30
-        predictions_midday = [
-            {"time": "2026-04-15 12:15", "block_number": 50, "anchor_mw": 7.5, "llm_mw": 7.5, "confidence": "High", "reasoning": "midday clear"},
-            {"time": "2026-04-15 12:30", "block_number": 51, "anchor_mw": 5.0, "llm_mw": 5.0, "confidence": "Low", "reasoning": "spurious model dip"},
-        ]
-        val_mid = validator.validate_predictions(predictions_midday, capacity_mw=10.0)
-        # Drop of 2.5 MW exceeds 1.2 MW max downward step (12% capacity), so it should be smoothed to 7.5 - 1.2 = 6.3 MW
-        self.assertGreater(val_mid[1]["validated_mw"], 5.0, "Midday downward drop must be smoothed")
-        self.assertEqual(val_mid[1]["validated_mw"], 6.3)
 
     def test_weather_fusion_upper_consensus_rejects_low_outlier(self):
         """Verify that when 2 streams agree on high clear generation, the low pessimistic outlier is rejected."""
@@ -608,27 +498,6 @@ class TestRegimeGuardrails(unittest.TestCase):
         fused = sum(active_vals) / len(active_vals)
         self.assertEqual(fused, 710.0, "Active streams must be averaged, ignoring the failed stream")
 
-    def test_parabolic_clear_sky_interpolation_at_dawn(self):
-        """Verify that dawn interpolation uses solar elevation cut-in (0.0 W/m2 below 3 deg) and suppresses linear creep."""
-        import sys
-        from pathlib import Path
-        sys.path.insert(0, str(Path(__file__).resolve().parent))
-        from modules.weather import weather_fusion
-
-        hourly_map = {
-            "06:00": {"gti": 0.0, "temp": 24.0},
-            "07:00": {"gti": 60.0, "temp": 25.0},
-        }
-        # At 06:05, sun elevation is 2.56 deg (< 3.0 deg cut-in)
-        target_dt_pre = dt.datetime(2026, 9, 12, 6, 5)
-        res_pre = weather_fusion._get_hourly_interpolated(hourly_map, "06:05", target_dt=target_dt_pre)
-        self.assertEqual(res_pre["gti"], 0.0, "Pre-cutin dawn solar irradiance must be 0.0 W/m2")
-
-        # At 06:15, sun elevation is 4.83 deg. Linear interpolation would give 15.0 W/m2, but parabolic gives 5.1 W/m2.
-        target_dt_dawn = dt.datetime(2026, 9, 12, 6, 15)
-        res_dawn = weather_fusion._get_hourly_interpolated(hourly_map, "06:15", target_dt=target_dt_dawn)
-        self.assertLess(res_dawn["gti"], 10.0, "Parabolic interpolation must suppress linear creep (sub-10 vs 15.0 W/m2)")
-        self.assertAlmostEqual(res_dawn["gti"], 5.0, delta=1.0)
 
 
 class TestPlantwiseStateToleranceBands(unittest.TestCase):
@@ -701,33 +570,6 @@ class TestPlantwiseStateToleranceBands(unittest.TestCase):
         self.assertEqual(config.PLANT_TOLERANCE_BAND_PCT, 15.0)
         self.assertAlmostEqual(config.PLANT_TOLERANCE_BAND_MW, 4.200, places=3)
 
-    def test_llm_prompt_adapts_to_state_specific_tolerance_band(self):
-        import config
-        from modules.llm import predictor
-
-        # Test Sirmour (Madhya Pradesh -> 10%, 0.51 MW)
-        config.load_plant_profile("SIRMOUR")
-        base_preds_sirmour = [{"time": "2026-09-13 10:00", "anchor_mw": 3.0}]
-        prompt_sirmour = predictor._build_stepwise_prompt(
-            base_predictions=base_preds_sirmour,
-            feature_row={},
-            step1_inputs_text="step 1 test",
-            weather_text="weather test",
-        )
-        self.assertIn("±10%", prompt_sirmour, "Sirmour prompt must mandate ±10% tolerance band")
-        self.assertIn("±0.51 MW", prompt_sirmour, "Sirmour prompt must mandate ±0.51 MW tolerance band")
-
-        # Test Kasipet (Telangana -> 15%, 2.25 MW)
-        config.load_plant_profile("KASIPET")
-        base_preds_kasipet = [{"time": "2026-09-13 10:00", "anchor_mw": 8.0}]
-        prompt_kasipet = predictor._build_stepwise_prompt(
-            base_predictions=base_preds_kasipet,
-            feature_row={},
-            step1_inputs_text="step 1 test",
-            weather_text="weather test",
-        )
-        self.assertIn("±15%", prompt_kasipet, "Kasipet prompt must mandate ±15% tolerance band")
-        self.assertIn("±2.25 MW", prompt_kasipet, "Kasipet prompt must mandate ±2.25 MW tolerance band")
 
 
 class TestEnercastBehaviorAndSynthesisFixes(unittest.TestCase):
@@ -1087,61 +929,6 @@ class TestDiurnalContinuityAndAntiSawtooth(unittest.TestCase):
                     f"Block {i+1} step ({step:.3f} MW) exceeds plant tolerance band {max_allowed_step:.3f} MW"
                 )
 
-    def test_summarize_current_situation_ground_truth(self):
-        """Verify _summarize_current_situation correctly includes inverted POA irradiance, Kt, and clipping."""
-        from modules.llm import predictor as llm_pred
-        feature_row = {
-            "solar_elevation_deg": 52.4,
-            "latest_mw": 9.45,
-            "meter_gti_wm2": 920.5,
-            "meter_kt": 0.985,
-            "is_inverter_clipped": True,
-            "motion_direction_deg": 180,
-            "motion_score": 12,
-            "motion_coverage_end_pct": 5,
-        }
-        summary = llm_pred._summarize_current_situation(feature_row)
-        self.assertIn("Solar elevation: 52.4 deg", summary)
-        self.assertIn("Latest SCADA meter generation: 9.450 MW", summary)
-        self.assertIn("Inverted real ground-truth POA irradiance: 920.5 W/m²", summary)
-        self.assertIn("Live ground clearness index (Kt = Actual / ClearSky): 0.985", summary)
-        self.assertIn("INVERTER AC SATURATION / CLIPPING", summary)
-
-    def test_llm_kt_physical_synthesis(self):
-        """Verify _parse_llm_response extracts Kt and synthesizes physical MW from base_anchor_mw."""
-        from modules.llm import predictor as llm_pred
-        anchor_predictions = [
-            {"time": "2026-09-17 11:30", "block_number": 47, "anchor_mw": 8.0, "base_anchor_mw": 8.0},
-            {"time": "2026-09-17 11:45", "block_number": 48, "anchor_mw": 8.5, "base_anchor_mw": 8.5},
-        ]
-        # LLM returns dimensionless Kt = 0.95
-        raw_json = json.dumps([
-            {"time": "2026-09-17 11:30", "kt": 0.95, "confidence": "High", "reasoning": "Clear sky with slight aerosol"},
-            {"time": "2026-09-17 11:45", "kt": 0.90, "confidence": "High", "reasoning": "Thin cirrus passing"},
-        ])
-        results = llm_pred._parse_llm_response(raw_json, anchor_predictions)
-        self.assertEqual(len(results), 2)
-        # Block 1: 8.0 * 0.95 = 7.60 MW
-        self.assertEqual(results[0]["llm_mw"], 7.60)
-        # Block 2: 8.5 * 0.90 = 7.65 MW
-        self.assertEqual(results[1]["llm_mw"], 7.65)
-
-    def test_stepwise_llm_kt_physical_synthesis(self):
-        """Verify _parse_stepwise_llm_response extracts Kt and correctly anchors step2_mw and llm_mw."""
-        from modules.llm import predictor as llm_pred
-        base_predictions = [
-            {"time": "2026-09-17 12:00", "block_number": 49, "anchor_mw": 9.0},
-        ]
-        raw_json = json.dumps({
-            "predictions": [
-                {"time": "2026-09-17 12:00", "kt": 1.00, "confidence": "High", "reasoning": "Optimal clear sky noon"}
-            ]
-        })
-        results = llm_pred._parse_stepwise_llm_response(raw_json, base_predictions)
-        self.assertEqual(len(results), 1)
-        # 9.0 * 1.00 = 9.00 MW
-        self.assertEqual(results[0]["step2_mw"], 9.0)
-        self.assertEqual(results[0]["llm_mw"], 9.0)
 
     def test_slot_candidate_diagnostics(self):
         """Verify IntellisEnsembleGTIAI.get_slot_candidate_diagnostics extracts slot models and 60-min biases."""

@@ -100,29 +100,14 @@ def write_csv(path: Path, fieldnames: list[str], rows: list[dict]) -> None:
 
 
 def _current_final_fieldnames(existing_fieldnames: list[str]) -> list[str]:
-    """Return the frozen current-final header order."""
-    preferred = [
+    """Return the frozen current-final header order for Intellis AI 2.0."""
+    return [
         "Block",
         "Time Interval (15 minute interval)",
         "intellis_gti",
         "intellis_mw",
         "schedule_mw",
     ]
-    ordered = [column for column in preferred if column in existing_fieldnames or column in preferred]
-    for column in existing_fieldnames:
-        if column not in ordered and column not in (
-            "LLM Reasoning",
-            "Step 1 Meter Base Forecast MW",
-            "Step 2 Weather Adjustment MW",
-            "Step 2 Weather + Video Adjusted MW",
-            "Step 3 Plant Performance MW",
-            "Step 4 Revision Feedback MW",
-            "Step 4 Revision Feedback Adjusted MW",
-            "LLM Schedule (MW)",
-            "Final Validated MW",
-        ):
-            ordered.append(column)
-    return ordered
 
 
 def _meter_filename_hints(plant_name: str | None = None) -> list[str]:
@@ -623,9 +608,8 @@ def write_full_block_schedule_from_llm_schedule(
                     b = int(raw_b)
                     mw = float(
                         row.get("intellis_mw")
-                        or row.get("Step 2 Weather Adjustment MW")
+                        or row.get("schedule_mw")
                         or row.get("Schedule MW")
-                        or row.get("Final Validated MW")
                         or 0.0
                     )
                     gti = float(row.get("intellis_gti", 0.0) or 0.0)
@@ -648,9 +632,8 @@ def write_full_block_schedule_from_llm_schedule(
                     b = int(raw_b)
                     mw = float(
                         row.get("intellis_mw")
-                        or row.get("Step 2 Weather Adjustment MW")
+                        or row.get("schedule_mw")
                         or row.get("Schedule MW")
-                        or row.get("Final Validated MW")
                         or 0.0
                     )
                     gti = float(row.get("intellis_gti", 0.0) or 0.0)

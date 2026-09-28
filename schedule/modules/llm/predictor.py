@@ -1,26 +1,11 @@
 """
-llm_predictor.py
+llm/predictor.py
 
-The ONLY module in this pipeline that calls an LLM. Its job is narrow
-and constrained on purpose: given a Step 1 scaffold for each of the
-next 12 forecast blocks, plus the most similar past situations (from
-similarity_retrieval.py) and their real outcomes, ask the LLM to
-ADJUST each block and explain why.
-
-WHY THIS DESIGN (vs asking the LLM to just "predict the generation"):
-    - The Step 1 scaffold keeps every prediction grounded in the
-      current meter state even if the LLM's adjustment is unhelpful.
-    - Retrieved similar cases give the LLM concrete historical evidence
-      ("in similar cloud conditions, actual generation was X% lower/
-      higher than this formula predicted") instead of vague reasoning.
-    - A single, small, structured JSON response is far more reliable to
-      parse and validate than asking for 8 independent numbers with no
-      anchor to sanity-check against.
-
-If the LLM call fails entirely (network, rate limit, bad JSON), this
-module falls back to the scaffold values unchanged -- the pipeline never
-produces no output just because the LLM step had a problem.
+OpenRouter LLM communication client for Intellis AI 2.0.
+Provides resilient API key fallback, model retries, and plant-level LLM guardrails
+for the LLMStrategicArbiter pipeline.
 """
+
 
 import json
 import os
@@ -244,16 +229,3 @@ def _call_llm_text(
             print(f"  [WARN] Switching from {key_label} to next configured OpenRouter key.")
 
     return "", last_error
-
-# ---------------------------------------------------------------------------
-# Backward Compatibility Stubs (Deprecated Legacy Pipeline)
-# ---------------------------------------------------------------------------
-
-def predict_with_llm(*args, **kwargs) -> list:
-    """Deprecated legacy entrypoint. The production engine uses LLMStrategicArbiter directly."""
-    return []
-
-
-def predict_stepwise_with_llm(*args, **kwargs) -> list:
-    """Deprecated legacy entrypoint. The production engine uses LLMStrategicArbiter directly."""
-    return []

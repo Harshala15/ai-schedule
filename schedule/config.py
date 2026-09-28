@@ -65,9 +65,6 @@ def _read_env_setting(name: str) -> str:
     return os.getenv(name, _read_env_value(name)).strip()
 
 
-# Toggle to enable/disable Windy video motion processing in forecasts
-ENABLE_WINDY_VIDEO_FEATURES = _read_env_bool("ENABLE_WINDY_VIDEO_FEATURES", default=False)
-
 # ---- Local/runtime storage root ----
 # Default to the current working directory for local development.
 # In Lambda/container deployments, set SIMOUR_STORAGE_ROOT to /tmp/... so
