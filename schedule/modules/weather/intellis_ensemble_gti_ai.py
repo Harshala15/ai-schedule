@@ -1650,11 +1650,11 @@ class IntellisEnsembleGTIAI:
             except Exception as exc:
                 print(f"  [WARN] Intraday SCADA feedback failed: {exc}; using strategic forecast.")
 
-        # Extract next 12 actionable dispatch blocks for the LLM to forecast
-        next_12_blocks = []
+        # Extract actionable daylight dispatch blocks up to 19:00 (Block 76 / 7:00 PM) for the LLM to forecast
+        solar_actionable_blocks = []
         for b in sched["blocks"]:
-            if actionable_block <= b["block"] < actionable_block + 12 and 24 <= b["block"] <= 76:
-                next_12_blocks.append({
+            if actionable_block <= b["block"] <= 76 and b["block"] >= 24:
+                solar_actionable_blocks.append({
                     "block": b["block"],
                     "time_interval": b["time_interval"],
                     "predicted_mw": b["schedule_mw"],
@@ -1662,39 +1662,52 @@ class IntellisEnsembleGTIAI:
                 })
 
         # 5. Consult LLM Strategic Arbiter (for metered and non-metered sites)
-        try:
-            from modules.llm.strategic_arbiter import LLMStrategicArbiter
-            arbiter = LLMStrategicArbiter(plant_profile=self.profile)
-            advice = arbiter.get_strategic_guidance(
-                target_date_str=target_date_str,
-                target_time_str=target_time_str,
-                weather_indicators=weather_ind,
-                live_telemetry=telemetry_ind,
-                next_12_blocks=next_12_blocks,
-            )
-            print(f"  [LLM STRATEGY] Regime: {advice.regime} | Risk Quantile: {advice.quantile_bias_factor:.3f} | Agency: {advice.preferred_agency} | Trip Flag: {advice.is_trip_or_curtailment}")
-            print(f"                 Reasoning: {advice.reasoning}")
-        except Exception as arb_err:
-            print(f"  [WARN] LLM Strategic Arbiter invocation skipped: {arb_err}")
+        if not solar_actionable_blocks:
+            # Past sunset (after 19:00) or no actionable daylight blocks remaining
             from modules.llm.strategic_arbiter import StrategicAdvice
-            source_lbl = "SATELLITE_PHYSICS" if is_non_meter_site else "PHYSICS_BASELINE"
             advice = StrategicAdvice(
-                regime="CLEAR_SKY",
+                regime="NIGHT",
                 quantile_bias_factor=1.0,
-                preferred_agency="SATELLITE_PHYSICS" if is_non_meter_site else "BALANCED",
+                preferred_agency="PHYSICS_BASELINE",
                 is_trip_or_curtailment=False,
-                reasoning=f"Deterministic fallback physics mode ({arb_err})",
+                reasoning="Night hours (no actionable daylight blocks remaining up to 7:00 PM).",
                 block_predictions={},
-                source=source_lbl,
+                source="NIGHT_PHYSICS_BASELINE",
             )
+        else:
+            try:
+                from modules.llm.strategic_arbiter import LLMStrategicArbiter
+                arbiter = LLMStrategicArbiter(plant_profile=self.profile)
+                advice = arbiter.get_strategic_guidance(
+                    target_date_str=target_date_str,
+                    target_time_str=target_time_str,
+                    weather_indicators=weather_ind,
+                    live_telemetry=telemetry_ind,
+                    actionable_blocks=solar_actionable_blocks,
+                    next_12_blocks=solar_actionable_blocks,
+                )
+                print(f"  [LLM STRATEGY] Regime: {advice.regime} | Risk Quantile: {advice.quantile_bias_factor:.3f} | Agency: {advice.preferred_agency} | Trip Flag: {advice.is_trip_or_curtailment}")
+                print(f"                 Reasoning: {advice.reasoning}")
+            except Exception as arb_err:
+                print(f"  [WARN] LLM Strategic Arbiter invocation skipped: {arb_err}")
+                from modules.llm.strategic_arbiter import StrategicAdvice
+                source_lbl = "SATELLITE_PHYSICS" if is_non_meter_site else "PHYSICS_BASELINE"
+                advice = StrategicAdvice(
+                    regime="CLEAR_SKY",
+                    quantile_bias_factor=1.0,
+                    preferred_agency="SATELLITE_PHYSICS" if is_non_meter_site else "BALANCED",
+                    is_trip_or_curtailment=False,
+                    reasoning=f"Deterministic fallback physics mode ({arb_err})",
+                    block_predictions={},
+                    source=source_lbl,
+                )
 
         # Note: Hardware trip / inverter outage logic is disabled per industry standard (Enercast alignment).
         # Electrical breaker resets cannot be predicted in advance; scheduling strictly reflects meteorological potential.
         advice.is_trip_or_curtailment = False
 
-        # 6. Apply LLM Predictions for next 12 blocks, and pure Intellis GTI up to 19:00 (Block 76 / night 7)
+        # 6. Apply LLM Predictions for all actionable daylight blocks up to 19:00 (Block 76 / 7:00 PM)
         is_clear_sky = (
-            
             real_clearness_ratio >= 0.85
             or advice.regime in ("CLEAR", "CLEAR_SKY")
             or (weather_ind and weather_ind.get("cloud_cover_pct", 100) <= 30.0)
@@ -1706,70 +1719,75 @@ class IntellisEnsembleGTIAI:
         )
 
         if advice.block_predictions:
-            print(f"  [LLM 12-BLOCK PREDICTIONS] Applying direct LLM predictions to {len(advice.block_predictions)} blocks...")
+            print(f"  [LLM SOLAR HORIZON PREDICTIONS] Applying direct LLM predictions up to 7 PM to {len(advice.block_predictions)} blocks...")
             prev_val = None
-            max_llm_block = max(int(k) for k in advice.block_predictions.keys()) if advice.block_predictions else (actionable_block + 11)
+            max_llm_block = max((int(k) for k in advice.block_predictions.keys() if str(k).strip().isdigit()), default=76)
             for b in sched["blocks"]:
                 b_str = str(b["block"])
-                if b["block"] >= actionable_block and b_str in advice.block_predictions:
-                    pred_mw = float(advice.block_predictions[b_str])
-                    pred_mw = max(0.0, min(self.profile.ac_capacity_mw, pred_mw))
-                    b_idx = b["block"] - 1
-                    physics_base_mw = float(b["schedule_mw"])
+                if b["block"] >= actionable_block:
+                    if b_str in advice.block_predictions:
+                        pred_mw = float(advice.block_predictions[b_str])
+                        pred_mw = max(0.0, min(self.profile.ac_capacity_mw, pred_mw))
+                        b_idx = b["block"] - 1
+                        physics_base_mw = float(b["schedule_mw"])
 
-                    # --- PHYSICAL GUARDRAIL 1: Solar Geometry Hard Cutoff ---
-                    if b["block"] > 74 or b["block"] < 24:
-                        pred_mw = 0.0
+                        # --- PHYSICAL GUARDRAIL 1: Solar Geometry Hard Cutoff ---
+                        if b["block"] > 74 or b["block"] < 24:
+                            pred_mw = 0.0
 
-                    # --- PHYSICAL GUARDRAIL 2: Clear-Sky Negative Cut Lockout ---
-                    # If ground telemetry, weather, or regime confirms clear sky,
-                    # forbid LLM from slashing predictions below the physics baseline.
-                    if is_clear_sky:
-                        if pred_mw < physics_base_mw:
-                            pred_mw = physics_base_mw
+                        # --- PHYSICAL GUARDRAIL 2: Clear-Sky Negative Cut Lockout ---
+                        # If ground telemetry, weather, or regime confirms clear sky,
+                        # forbid LLM from slashing predictions below the physics baseline.
+                        if is_clear_sky:
+                            if pred_mw < physics_base_mw:
+                                pred_mw = physics_base_mw
 
-                    # --- PHYSICAL GUARDRAIL 3: Overcast Optical Cloud Ceiling Upper Bound ---
-                    # If today is overcast, forbid LLM from inflating generation above the cloud ceiling
-                    if is_overcast:
-                        overcast_max = max(physics_base_mw * 1.10, self.profile.ac_capacity_mw * 0.25)
-                        if pred_mw > overcast_max:
-                            pred_mw = overcast_max
+                        # --- PHYSICAL GUARDRAIL 3: Overcast Optical Cloud Ceiling Upper Bound ---
+                        # If today is overcast, forbid LLM from inflating generation above the cloud ceiling
+                        if is_overcast:
+                            overcast_max = max(physics_base_mw * 1.10, self.profile.ac_capacity_mw * 0.25)
+                            if pred_mw > overcast_max:
+                                pred_mw = overcast_max
 
-                    # --- PHYSICAL GUARDRAIL 4: Ramp-Rate Continuity Filter ---
-                    # Only apply downward ramp clamping if we are NOT locked to clear-sky physics baseline
-                    if prev_val is not None and 24 <= b["block"] <= 74:
-                        if is_clear_sky and pred_mw >= physics_base_mw and not advice.is_trip_or_curtailment:
-                            # Physics baseline is already smooth and continuous
-                            pred_mw = max(pred_mw, physics_base_mw)
-                        else:
-                            if b["block"] == actionable_block and (advice.is_trip_or_curtailment or real_clearness_ratio < 0.65):
-                                max_ramp = max(abs(pred_mw - prev_val), max(0.50, self.profile.ac_capacity_mw * 0.10))
+                        # --- PHYSICAL GUARDRAIL 4: Ramp-Rate & Anti-Sawtooth Monotonic Descent Filter ---
+                        # Only apply downward ramp clamping if we are NOT locked to clear-sky physics baseline
+                        if prev_val is not None and 24 <= b["block"] <= 74:
+                            if is_clear_sky and pred_mw >= physics_base_mw and not advice.is_trip_or_curtailment:
+                                # Physics baseline is already smooth and continuous
+                                pred_mw = max(pred_mw, physics_base_mw)
                             else:
-                                max_ramp = max(0.50, self.profile.ac_capacity_mw * 0.10)
-                            if abs(pred_mw - prev_val) > max_ramp:
-                                pred_mw = prev_val + (max_ramp if pred_mw > prev_val else -max_ramp)
-                    pred_mw = round(pred_mw, 2)
-                    b["predicted_mw"] = pred_mw
-                    b["intellis_mw"] = pred_mw
-                    b["schedule_mw"] = pred_mw
-                    if self.profile.transfer_ratio > 0:
-                        b["intellis_gti"] = round(pred_mw / self.profile.transfer_ratio, 1)
-                        b["predicted_gti_wm2"] = b["intellis_gti"]
-                elif b["block"] > max_llm_block and b["block"] <= 76:
-                    # After 12 LLM blocks up to 19:00 (Block 76 / night 7), use pure physical Intellis GTI
-                    raw_gti_mw = float(b.get("predicted_mw", b.get("intellis_mw", 0.0)))
-                    raw_gti_mw = max(0.0, min(self.profile.ac_capacity_mw, raw_gti_mw))
-                    if b["block"] > 72:  # Sunset transition (18:00 - 19:00)
-                        raw_gti_mw = min(raw_gti_mw, max(0.0, round((76 - b["block"]) * 0.03, 2)))
-                    b["schedule_mw"] = raw_gti_mw
-                    b["intellis_mw"] = raw_gti_mw
-                    b["predicted_mw"] = raw_gti_mw
-                elif b["block"] > 76 or b["block"] < 24:
-                    # Night hours past 19:00 (Block 76) are strictly 0.0 MW
-                    b["schedule_mw"] = 0.0
-                    b["intellis_mw"] = 0.0
-                    b["intellis_gti"] = 0.0
-                    b["predicted_gti_wm2"] = 0.0
+                                if b["block"] == actionable_block and (advice.is_trip_or_curtailment or real_clearness_ratio < 0.65):
+                                    max_ramp = max(abs(pred_mw - prev_val), max(0.50, self.profile.ac_capacity_mw * 0.10))
+                                else:
+                                    max_ramp = max(0.50, self.profile.ac_capacity_mw * 0.10)
+                                if abs(pred_mw - prev_val) > max_ramp:
+                                    pred_mw = prev_val + (max_ramp if pred_mw > prev_val else -max_ramp)
+                                # Afternoon descent guardrail (blocks 50 to 76): generation must not spike upward
+                                if b["block"] >= 50 and not is_clear_sky and pred_mw > prev_val + 0.05:
+                                    pred_mw = prev_val
+
+                        pred_mw = round(pred_mw, 2)
+                        b["predicted_mw"] = pred_mw
+                        b["intellis_mw"] = pred_mw
+                        b["schedule_mw"] = pred_mw
+                        if self.profile.transfer_ratio > 0:
+                            b["intellis_gti"] = round(pred_mw / self.profile.transfer_ratio, 1)
+                            b["predicted_gti_wm2"] = b["intellis_gti"]
+                    elif b["block"] > max_llm_block and b["block"] <= 76:
+                        # After LLM blocks up to 19:00 (Block 76 / 7:00 PM), use pure physical Intellis GTI
+                        raw_gti_mw = float(b.get("predicted_mw", b.get("intellis_mw", 0.0)))
+                        raw_gti_mw = max(0.0, min(self.profile.ac_capacity_mw, raw_gti_mw))
+                        if b["block"] > 72:  # Sunset transition (18:00 - 19:00)
+                            raw_gti_mw = min(raw_gti_mw, max(0.0, round((76 - b["block"]) * 0.03, 2)))
+                        b["schedule_mw"] = raw_gti_mw
+                        b["intellis_mw"] = raw_gti_mw
+                        b["predicted_mw"] = raw_gti_mw
+                    elif b["block"] > 76 or b["block"] < 24:
+                        # Night hours past 19:00 (Block 76) or before sunrise are strictly 0.0 MW
+                        b["schedule_mw"] = 0.0
+                        b["intellis_mw"] = 0.0
+                        b["intellis_gti"] = 0.0
+                        b["predicted_gti_wm2"] = 0.0
                 prev_val = float(b["schedule_mw"])
         elif abs(advice.quantile_bias_factor - 1.0) > 0.005:
             q_factor = advice.quantile_bias_factor
