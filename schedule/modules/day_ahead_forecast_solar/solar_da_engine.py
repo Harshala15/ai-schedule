@@ -222,6 +222,37 @@ def generate_solar_day_ahead_schedule(
 
     p_final = np.clip(np.round(p_final, 2), 0.0, prof.ac_capacity_mw)
 
+    # 3b. Active Plant Control Windows Guardrail (DynamoDB)
+    control_summary: Dict[str, Any] = {}
+    try:
+        from modules.control_windows import PlantControlWindowEngine
+        control_engine = PlantControlWindowEngine()
+        dc_cap = getattr(prof, "dc_capacity_mw", prof.ac_capacity_mw)
+        p_final_controlled, block_audit, control_summary = control_engine.apply_to_blocks(
+            raw_forecast_mw_96=p_final,
+            site_id=plant_name,
+            target_date_str=target_date_str,
+            site_ac_capacity_mw=prof.ac_capacity_mw,
+            site_dc_capacity_mw=dc_cap,
+            freeze_end_block=0,
+        )
+    except Exception as cw_err:
+        print(f"  [WARN] PlantControlWindowEngine failed for {plant_name}: {cw_err}")
+        p_final_controlled = p_final
+        block_audit = [
+            {
+                "Block": b + 1,
+                "raw_forecast_mw": float(p_final[b]),
+                "final_schedule_mw": float(p_final[b]),
+                "block_control_status": "NORMAL",
+                "block_control_mode": "NONE",
+                "block_control_type": "NORMAL",
+                "effective_control_capacity_ac_mw": prof.ac_capacity_mw,
+                "control_applied": False,
+            }
+            for b in range(96)
+        ]
+
     # 4. Canonical 96-Block Regulatory DataFrame
     time_intervals = [
         f"{(b * 15) // 60:02d}:{(b * 15) % 60:02d} - {((b + 1) * 15) // 60:02d}:00"
@@ -235,8 +266,14 @@ def generate_solar_day_ahead_schedule(
         "Time Interval": time_intervals,
         "clearsky_poa_w_m2": np.round(cs_poa, 2),
         "mos_consensus_mw": np.round(p_mos, 2),
-        "da_schedule_mw": p_final,
+        "raw_forecast_mw": p_final,
+        "da_schedule_mw": p_final_controlled,
         "active_capacity_mw": np.full(96, prof.ac_capacity_mw),
+        "block_control_status": [a["block_control_status"] for a in block_audit],
+        "block_control_mode": [a["block_control_mode"] for a in block_audit],
+        "block_control_type": [a["block_control_type"] for a in block_audit],
+        "effective_control_capacity_ac_mw": [a["effective_control_capacity_ac_mw"] for a in block_audit],
+        "control_applied": [a["control_applied"] for a in block_audit],
     })
 
     # 5. Export and S3 Dispatch
@@ -265,5 +302,6 @@ def generate_solar_day_ahead_schedule(
         "s3_uri": s3_uri,
         "upload_success": upload_success,
         "local_csv_path": str(local_path),
-        "total_daylight_mw": float(np.sum(p_final)),
+        "total_daylight_mw": float(np.sum(p_final_controlled)),
+        "control_windows": control_summary,
     }

@@ -144,12 +144,44 @@ class WindDAEngine:
         )
         print(f"  [5/6] Park derating & calibration applied (scheduled peak: {np.max(final_schedule_mw_96):.2f} MW).")
 
+        # 6b. Active Plant Control Windows Guardrail (DynamoDB)
+        control_summary: Dict[str, Any] = {}
+        try:
+            from modules.control_windows import PlantControlWindowEngine
+            cw_engine = PlantControlWindowEngine()
+            controlled_mw_96, block_audit, control_summary = cw_engine.apply_to_blocks(
+                raw_forecast_mw_96=final_schedule_mw_96,
+                site_id=plant_name,
+                target_date_str=target_date_str,
+                site_ac_capacity_mw=profile.rated_capacity_mw,
+                site_dc_capacity_mw=profile.rated_capacity_mw,
+                freeze_end_block=0,
+            )
+        except Exception as cw_err:
+            print(f"  [WARN] PlantControlWindowEngine failed for wind plant {plant_name}: {cw_err}")
+            controlled_mw_96 = final_schedule_mw_96
+            block_audit = [
+                {
+                    "Block": b + 1,
+                    "raw_forecast_mw": float(final_schedule_mw_96[b]),
+                    "final_schedule_mw": float(final_schedule_mw_96[b]),
+                    "block_control_status": "NORMAL",
+                    "block_control_mode": "NONE",
+                    "block_control_type": "NORMAL",
+                    "effective_control_capacity_ac_mw": profile.rated_capacity_mw,
+                    "control_applied": False,
+                }
+                for b in range(96)
+            ]
+
         # 7. Formatter & S3 Export under 'intellis Dayhead wind/'
         df_schedule = self.formatter_engine.build_schedule_dataframe(
-            final_schedule_mw_96=final_schedule_mw_96,
+            final_schedule_mw_96=controlled_mw_96,
             hub_wind_speed_96=consensus_wind_speed_96,
             air_density_96=b_densities,
             rated_capacity_mw=profile.rated_capacity_mw,
+            raw_forecast_mw_96=final_schedule_mw_96,
+            block_audit=block_audit,
         )
         export_meta = self.formatter_engine.export_and_upload(
             df_schedule=df_schedule,
@@ -162,8 +194,9 @@ class WindDAEngine:
         return {
             **export_meta,
             "rated_capacity_mw": profile.rated_capacity_mw,
-            "max_scheduled_mw": round(float(np.max(final_schedule_mw_96)), 2),
-            "mean_scheduled_mw": round(float(np.mean(final_schedule_mw_96)), 2),
+            "max_scheduled_mw": round(float(np.max(controlled_mw_96)), 2),
+            "mean_scheduled_mw": round(float(np.mean(controlled_mw_96)), 2),
+            "control_windows": control_summary,
         }
 
 

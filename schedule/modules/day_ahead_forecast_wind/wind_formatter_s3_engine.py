@@ -28,6 +28,8 @@ class WindFormatterS3Engine:
         hub_wind_speed_96: np.ndarray,
         air_density_96: np.ndarray,
         rated_capacity_mw: float,
+        raw_forecast_mw_96: Optional[np.ndarray] = None,
+        block_audit: Optional[List[Dict[str, Any]]] = None,
     ) -> pd.DataFrame:
         """Constructs statutory 96-block DataFrame."""
         rows = []
@@ -40,14 +42,26 @@ class WindFormatterS3Engine:
             t_str = "24:00" if e_hr == 24 else f"{e_hr:02d}:{e_min:02d}"
             t_interval = f"{s_hr:02d}:{s_min:02d} - {t_str}"
 
-            rows.append({
+            row = {
                 "Block": b_num,
                 "Time Interval": t_interval,
                 "wind_speed_hub_m_s": round(float(hub_wind_speed_96[b]), 2),
                 "air_density_kg_m3": round(float(air_density_96[b]), 3),
-                "da_schedule_mw": round(float(final_schedule_mw_96[b]), 2),
-                "active_capacity_mw": round(float(rated_capacity_mw), 2),
-            })
+            }
+            if raw_forecast_mw_96 is not None:
+                row["raw_forecast_mw"] = round(float(raw_forecast_mw_96[b]), 2)
+            row["da_schedule_mw"] = round(float(final_schedule_mw_96[b]), 2)
+            row["active_capacity_mw"] = round(float(rated_capacity_mw), 2)
+
+            if block_audit is not None and len(block_audit) > b:
+                audit = block_audit[b]
+                row["block_control_status"] = audit.get("block_control_status", "NORMAL")
+                row["block_control_mode"] = audit.get("block_control_mode", "NONE")
+                row["block_control_type"] = audit.get("block_control_type", "NORMAL")
+                row["effective_control_capacity_ac_mw"] = audit.get("effective_control_capacity_ac_mw", float(rated_capacity_mw))
+                row["control_applied"] = audit.get("control_applied", False)
+
+            rows.append(row)
         return pd.DataFrame(rows)
 
     def export_and_upload(

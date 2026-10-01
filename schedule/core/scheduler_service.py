@@ -457,6 +457,67 @@ def run_schedule_job(
     if not snapshot_source.exists():
         raise FileNotFoundError(f"Expected schedule output was not produced: {snapshot_source}")
 
+    # --- Active Plant Control Windows Guardrail (DynamoDB) ---
+    control_summary: dict[str, Any] = {}
+    try:
+        from modules.control_windows import PlantControlWindowEngine
+        cw_engine = PlantControlWindowEngine()
+        freeze_from = _freeze_from_datetime(target_date, target_time)
+        freeze_end_block = ((freeze_from.hour * 60 + freeze_from.minute) // config.BLOCK_MINUTES)
+
+        ss_fields, ss_rows = _read_csv_rows(snapshot_source)
+        if ss_rows:
+            raw_sched_mw = []
+            for r in ss_rows:
+                v = r.get("schedule_mw") or r.get("intellis_mw") or 0.0
+                try:
+                    raw_sched_mw.append(float(v))
+                except Exception:
+                    raw_sched_mw.append(0.0)
+
+            ac_cap = float(getattr(config, "PLANT_CAPACITY_MW", 0.0) or (prof.ac_capacity_mw if "prof" in locals() else 37.0))
+            dc_cap = float(getattr(config, "PLANT_DC_CAPACITY_MW", 0.0) or (getattr(prof, "dc_capacity_mw", ac_cap) if "prof" in locals() else ac_cap))
+
+            if len(raw_sched_mw) == 96:
+                controlled_mw, block_audit, control_summary = cw_engine.apply_to_blocks(
+                    raw_forecast_mw_96=raw_sched_mw,
+                    site_id=config.PLANT_NAME,
+                    target_date_str=target_date,
+                    site_ac_capacity_mw=ac_cap,
+                    site_dc_capacity_mw=dc_cap,
+                    freeze_end_block=freeze_end_block,
+                )
+
+                new_fields = list(ss_fields)
+                audit_cols = [
+                    "raw_forecast_mw",
+                    "block_control_status",
+                    "block_control_mode",
+                    "block_control_type",
+                    "effective_control_capacity_ac_mw",
+                    "control_applied",
+                ]
+                for col in audit_cols:
+                    if col not in new_fields:
+                        new_fields.append(col)
+
+                for i, r in enumerate(ss_rows):
+                    audit_info = block_audit[i]
+                    r["raw_forecast_mw"] = audit_info["raw_forecast_mw"]
+                    r["block_control_status"] = audit_info["block_control_status"]
+                    r["block_control_mode"] = audit_info["block_control_mode"]
+                    r["block_control_type"] = audit_info["block_control_type"]
+                    r["effective_control_capacity_ac_mw"] = audit_info["effective_control_capacity_ac_mw"]
+                    r["control_applied"] = audit_info["control_applied"]
+                    r["schedule_mw"] = round(float(controlled_mw[i]), 2)
+                    if "intellis_mw" in r and not audit_info.get("frozen", False):
+                        r["intellis_mw"] = round(float(controlled_mw[i]), 2)
+
+                _write_csv(snapshot_source, new_fields, ss_rows)
+                print(f"  [CONTROL_WINDOWS] Applied control windows: {control_summary.get('windows_applied', 0)} active window(s) applied for {config.PLANT_NAME}.")
+    except Exception as cw_err:
+        print(f"  [WARN] PlantControlWindowEngine execution failed; continuing without control windows: {cw_err}")
+
     snapshot_block = ((target_dt.hour * 60 + target_dt.minute) // config.BLOCK_MINUTES) + 1
     snapshot_stamp = f"{target_date.replace('-', '')}t{target_dt.strftime('%H%M%S')}"
     snapshot_csv = generated_root / f"schedule_from_{snapshot_block}_{snapshot_stamp}.csv"
@@ -505,6 +566,7 @@ def run_schedule_job(
     metadata["snapshot_rows"] = snapshot_rows
     metadata["plant_type"] = getattr(config, "PLANT_TYPE", "")
     metadata["is_wind_plant"] = bool(is_wind_site)
+    metadata["control_windows"] = control_summary
     if is_wind_site:
         metadata["weather_summary_type"] = "wind_ensemble"
         if isinstance(wind_sched_result, dict) and "llm_strategy" in wind_sched_result:
