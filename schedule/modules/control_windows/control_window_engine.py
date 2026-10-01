@@ -70,6 +70,7 @@ class PlantControlWindowEngine:
     ):
         self.table_name = table_name or os.getenv("CONTROL_WINDOWS_TABLE", "plant_control_windows_test")
         self.region_name = region_name or os.getenv("AWS_DEFAULT_REGION", "ap-south-1")
+        self.plant_id = str(os.getenv("PLANT_ID", "vedanjay") or "vedanjay").strip()
         self._dynamodb_resource = None
         self._dynamodb_client = None
 
@@ -137,15 +138,30 @@ class PlantControlWindowEngine:
                     except Exception as q_err:
                         logger.warning("DynamoDB query failed for site_id='%s': %s", query_val, q_err)
             else:
-                # Schema B: Partitioned by plant_id or other attribute
-                # Query by plant_id / scan fallback with site filtering
-                try:
-                    resp = table.query(
-                        KeyConditionExpression=Key(partition_key).eq(clean_site)
-                    )
-                    raw_items.extend(resp.get("Items", []))
-                except Exception:
-                    # Scan fallback
+                # Schema B: Partitioned by plant_id (normal scheduler style) or another grouping key.
+                # Query the plant/group partition first, then filter by site/site_id below.
+                # This avoids missing records stored as plant_id=vedanjay, site=KOTHAGUDEM.
+                query_values: list[str] = []
+                if partition_key == "plant_id":
+                    query_values.extend([self.plant_id, self.plant_id.upper(), self.plant_id.lower()])
+                query_values.extend([clean_site, "ALL"])
+
+                seen_query_values: set[str] = set()
+                for query_val in query_values:
+                    query_val = str(query_val or "").strip()
+                    if not query_val or query_val in seen_query_values:
+                        continue
+                    seen_query_values.add(query_val)
+                    try:
+                        resp = table.query(
+                            KeyConditionExpression=Key(partition_key).eq(query_val)
+                        )
+                        raw_items.extend(resp.get("Items", []))
+                    except Exception as q_err:
+                        logger.warning("DynamoDB query failed for %s='%s': %s", partition_key, query_val, q_err)
+
+                if not raw_items:
+                    # Last-resort compatibility fallback for unexpected table schemas.
                     resp = table.scan()
                     raw_items.extend(resp.get("Items", []))
 
@@ -450,7 +466,8 @@ class PlantControlWindowEngine:
                 eff_cap = match["effective_control_capacity_ac_mw"]
                 final_val = self.scale_forecast_mw(raw_mw, eff_cap, ac_cap)
                 final_arr[idx] = final_val
-                applied_window_ids.add(match["selected_window_id"])
+                if match.get("selected_window_id"):
+                    applied_window_ids.add(match["selected_window_id"])
 
                 per_block_audit.append({
                     "Block": b,
