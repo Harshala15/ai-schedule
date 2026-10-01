@@ -15,23 +15,19 @@ import pandas as pd
 from typing import Dict, Any, Tuple, List
 
 from .da_member_selection import DAMemberSelectionEngine
-from .da_prompt_builder import DAMasterPromptBuilder
-from .da_llm_arbiter import DASolarLLMArbiter
 
 class SolarDayAheadEngine:
     """
-    Master Day-Ahead Solar Schedule Generation Pipeline.
+    Master Day-Ahead Solar Schedule Generation Pipeline (Pure Physics & MOS Consensus).
     """
 
-    def __init__(self, site_config: Dict[str, Any], openrouter_api_keys: List[str] = None):
+    def __init__(self, site_config: Dict[str, Any]):
         self.site_config = site_config
         self.site_id = site_config.get("site_id", "SOLAR_PLANT")
         self.p_cap_ac = site_config.get("P_CAP_AC", 10.0)
         self.p_cap_dc = site_config.get("P_CAP_DC", 12.5)
 
         self.mos_engine = DAMemberSelectionEngine()
-        self.prompt_builder = DAMasterPromptBuilder(site_config)
-        self.llm_arbiter = DASolarLLMArbiter(api_keys=openrouter_api_keys if openrouter_api_keys else [])
 
     def resolve_dates(self) -> Tuple[datetime.date, datetime.date]:
         """
@@ -112,41 +108,34 @@ class SolarDayAheadEngine:
         p_avail = np.full(96, max(0.0, self.p_cap_ac - maintenance_outage_mw))
         p_mos_derated = np.minimum(p_mos_da, p_avail)
 
-        # Module 7: Master Day-Ahead Prompt Construction
-        prompt_text = self.prompt_builder.build_prompt(
-            target_date_str=target_date_str,
-            p_clearsky=p_clearsky,
-            p_mos_derated=p_mos_derated,
-            synoptic_indicators=synoptic_indicators,
-            mos_audit_info=mos_audit
-        )
+        # Deterministic Meteorological Synoptic Regime Classification (No LLM Required)
+        cloud_cover = float(synoptic_indicators.get("cloud_cover_pct", 25.0))
+        precip = float(synoptic_indicators.get("precip_mm", 0.0))
+        cape = float(synoptic_indicators.get("cape_j_kg", 0.0))
+        if precip > 1.0 or cloud_cover >= 80.0:
+            synoptic_regime = "MONSOON_OVERCAST"
+        elif cloud_cover <= 25.0:
+            synoptic_regime = "CLEAR_SKY"
+        elif cape > 1000.0 or cloud_cover >= 60.0:
+            synoptic_regime = "LOCAL_CONVECTIVE"
+        else:
+            synoptic_regime = "PARTLY_CLOUDY"
 
-        # Module 8: OpenRouter Strategic LLM Arbitration
-        llm_result = self.llm_arbiter.execute_arbitration(
-            prompt_text=prompt_text,
-            fallback_mos_schedule=p_mos_derated,
-            p_cap_ac=self.p_cap_ac
-        )
-
-        raw_llm_vector = llm_result.get("validated_schedule_vector", p_mos_derated)
-        regime = llm_result.get("synoptic_regime", "CLEAR_SKY")
-
-        # Module 9: Physical Guardrails & Schedule Arbitration
+        # Module 7: Physical Guardrails & Schedule Arbitration (Directly applied to MOS Consensus)
         p_da_final = self.apply_physical_guardrails(
-            raw_pred=raw_llm_vector,
+            raw_pred=p_mos_derated,
             p_clearsky=p_clearsky,
             p_mos_derated=p_mos_derated,
-            synoptic_regime=regime,
+            synoptic_regime=synoptic_regime,
             p_avail=p_avail
         )
 
-        # Module 10: Formatting & Canonical 7-Column CSV Assembly
+        # Module 8: Formatting & Canonical Regulatory CSV Assembly
         df_schedule = pd.DataFrame({
             "Block": range(1, 97),
             "Time Interval": [f"{(b-1)*15//60:02d}:{((b-1)*15)%60:02d}" for b in range(1, 97)],
             "clearsky_poa_w_m2": np.round(p_clearsky, 2),
             "mos_consensus_mw": np.round(p_mos_derated, 2),
-            "llm_quantile_mw": np.round(raw_llm_vector, 2),
             "da_schedule_mw": np.round(p_da_final, 2),
             "active_capacity_mw": np.round(p_avail, 2)
         })
@@ -155,8 +144,9 @@ class SolarDayAheadEngine:
             "site_id": self.site_id,
             "today_date": d_today.strftime("%Y-%m-%d"),
             "target_date": target_date_str,
+            "synoptic_regime": synoptic_regime,
             "da_schedule_df": df_schedule,
             "da_schedule_mw": p_da_final.tolist(),
-            "llm_result": llm_result,
-            "mos_audit": mos_audit
+            "mos_audit": mos_audit,
+            "source": "PHYSICS_MOS_CONSENSUS_DA"
         }

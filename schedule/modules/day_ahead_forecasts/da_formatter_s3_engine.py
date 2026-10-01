@@ -22,22 +22,23 @@ class DAFormatterS3Engine:
         p_da_final: np.ndarray,
         p_clearsky: np.ndarray,
         p_mos_derated: np.ndarray,
-        raw_llm_vector: np.ndarray,
-        p_avail: np.ndarray
+        p_avail: np.ndarray,
+        raw_llm_vector: np.ndarray = None,
     ) -> pd.DataFrame:
         """
-        Assembles canonical 7-column Day-Ahead regulatory CSV DataFrame.
+        Assembles canonical Day-Ahead regulatory CSV DataFrame.
         """
-        df = pd.DataFrame({
+        data = {
             "Block": range(1, 97),
             "Time Interval": [f"{(b-1)*15//60:02d}:{((b-1)*15)%60:02d}" for b in range(1, 97)],
             "clearsky_poa_w_m2": np.round(p_clearsky, 2),
             "mos_consensus_mw": np.round(p_mos_derated, 2),
-            "llm_quantile_mw": np.round(raw_llm_vector, 2),
             "da_schedule_mw": np.round(p_da_final, 2),
             "active_capacity_mw": np.round(p_avail, 2)
-        })
-        return df
+        }
+        if raw_llm_vector is not None:
+            data["llm_quantile_mw"] = np.round(raw_llm_vector, 2)
+        return pd.DataFrame(data)
 
     def export_artifacts(
         self,
