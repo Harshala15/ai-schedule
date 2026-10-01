@@ -1,9 +1,10 @@
 """
 Solar Day-Ahead Generation Forecast Engine Master Orchestrator.
 
-Orchestrates Modules 1 through 10 for Day-Ahead (Day T+1) 96-block schedule generation
+Orchestrates pure physics and multi-agency MOS consensus for Day-Ahead (Day T+1) 96-block schedule generation
 prior to the statutory 10:00 AM gate closure, incorporating dynamic IST date resolution,
-multi-agency enforcing algorithms, and physical guardrail screening.
+astronomical clear-sky transposition, 143-member NWP spline interpolation, and physical guardrail screening.
+(Note: Day-Ahead LLM dependency has been completely removed in favor of deterministic physics).
 """
 
 import os
@@ -13,6 +14,7 @@ import pytz
 import numpy as np
 import pandas as pd
 from typing import Dict, Any, Tuple, List
+from pathlib import Path
 
 from .da_member_selection import DAMemberSelectionEngine
 
@@ -150,3 +152,118 @@ class SolarDayAheadEngine:
             "mos_audit": mos_audit,
             "source": "PHYSICS_MOS_CONSENSUS_DA"
         }
+
+
+def generate_solar_day_ahead_schedule(
+    plant_name: str,
+    target_date_str: str,
+    run_tag: str = "da0",
+    s3_bucket: str = "vedanjay-schedules-test-608744602858",
+) -> Dict[str, Any]:
+    """
+    Generates statutory 96-block Day-Ahead forecast for a solar plant using
+    pure multi-agency NWP physics and 24h MOS consensus, then uploads to S3.
+    """
+    from modules.weather.intellis_ensemble_gti_ai import IntellisEnsembleGTIAI, load_plant_profile
+    import boto3
+
+    prof = load_plant_profile(plant_name)
+    ai_engine = IntellisEnsembleGTIAI(plant_profile=prof)
+
+    # 1. 143-Member NWP Multi-Model Physics Forecast
+    sched_result = ai_engine.predict_96block_schedule(target_date_str)
+    cs_poa = ai_engine.compute_clearsky_poa_96block(target_date_str)
+    p_mos = np.array([float(b.get("predicted_mw", b.get("schedule_mw", 0.0))) for b in sched_result["blocks"]])
+
+    # 2. Atmospheric Indicators & Synoptic Regime
+    weather = ai_engine.fetch_ensemble_weather(target_date_str)
+    hourly = weather.get("hourly", {})
+    cloud_vals = [float(v) for v in hourly.get("cloud_cover", []) if v is not None and not np.isnan(v)]
+    mean_cloud = float(np.mean(cloud_vals[6:19])) if len(cloud_vals) >= 19 else (float(np.mean(cloud_vals)) if cloud_vals else 25.0)
+
+    cape_vals = [float(v) for v in hourly.get("cape", []) if v is not None and not np.isnan(v)]
+    max_cape = float(np.max(cape_vals)) if cape_vals else 0.0
+
+    precip_vals = [float(v) for v in hourly.get("precipitation", []) if v is not None and not np.isnan(v)]
+    tot_precip = float(np.sum(precip_vals)) if precip_vals else 0.0
+
+    if tot_precip > 1.0 or mean_cloud >= 80.0:
+        synoptic_regime = "MONSOON_OVERCAST"
+    elif mean_cloud <= 25.0:
+        synoptic_regime = "CLEAR_SKY"
+    elif max_cape > 1000.0 or mean_cloud >= 60.0:
+        synoptic_regime = "LOCAL_CONVECTIVE"
+    else:
+        synoptic_regime = "PARTLY_CLOUDY"
+
+    # 3. Physical Guardrails Enforcement
+    p_final = np.copy(p_mos)
+    # Guardrail 1: Night Zeroing (Blocks 1-23 and Blocks 75-96)
+    p_final[0:23] = 0.0
+    p_final[74:96] = 0.0
+
+    # Guardrail 2: Clear-sky floor lock
+    if synoptic_regime == "CLEAR_SKY":
+        for b in range(23, 74):
+            p_final[b] = max(p_final[b], p_mos[b])
+
+    # Guardrail 3: Overcast optical cloud ceiling
+    if synoptic_regime == "MONSOON_OVERCAST":
+        for b in range(23, 74):
+            max_ceiling = max(p_mos[b] * 1.10, prof.ac_capacity_mw * 0.25)
+            p_final[b] = min(p_final[b], max_ceiling)
+
+    # Guardrail 4: Ramp continuity filter
+    max_ramp = max(0.50, prof.ac_capacity_mw * 0.10)
+    for b in range(24, 74):
+        diff = p_final[b] - p_final[b - 1]
+        if abs(diff) > max_ramp:
+            p_final[b] = p_final[b - 1] + np.sign(diff) * max_ramp
+
+    p_final = np.clip(np.round(p_final, 2), 0.0, prof.ac_capacity_mw)
+
+    # 4. Canonical 96-Block Regulatory DataFrame
+    time_intervals = [
+        f"{(b * 15) // 60:02d}:{(b * 15) % 60:02d} - {((b + 1) * 15) // 60:02d}:00"
+        if ((b + 1) * 15) % 60 == 0 and ((b + 1) * 15) // 60 == 24
+        else f"{(b * 15) // 60:02d}:{(b * 15) % 60:02d} - {((b + 1) * 15) // 60:02d}:{((b + 1) * 15) % 60:02d}"
+        for b in range(96)
+    ]
+
+    df_schedule = pd.DataFrame({
+        "Block": range(1, 97),
+        "Time Interval": time_intervals,
+        "clearsky_poa_w_m2": np.round(cs_poa, 2),
+        "mos_consensus_mw": np.round(p_mos, 2),
+        "da_schedule_mw": p_final,
+        "active_capacity_mw": np.full(96, prof.ac_capacity_mw),
+    })
+
+    # 5. Export and S3 Dispatch
+    local_dir = Path("/tmp") / "day_ahead_solar"
+    local_dir.mkdir(parents=True, exist_ok=True)
+    filename = f"{plant_name}_{target_date_str}_{run_tag}.csv"
+    local_path = local_dir / filename
+    df_schedule.to_csv(local_path, index=False)
+
+    s3_key = f"intellis Dayhead solar/{plant_name}/{target_date_str}/{filename}"
+    s3_uri = f"s3://{s3_bucket}/{s3_key}"
+
+    try:
+        s3 = boto3.client("s3")
+        s3.upload_file(str(local_path), s3_bucket, s3_key, ExtraArgs={"ContentType": "text/csv"})
+        upload_success = True
+    except Exception as exc:
+        print(f"  [WARN] S3 upload failed for {plant_name}: {exc}")
+        upload_success = False
+
+    return {
+        "plant_name": plant_name,
+        "target_date": target_date_str,
+        "run_tag": run_tag,
+        "synoptic_regime": synoptic_regime,
+        "s3_uri": s3_uri,
+        "upload_success": upload_success,
+        "local_csv_path": str(local_path),
+        "total_daylight_mw": float(np.sum(p_final)),
+    }

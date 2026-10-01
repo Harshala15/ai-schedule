@@ -6,7 +6,7 @@ import numpy as np
 
 class DAPhysicalGuardrailsEngine:
     """
-    Screens raw LLM strategic predictions against 4 physical guardrails.
+    Screens forecast predictions against 4 physical guardrails.
     """
 
     def __init__(self, p_cap_ac: float):

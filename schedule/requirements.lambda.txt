@@ -8,4 +8,5 @@ openmeteo-requests
 requests-cache
 retry-requests
 requests
+scipy
 google-genai

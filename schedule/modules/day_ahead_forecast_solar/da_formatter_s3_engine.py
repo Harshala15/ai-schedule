@@ -1,5 +1,5 @@
 """
-Module 10: LLM JSON-to-CSV Regulatory Formatter, Plotly HTML Renderer & AWS S3 Cloud Dispatch Engine.
+Day-Ahead CSV Regulatory Formatter, Plotly HTML Renderer & AWS S3 Cloud Dispatch Engine.
 """
 
 import os
@@ -10,7 +10,7 @@ from typing import Dict, Any
 
 class DAFormatterS3Engine:
     """
-    Formats 96-block Day-Ahead schedule into canonical 7-column CSV schema,
+    Formats 96-block Day-Ahead schedule into canonical regulatory CSV schema,
     generates Plotly HTML graphic, and handles boto3 AWS S3 data lake upload.
     """
 
@@ -23,7 +23,6 @@ class DAFormatterS3Engine:
         p_clearsky: np.ndarray,
         p_mos_derated: np.ndarray,
         p_avail: np.ndarray,
-        raw_llm_vector: np.ndarray = None,
     ) -> pd.DataFrame:
         """
         Assembles canonical Day-Ahead regulatory CSV DataFrame.
@@ -36,8 +35,6 @@ class DAFormatterS3Engine:
             "da_schedule_mw": np.round(p_da_final, 2),
             "active_capacity_mw": np.round(p_avail, 2)
         }
-        if raw_llm_vector is not None:
-            data["llm_quantile_mw"] = np.round(raw_llm_vector, 2)
         return pd.DataFrame(data)
 
     def export_artifacts(
