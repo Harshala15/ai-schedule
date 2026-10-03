@@ -159,7 +159,9 @@ def generate_solar_day_ahead_schedule(
     target_date_str: str,
     run_tag: str = "da0",
     s3_bucket: str = "vedanjay-schedules-test-608744602858",
+    block_no: int | None = None,
 ) -> Dict[str, Any]:
+
     """
     Generates statutory 96-block Day-Ahead forecast for a solar plant using
     pure multi-agency NWP physics and 24h MOS consensus, then uploads to S3.
@@ -279,20 +281,64 @@ def generate_solar_day_ahead_schedule(
     # 5. Export and S3 Dispatch
     local_dir = Path("/tmp") / "day_ahead_solar"
     local_dir.mkdir(parents=True, exist_ok=True)
-    filename = f"{plant_name}_{target_date_str}_{run_tag}.csv"
-    local_path = local_dir / filename
-    df_schedule.to_csv(local_path, index=False)
 
-    s3_key = f"intellis Dayhead solar/{plant_name}/{target_date_str}/{filename}"
-    s3_uri = f"s3://{s3_bucket}/{s3_key}"
+    lgepl_replica_key = None
+    if plant_name == "LGEPL":
+        # Exclusively upload LGEPL_DD-MM-YYYY_<BLOCK>_<TAG>.csv (no duplicate files)
+        try:
+            d_obj = datetime.strptime(target_date_str, "%Y-%m-%d")
+            dd_mm_yyyy = d_obj.strftime("%d-%m-%Y")
+        except Exception:
+            dd_mm_yyyy = target_date_str
 
-    try:
-        s3 = boto3.client("s3")
-        s3.upload_file(str(local_path), s3_bucket, s3_key, ExtraArgs={"ContentType": "text/csv"})
-        upload_success = True
-    except Exception as exc:
-        print(f"  [WARN] S3 upload failed for {plant_name}: {exc}")
-        upload_success = False
+        tag_upper = run_tag.upper()  # e.g., DA0, DA1, DA2
+        da_block_map = {
+            "DA0": 18,  # Morning: 04:30 AM IST (Block 18)
+            "DA1": 54,  # Afternoon: 01:30 PM IST (Block 54)
+            "DA2": 90,  # Night: 10:30 PM IST (Block 90)
+        }
+        if block_no is not None:
+            current_block = int(block_no)
+        else:
+            current_block = da_block_map.get(tag_upper)
+            if current_block is None:
+                tz_ist = pytz.timezone("Asia/Kolkata")
+                now_ist = datetime.now(tz_ist)
+                current_block = max(1, min(96, (now_ist.hour * 60 + now_ist.minute) // 15))
+
+        filename = f"LGEPL_{dd_mm_yyyy}_{current_block}_{tag_upper}.csv"
+        local_path = local_dir / filename
+        df_schedule.to_csv(local_path, index=False)
+
+        s3_key = f"intellis Dayhead solar/LGEPL/{target_date_str}/{filename}"
+        s3_uri = f"s3://{s3_bucket}/{s3_key}"
+
+        try:
+            s3 = boto3.client("s3")
+            s3.upload_file(str(local_path), s3_bucket, s3_key, ExtraArgs={"ContentType": "text/csv"})
+            lgepl_replica_key = s3_key
+            upload_success = True
+            print(f"  [LGEPL] Uploaded Day-Ahead CSV -> {s3_uri}")
+        except Exception as exc:
+            print(f"  [WARN] S3 upload failed for LGEPL: {exc}")
+            upload_success = False
+    else:
+        # Standard format for all other 20+ plants: PLANT_YYYY-MM-DD_da*.csv
+        filename = f"{plant_name}_{target_date_str}_{run_tag}.csv"
+        local_path = local_dir / filename
+        df_schedule.to_csv(local_path, index=False)
+
+        s3_key = f"intellis Dayhead solar/{plant_name}/{target_date_str}/{filename}"
+        s3_uri = f"s3://{s3_bucket}/{s3_key}"
+
+        try:
+            s3 = boto3.client("s3")
+            s3.upload_file(str(local_path), s3_bucket, s3_key, ExtraArgs={"ContentType": "text/csv"})
+            upload_success = True
+        except Exception as exc:
+            print(f"  [WARN] S3 upload failed for {plant_name}: {exc}")
+            upload_success = False
+
 
     return {
         "plant_name": plant_name,
@@ -300,8 +346,10 @@ def generate_solar_day_ahead_schedule(
         "run_tag": run_tag,
         "synoptic_regime": synoptic_regime,
         "s3_uri": s3_uri,
+        "lgepl_replica_key": lgepl_replica_key,
         "upload_success": upload_success,
         "local_csv_path": str(local_path),
         "total_daylight_mw": float(np.sum(p_final_controlled)),
         "control_windows": control_summary,
     }
+

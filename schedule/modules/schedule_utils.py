@@ -255,6 +255,7 @@ def freeze_from_datetime(target_date: str, target_time: str, block_minutes: int 
         "LOKGREENB2": 45,
         "PRANAV": 45,
         "SIDDEHESH": 45,
+        "LGEPL": 45,
     }
     freeze_lag_minutes = freeze_lag_minutes_by_plant.get(config.PLANT_NAME.upper(), 45)
     return freeze_from_datetime_with_lag(
@@ -328,6 +329,7 @@ def write_current_final_schedule(
         "LOKGREENB2": 45,
         "PRANAV": 45,
         "SIDDEHESH": 45,
+        "LGEPL": 45,
     }.get(config.PLANT_NAME.upper(), 45)
     freeze_from = freeze_from_datetime_with_lag(
         target_date,

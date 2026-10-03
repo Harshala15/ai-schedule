@@ -587,6 +587,65 @@ def run_schedule_job(
     storage.upload_file(bucket, f"{schedule_prefix.rstrip('/')}/{target_date}/{current_final_csv.name}", current_final_csv, content_type="text/csv")
     storage.upload_file(bucket, metadata["penalty_csv_key"], penalty_csv, content_type="text/csv")
 
+    # Specialized revision penalty replica exclusively for LGEPL
+    if str(getattr(config, "PLANT_NAME", "")).strip().upper() == "LGEPL":
+        try:
+            # 1. Resolve block number at revision run
+            run_block = (event or {}).get("block") or (event or {}).get("block_no")
+            if run_block is None:
+                run_block = (target_dt.hour * 60 + target_dt.minute) // 15
+                if run_block == 0:
+                    run_block = 96
+
+            # 2. Resolve revision tag (R1 to R8)
+            rev_tag = (event or {}).get("rev") or (event or {}).get("revision_no") or (event or {}).get("revision")
+            if not rev_tag:
+                lgepl_rev_map = {
+                    "06:30": "R1", "06:45": "R1",
+                    "08:00": "R2", "08:15": "R2",
+                    "09:30": "R3", "09:45": "R3",
+                    "11:00": "R4", "11:15": "R4",
+                    "12:30": "R5", "12:45": "R5",
+                    "14:00": "R6", "14:15": "R6",
+                    "15:30": "R7", "15:45": "R7",
+                }
+                t_clean = target_time.strip()
+                rev_tag = lgepl_rev_map.get(t_clean)
+                if not rev_tag:
+                    t_mins = target_dt.hour * 60 + target_dt.minute
+                    if t_mins <= 420:
+                        rev_tag = "R1"
+                    elif t_mins <= 510:
+                        rev_tag = "R2"
+                    elif t_mins <= 600:
+                        rev_tag = "R3"
+                    elif t_mins <= 690:
+                        rev_tag = "R4"
+                    elif t_mins <= 780:
+                        rev_tag = "R5"
+                    elif t_mins <= 870:
+                        rev_tag = "R6"
+                    else:
+                        rev_tag = "R7"
+
+            else:
+                rev_tag = str(rev_tag).strip().upper()
+                if not rev_tag.startswith("R"):
+                    rev_tag = f"R{rev_tag}"
+
+            # Format: LGEPL_DD-MM-YYYY_<BLOCK>_ID_<REV>.csv
+            dd_mm_yyyy = target_dt.strftime("%d-%m-%Y")
+            lgepl_replica_filename = f"LGEPL_{dd_mm_yyyy}_{run_block}_ID_{rev_tag}.csv"
+            lgepl_replica_csv = generated_root / lgepl_replica_filename
+            shutil.copyfile(penalty_csv, lgepl_replica_csv)
+
+            lgepl_replica_key = f"{schedule_prefix.rstrip('/')}/{target_date}/{lgepl_replica_csv.name}"
+            storage.upload_file(bucket, lgepl_replica_key, lgepl_replica_csv, content_type="text/csv")
+            metadata["lgepl_revision_penalty_csv_key"] = lgepl_replica_key
+            print(f"  [LGEPL] Created & uploaded revision penalty replica: {lgepl_replica_key}")
+        except Exception as lgepl_err:
+            print(f"  [WARN] Failed to write LGEPL revision penalty replica: {lgepl_err}")
+
     legacy_current_final_csv = generated_root / "current_final_schedule.csv"
     if legacy_current_final_csv != current_final_csv:
         shutil.copyfile(current_final_csv, legacy_current_final_csv)

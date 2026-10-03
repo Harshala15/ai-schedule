@@ -24,27 +24,28 @@ logger.setLevel(logging.INFO)
 # Default S3 Bucket
 S3_BUCKET = os.getenv("SCHEDULE_BUCKET", "vedanjay-schedules-test-608744602858")
 
-# Regulatory Solar Plant Matrix: (Run Morning da0?, Run Night da1?)
-SITE_DISPATCH_RULES: Dict[str, tuple[bool, bool]] = {
-    "ANDAD": (True, False),
-    "ANJANGOAN": (True, False),
-    "BALAKWADA": (True, False),
-    "BAMKHAL": (True, False),
-    "BHUPALPALLY": (True, True),
-    "CME": (True, False),
-    "ENRICH": (True, False),
-    "GSNP": (True, False),
-    "GUGARIYAKHEDI": (True, False),
-    "KASIPET": (True, True),
-    "KOTHAGUDEM": (True, True),
-    "NANDGAON": (True, False),
-    "OSEPL": (True, False),
-    "REWASEIT": (False, False),
-    "REWASPRNG": (False, False),
-    "SAWDA": (True, False),
-    "SHAHA": (True, False),
-    "SIRMOUR": (True, False),
-    "ZTRIC": (True, False),
+# Regulatory Solar Plant Matrix: (Run Morning da0?, Run Afternoon da1?, Run Night da2?)
+SITE_DISPATCH_RULES: Dict[str, tuple[bool, bool, bool]] = {
+    "ANDAD": (True, False, False),
+    "ANJANGOAN": (True, False, False),
+    "BALAKWADA": (True, False, False),
+    "BAMKHAL": (True, False, False),
+    "BHUPALPALLY": (True, False, True),
+    "CME": (True, False, False),
+    "ENRICH": (True, False, False),
+    "GSNP": (True, False, False),
+    "GUGARIYAKHEDI": (True, False, False),
+    "KASIPET": (True, False, True),
+    "KOTHAGUDEM": (True, False, True),
+    "LGEPL": (True, True, True),
+    "NANDGAON": (True, False, False),
+    "OSEPL": (True, False, False),
+    "REWASEIT": (False, False, False),
+    "REWASPRNG": (False, False, False),
+    "SAWDA": (True, False, False),
+    "SHAHA": (True, False, False),
+    "SIRMOUR": (True, False, False),
+    "ZTRIC": (True, False, False),
 }
 
 SHAHA_SUB_PLANTS = ["SIDDEHESH", "PRANAV", "LOKGREENB2"]
@@ -65,18 +66,25 @@ def _resolve_target_date(event: Dict[str, Any] | None) -> tuple[str, str]:
 
 
 def _resolve_run_type(event: Dict[str, Any] | None) -> str:
-    """Detects whether this execution is morning ('da0') or night ('da1')."""
+    """Detects whether this execution is morning ('da0'), afternoon ('da_afternoon'), or night ('da_night')."""
     if event and "run_type" in event:
         val = str(event["run_type"]).strip().lower()
         if val in ("da0", "morning"):
             return "da0"
-        if val in ("da1", "night"):
-            return "da1"
+        if val in ("afternoon", "da_afternoon", "da1_afternoon"):
+            return "da_afternoon"
+        if val in ("da1", "da2", "night", "da_night"):
+            return "da_night"
 
     # Infer from current IST hour if not explicitly supplied
     tz_ist = pytz.timezone("Asia/Kolkata")
     now_ist = datetime.now(tz_ist)
-    return "da0" if now_ist.hour < 12 else "da1"
+    if now_ist.hour < 11:
+        return "da0"
+    elif now_ist.hour < 17:
+        return "da_afternoon"
+    else:
+        return "da_night"
 
 
 def lambda_handler(event: Dict[str, Any] | None, context: Any = None) -> Dict[str, Any]:
@@ -105,10 +113,19 @@ def lambda_handler(event: Dict[str, Any] | None, context: Any = None) -> Dict[st
         # Filter candidate sites matching regulatory schedule table
         candidate_sites = []
         is_morning = (run_tag == "da0")
-        for site, (run_morn, run_night) in SITE_DISPATCH_RULES.items():
+        is_afternoon = (run_tag == "da_afternoon")
+        is_night = (run_tag in ("da1", "da2", "da_night", "night"))
+
+        for site, rules in SITE_DISPATCH_RULES.items():
+            run_morn = rules[0]
+            run_afternoon = rules[1] if len(rules) > 2 else False
+            run_night = rules[2] if len(rules) > 2 else rules[1]
+
             if is_morning and run_morn:
                 candidate_sites.append(site)
-            elif not is_morning and run_night:
+            elif is_afternoon and run_afternoon:
+                candidate_sites.append(site)
+            elif is_night and run_night:
                 candidate_sites.append(site)
 
     results: List[Dict[str, Any]] = []
@@ -122,13 +139,29 @@ def lambda_handler(event: Dict[str, Any] | None, context: Any = None) -> Dict[st
         plants_to_run = SHAHA_SUB_PLANTS if site == "SHAHA" else [site]
 
         for p_name in plants_to_run:
+            # Map run_tag to canonical plant-specific tag:
+            # For LGEPL: da0 (Morning) -> da0, da_afternoon (Afternoon) -> da1, da_night (Night) -> da2
+            # For other plants: da0 (Morning) -> da0, da_night (Night) -> da1
+            if p_name == "LGEPL":
+                if run_tag == "da0":
+                    plant_run_tag = "da0"
+                elif run_tag == "da_afternoon":
+                    plant_run_tag = "da1"
+                else:
+                    plant_run_tag = "da2"
+            else:
+                plant_run_tag = "da0" if run_tag == "da0" else "da1"
+
+            block_override = (event or {}).get("block") or (event or {}).get("block_no")
             try:
                 res = generate_solar_day_ahead_schedule(
                     plant_name=p_name,
                     target_date_str=target_date_str,
-                    run_tag=run_tag,
+                    run_tag=plant_run_tag,
                     s3_bucket=bucket,
+                    block_no=block_override,
                 )
+
 
                 if res.get("upload_success"):
                     print(f"  [SUCCESS] {p_name} Day-Ahead uploaded -> {res['s3_uri']}")

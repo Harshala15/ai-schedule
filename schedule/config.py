@@ -484,6 +484,21 @@ _PLANT_FALLBACKS = {
         "freeze_lag_minutes": 45,
         "eeg_id": "SIDDEHESH",
     },
+    "LGEPL": {
+        "latitude": 15.120426,
+        "longitude": 79.729956,
+        "capacity_mw": 3.00,
+        "dc_capacity_mw": 4.20,
+        "max_feed_in_mw": 3.00,
+        "tilt_deg": 16.0,
+        "orientation_deg_from_south": 0.0,
+        "ppa_rate_inr_per_kwh": 3.00,
+        "penalty_regulation": "Andhra Pradesh",
+        "tolerance_band_mw": 0.450,
+        "band_percentage": 0.15,
+        "freeze_lag_minutes": 45,
+        "eeg_id": "LGEPL",
+    },
 }
 SITES = _PLANT_FALLBACKS
 _fallback = _PLANT_FALLBACKS.get(_DEFAULT_PLANT_NAME.upper(), _PLANT_FALLBACKS["SIRMOUR"])
@@ -632,6 +647,8 @@ def get_plant_tolerance_band_pct(penalty_regulation: str | None = None, plant_na
         return 10.0
     if "telangana" in reg or "tserc" in reg:
         return 15.0
+    if "andhra pradesh" in reg or "aperc" in reg or "ap" in reg:
+        return 15.0
 
     # Plant-name fallback if penalty_regulation was omitted or generic
     mp_plants = {
@@ -647,7 +664,8 @@ def get_plant_tolerance_band_pct(penalty_regulation: str | None = None, plant_na
         return 10.0
 
     tg_plants = {"BHUPALPALLY", "KASIPET", "KOTHAGUDEM", "MANDAMARRI"}
-    if name in tg_plants:
+    ap_plants = {"LGEPL"}
+    if name in tg_plants or name in ap_plants:
         return 15.0
 
     if is_wind_plant(name):

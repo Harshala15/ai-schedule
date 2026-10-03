@@ -39,6 +39,7 @@ ALL_LAMBDAS = [
     "LOKGREENB2-ai-intellis-scheduler",
     "PRANAV-ai-intellis-scheduler",
     "SIDDEHESH-ai-intellis-scheduler",
+    "LGEPL-ai-intellis-scheduler",
 ]
 
 print("==================================================================")

@@ -27,13 +27,14 @@ ACCOUNT_ID = "608744602858"
 FUNCTION_NAME = "intellis-dayhead-forcast-solar"
 ROLE_ARN = f"arn:aws:iam::{ACCOUNT_ID}:role/global1-lambda-role"
 REPO_NAME = "intellis-ai-scheduler"
-TAG = "intellis-dayahead-20261001-v1"
+TAG = "intellis-dayahead-20261003-v3"
 ECR_REGISTRY = f"{ACCOUNT_ID}.dkr.ecr.{REGION}.amazonaws.com"
 IMAGE_URI = f"{ECR_REGISTRY}/{REPO_NAME}:{TAG}"
 CMD_OVERRIDE = ["intellis_dayahead_lambda.lambda_handler"]
 S3_BUCKET = "vedanjay-schedules-test-608744602858"
 
 MORNING_RULE_NAME = "intellis-dayhead-morning-0430"
+AFTERNOON_RULE_NAME = "intellis-dayhead-afternoon-1330"
 NIGHT_RULE_NAME = "intellis-dayhead-night-2230"
 
 
@@ -112,7 +113,16 @@ def deploy_dayahead_infrastructure():
             FunctionName=FUNCTION_NAME,
             ImageUri=IMAGE_URI,
         )
-        time.sleep(3)
+        print("      Waiting for function code update to complete...")
+        for _ in range(40):
+            time.sleep(3)
+            status = lam.get_function(FunctionName=FUNCTION_NAME).get("Configuration", {}).get("LastUpdateStatus")
+            if status == "Successful":
+                print("      [OK] Code update completed successfully.")
+                break
+            elif status == "Failed":
+                raise RuntimeError(f"Lambda code update failed: {status}")
+        
         print("      Updating configuration (Memory: 512 MB, Timeout: 900s, Command: intellis_dayahead_lambda.lambda_handler)...")
         lam.update_function_configuration(
             FunctionName=FUNCTION_NAME,
@@ -121,6 +131,7 @@ def deploy_dayahead_infrastructure():
             ImageConfig={"Command": CMD_OVERRIDE},
             Environment={"Variables": env_vars},
         )
+
     except lam.exceptions.ResourceNotFoundException:
         print(f"\n[1/3] Creating function {FUNCTION_NAME}...")
         resp = lam.create_function(
@@ -185,10 +196,45 @@ def deploy_dayahead_infrastructure():
         print("      [OK] Morning rule permission already exists.")
 
     # -------------------------------------------------------------
-    # 3. Setup EventBridge Rule 2: Night Trigger (10:30 PM IST)
+    # 3. Setup EventBridge Rule 2: Afternoon Trigger (01:30 PM IST) for LGEPL
+    # 13:30 IST is 08:00 UTC -> cron(0 8 * * ? *)
+    # -------------------------------------------------------------
+    print(f"\n[3/4] Configuring Afternoon EventBridge Rule: {AFTERNOON_RULE_NAME} (01:30 PM IST)...")
+    cron_afternoon = "cron(0 8 * * ? *)"
+    r_aft = events.put_rule(
+        Name=AFTERNOON_RULE_NAME,
+        ScheduleExpression=cron_afternoon,
+        State="ENABLED",
+        Description="Triggers Day-Ahead Afternoon forecast (da_afternoon) at 01:30 PM IST for LGEPL",
+    )
+    r_aft_arn = r_aft["RuleArn"]
+
+    events.put_targets(
+        Rule=AFTERNOON_RULE_NAME,
+        Targets=[{
+            "Id": "TriggerDayAheadAfternoon",
+            "Arn": function_arn,
+            "Input": json.dumps({"run_type": "da_afternoon", "plants": ["LGEPL"]}),
+        }]
+    )
+
+    try:
+        lam.add_permission(
+            FunctionName=FUNCTION_NAME,
+            StatementId=f"{AFTERNOON_RULE_NAME}-invoke",
+            Action="lambda:InvokeFunction",
+            Principal="events.amazonaws.com",
+            SourceArn=r_aft_arn,
+        )
+        print("      [OK] Afternoon rule permission added.")
+    except lam.exceptions.ResourceConflictException:
+        print("      [OK] Afternoon rule permission already exists.")
+
+    # -------------------------------------------------------------
+    # 4. Setup EventBridge Rule 3: Night Trigger (10:30 PM IST)
     # 22:30 IST is 17:00 UTC -> cron(0 17 * * ? *)
     # -------------------------------------------------------------
-    print(f"\n[3/3] Configuring Night EventBridge Rule: {NIGHT_RULE_NAME} (10:30 PM IST)...")
+    print(f"\n[4/4] Configuring Night EventBridge Rule: {NIGHT_RULE_NAME} (10:30 PM IST)...")
     cron_night = "cron(0 17 * * ? *)"
     r2 = events.put_rule(
         Name=NIGHT_RULE_NAME,
@@ -221,12 +267,14 @@ def deploy_dayahead_infrastructure():
 
     print("\n" + "=" * 70)
     print("DAY-AHEAD PROVISIONING SUCCESSFULLY COMPLETED!")
-    print(f"Function:    {FUNCTION_NAME} (512 MB, 900s)")
-    print(f"Morning (da0): 04:30 AM IST -> {cron_morning}")
-    print(f"Night (da1):   10:30 PM IST -> {cron_night}")
-    print(f"S3 Output:   s3://{S3_BUCKET}/intellis Dayhead solar/{{site}}/{{target_date}}/")
+    print(f"Function:       {FUNCTION_NAME} (512 MB, 900s)")
+    print(f"Morning (da0):   04:30 AM IST -> {cron_morning}")
+    print(f"Afternoon (da1): 01:30 PM IST -> {cron_afternoon}")
+    print(f"Night (da2):     10:30 PM IST -> {cron_night}")
+    print(f"S3 Output:      s3://{S3_BUCKET}/intellis Dayhead solar/{{site}}/{{target_date}}/")
     print("=" * 70)
 
 
 if __name__ == "__main__":
     deploy_dayahead_infrastructure()
+
