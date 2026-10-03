@@ -597,6 +597,16 @@ def write_full_block_schedule_from_llm_schedule(
     """
     schedule_by_block: dict[int, dict] = {}
 
+    def _row_float(row: dict, *names: str, default: float = 0.0) -> float:
+        for name in names:
+            raw = row.get(name)
+            if raw is None or raw == "":
+                continue
+            try:
+                return float(raw)
+            except (TypeError, ValueError):
+                continue
+        return default
     target_date_str = str(target_date) if target_date else None
     if not target_date_str:
         for p_cand in (input_csv_path, fallback_csv_path):
@@ -615,16 +625,13 @@ def write_full_block_schedule_from_llm_schedule(
                 raw_b = str(row.get("Block", "") or row.get("block", "")).strip()
                 try:
                     b = int(raw_b)
-                    mw = float(
-                        row.get("intellis_mw")
-                        or row.get("schedule_mw")
-                        or row.get("Schedule MW")
-                        or 0.0
-                    )
-                    gti = float(row.get("intellis_gti", 0.0) or 0.0)
+                    schedule_mw = _row_float(row, "schedule_mw", "Schedule MW", "intellis_mw")
+                    intellis_mw = _row_float(row, "intellis_mw", "schedule_mw", "Schedule MW")
+                    gti = _row_float(row, "intellis_gti")
                     schedule_by_block[b] = {
                         "intellis_gti": gti,
-                        "intellis_mw": mw,
+                        "intellis_mw": intellis_mw,
+                        "schedule_mw": schedule_mw,
                         "time_interval": row.get("Time Interval (15 minute interval)", ""),
                     }
                 except (ValueError, TypeError):
@@ -639,20 +646,17 @@ def write_full_block_schedule_from_llm_schedule(
                 raw_b = str(row.get("Block", "") or row.get("block", "")).strip()
                 try:
                     b = int(raw_b)
-                    mw = float(
-                        row.get("intellis_mw")
-                        or row.get("schedule_mw")
-                        or row.get("Schedule MW")
-                        or 0.0
-                    )
-                    gti = float(row.get("intellis_gti", 0.0) or 0.0)
+                    schedule_mw = _row_float(row, "schedule_mw", "Schedule MW", "intellis_mw")
+                    intellis_mw = _row_float(row, "intellis_mw", "schedule_mw", "Schedule MW")
+                    gti = _row_float(row, "intellis_gti")
                     schedule_by_block[b] = {
                         "intellis_gti": gti,
-                        "intellis_mw": mw,
+                        "intellis_mw": intellis_mw,
+                        "schedule_mw": schedule_mw,
                         "time_interval": row.get("Time Interval (15 minute interval)", ""),
                     }
-                    input_explicit_mw[b] = mw
-                    if 28 <= b <= 72 and mw > 0.02:
+                    input_explicit_mw[b] = schedule_mw
+                    if 28 <= b <= 72 and schedule_mw > 0.02:
                         input_daylight_blocks.append(b)
                 except (ValueError, TypeError):
                     continue
@@ -750,6 +754,7 @@ def write_full_block_schedule_from_llm_schedule(
                 final_block_mw = round(max(0.0, min(ac_cap, synth_mw)), 3)
                 schedule_by_block[block] = {
                     "intellis_mw": final_block_mw if final_block_mw > 0.02 else 0.0,
+                    "schedule_mw": final_block_mw if final_block_mw > 0.02 else 0.0,
                     "intellis_gti": round(final_block_mw / max(0.001, getattr(config, "TRANSFER_RATIO", 0.01)), 1) if final_block_mw > 0.02 else 0.0,
                     "time_interval": f"{b_time_str} - {b_time_str}",
                 }
@@ -811,6 +816,7 @@ def write_full_block_schedule_from_llm_schedule(
         for b, exp_mw in input_explicit_mw.items():
             if b in schedule_by_block:
                 schedule_by_block[b]["intellis_mw"] = exp_mw
+                schedule_by_block[b]["schedule_mw"] = exp_mw
 
     # Plant regulatory parameters
     cap_mw = float(getattr(config, "PLANT_CAPACITY_MW", 10.0))
@@ -872,9 +878,11 @@ def write_full_block_schedule_from_llm_schedule(
 
         b_data = schedule_by_block.get(block, {})
         gti_val = float(b_data.get("intellis_gti", 0.0))
-        mw_val = float(b_data.get("intellis_mw", 0.0))
+        intellis_val = float(b_data.get("intellis_mw", 0.0))
+        mw_val = float(b_data.get("schedule_mw", intellis_val))
         if not getattr(config, "is_wind_plant", lambda: False)() and (block < 24 or block > 76):
             mw_val = 0.0
+            intellis_val = 0.0
             gti_val = 0.0
 
         m_val = float(meter_by_block.get(block, 0.0))
@@ -908,7 +916,7 @@ def write_full_block_schedule_from_llm_schedule(
             "block": block,
             "time": t_str,
             "intellis_gti": round(gti_val, 1),
-            "intellis_mw": round(mw_val, 2),
+            "intellis_mw": round(intellis_val, 2),
             "schedule_mw": round(mw_val, 2),
             "dev_mw": dev,
             "dsm_slab": slab,
@@ -977,7 +985,6 @@ def download_recent_meter_history_files(
         downloaded.append(local_path)
 
     return downloaded
-
 
 
 

@@ -539,6 +539,12 @@ def run_schedule_job(
     snapshot_rows, preserved_rows, merged_rows = _merge_latest_schedule(snapshot_source, latest_csv)
     shutil.copyfile(latest_csv, snapshot_csv)
     current_final_rows = _write_current_final_schedule(latest_csv, current_final_csv, target_date, target_time)
+    if int((control_summary or {}).get("windows_applied") or 0) > 0:
+        # Publish already-applied plant-control output into current-final so
+        # downstream IP/UI and penalty outputs match the effective schedule.
+        shutil.copyfile(latest_csv, current_final_csv)
+        _, current_final_rows_data = _read_csv_rows(current_final_csv)
+        current_final_rows = len(current_final_rows_data)
     penalty_summary = shared_schedule_utils.write_full_block_schedule_from_llm_schedule(
         current_final_csv,
         penalty_csv,
@@ -573,8 +579,8 @@ def run_schedule_job(
             metadata["llm_strategy"] = wind_sched_result["llm_strategy"]
     elif isinstance(solar_sched_result, dict) and "llm_strategy" in solar_sched_result:
         metadata["llm_strategy"] = solar_sched_result["llm_strategy"]
-    snapshot_metadata.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
-    latest_metadata.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+    snapshot_metadata.write_text(json.dumps(metadata, indent=2, default=str), encoding="utf-8")
+    latest_metadata.write_text(json.dumps(metadata, indent=2, default=str), encoding="utf-8")
 
     storage.upload_file(bucket, metadata["snapshot_csv_key"], snapshot_csv, content_type="text/csv")
     storage.upload_file(bucket, metadata["latest_csv_key"], latest_csv, content_type="text/csv")
@@ -590,5 +596,5 @@ def run_schedule_job(
     storage.upload_json(bucket, metadata["snapshot_metadata_key"], metadata)
     storage.upload_json(bucket, metadata["latest_metadata_key"], metadata)
 
-    return metadata
+    return json.loads(json.dumps(metadata, default=str))
 
