@@ -8,7 +8,7 @@ REGION = "ap-south-1"
 PROFILE = "intellis-608"
 ACCOUNT_ID = "608744602858"
 REPO = "intellis-ai-scheduler"
-TAG = "intellis-ai-20260926-v1"
+TAG = "intellis-ai-20261004-v1"
 ECR_REGISTRY = f"{ACCOUNT_ID}.dkr.ecr.{REGION}.amazonaws.com"
 IMAGE_URI = f"{ECR_REGISTRY}/{REPO}:{TAG}"
 
@@ -40,6 +40,8 @@ ALL_LAMBDAS = [
     "PRANAV-ai-intellis-scheduler",
     "SIDDEHESH-ai-intellis-scheduler",
     "LGEPL-ai-intellis-scheduler",
+    "intellis-dayhead-forcast-solar",
+    "intellis-weekhead-forcast-solar",
 ]
 
 print("==================================================================")

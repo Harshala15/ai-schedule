@@ -8,7 +8,7 @@
   "orientation_deg_from_south": 0,
   "tilt_deg": 17,
   "eeg_id": "LOKGREENB2",
-  "performance_ratio": 0.78,
+  "performance_ratio": 0.68,
   "ppa_rate_inr_per_kwh": 3.0,
   "penalty_regulation": "Maharashtra",
   "tolerance_band_percent": 10.0,

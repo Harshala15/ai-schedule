@@ -142,7 +142,17 @@ def load_plant_profile(plant_name: str = "GSNP") -> PlantProfile:
     az_pvlib = 180.0 + orient
 
     # Plant-specific base PR
-    base_pr = float(data.get("performance_ratio") or cfg_profile.get("performance_ratio") or getattr(config, "PERFORMANCE_RATIO", 0.78))
+    explicit_pr = data.get("performance_ratio") or cfg_profile.get("performance_ratio")
+    if explicit_pr is not None:
+        base_pr = float(explicit_pr)
+    else:
+        base_pr = float(getattr(config, "PERFORMANCE_RATIO", 0.78))
+        # High DC/AC over-paneling protection for non-meter sites:
+        # Avoid artificial 100% AVC flatline by aligning uncalibrated PR to real-world thermal deration (~82.5% of AC)
+        if name_upper in NON_METER_SITES and ac_mw > 0 and (dc_mw / ac_mw) >= 1.25:
+            target_pr = round((ac_mw * 0.825) / (dc_mw * 0.92), 4)
+            base_pr = min(base_pr, target_pr)
+
     transfer_ratio = round((dc_mw * base_pr) / 1000.0, 6)
 
     ppa = float(data.get("ppa_rate_inr_per_kwh") or cfg_profile.get("ppa_rate_inr_per_kwh") or getattr(config, "PPA_RATE_INR_PER_KWH", 6.97))
@@ -185,7 +195,7 @@ def load_plant_profile(plant_name: str = "GSNP") -> PlantProfile:
         penalty_regulation=reg,
         tolerance_band_mw=tol_mw,
         band_percentage=band_pct,
-        calibrated_pr=None,
+        calibrated_pr=base_pr,
         meter_data=meter_data,
     )
 
@@ -506,7 +516,9 @@ class IntellisEnsembleGTIAI:
         Clamps within physical limits [0.78, 0.95].
         """
         if self.profile.plant_name.upper() in NON_METER_SITES:
-            learned_pr = getattr(self.profile, "calibrated_pr", None) or getattr(config, "PERFORMANCE_RATIO", 0.78)
+            learned_pr = getattr(self.profile, "calibrated_pr", None)
+            if learned_pr is None:
+                learned_pr = round((self.profile.transfer_ratio * 1000.0) / self.profile.dc_capacity_mw, 4) if self.profile.dc_capacity_mw > 0 else 0.78
             self.profile.calibrated_pr = round(learned_pr, 4)
             self.profile.transfer_ratio = round((self.profile.dc_capacity_mw * self.profile.calibrated_pr) / 1000.0, 6)
             return self.profile.calibrated_pr
