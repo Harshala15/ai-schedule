@@ -11,6 +11,9 @@
   "ppa_rate_inr_per_kwh": 9.27,
   "penalty_regulation": "Maharashtra INTER",
   "meter_data": {
+    "is_non_meter_site": false,
+    "has_meter": true,
+    "is_virtual": false,
     "s3_prefix": "raw/vedanjay/{site_id}/{date}/metered_data/",
     "file_name_regex": "^ESSEL_.*\\.csv$",
     "delimiter": ",",

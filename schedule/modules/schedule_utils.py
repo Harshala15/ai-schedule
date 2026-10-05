@@ -663,11 +663,20 @@ def write_full_block_schedule_from_llm_schedule(
                 except (ValueError, TypeError):
                     continue
 
-    is_wind = getattr(config, "is_wind_plant", lambda: False)() or getattr(config, "PLANT_TYPE", "") == "wind" or (getattr(config, "PLANT_NAME", "") or "").upper() == "CHANDAWASA"
+    is_wind = getattr(config, "is_wind_plant", lambda: False)() or getattr(config, "PLANT_TYPE", "") == "wind" or (getattr(config, "PLANT_NAME", "") or "").upper() in ("CHANDAWASA", "CHANDWASA")
     if not is_wind:
-        dc_cap = float(getattr(config, "PLANT_DC_CAPACITY_MW", getattr(config, "PLANT_CAPACITY_MW", 10.0)))
+        p_name = (getattr(config, "PLANT_NAME", "") or "").upper()
+        from modules.weather.intellis_ensemble_gti_ai import NON_METER_SITES
+        is_non_meter = p_name in NON_METER_SITES or getattr(config, "IS_NON_METER_SITE", False)
+
         ac_cap = float(getattr(config, "PLANT_CAPACITY_MW", 10.0))
-        pr = float(getattr(config, "PERFORMANCE_RATIO", 0.78))
+        if is_non_meter:
+            # Enercast alignment for non-meter sites: DC absorption with Sandia thermal derating capped at AC capacity (~82% of AC)
+            cap_basis = float(getattr(config, "PLANT_DC_CAPACITY_MW", getattr(config, "PLANT_CAPACITY_MW", 10.0)))
+            pr = 0.8300
+        else:
+            cap_basis = float(getattr(config, "PLANT_DC_CAPACITY_MW", getattr(config, "PLANT_CAPACITY_MW", 10.0)))
+            pr = float(getattr(config, "PERFORMANCE_RATIO", 0.78))
 
         if input_daylight_blocks:
             max_populated_daylight_block = max(input_daylight_blocks)
@@ -684,7 +693,7 @@ def write_full_block_schedule_from_llm_schedule(
                     h_from_noon = abs(b_hour - 12.25)
                     if h_from_noon < 6.0:
                         elev_sin = math.cos((h_from_noon / 6.0) * (math.pi / 2.0))
-                        clear_theoretical = dc_cap * pr * (elev_sin ** 1.05)
+                        clear_theoretical = cap_basis * pr * (elev_sin ** 1.05)
                         if clear_theoretical > 0.1:
                             clearness_ratios.append(min(1.0, mw / clear_theoretical))
 
@@ -711,7 +720,7 @@ def write_full_block_schedule_from_llm_schedule(
                     synth_mw = round(min(0.20, ac_cap * 0.04), 3)
                 else:
                     raw_sine = math.sin(math.radians(max(0.0, elev)))
-                    clearsky_mw = min(ac_cap, dc_cap * pr * (raw_sine ** 1.05))
+                    clearsky_mw = min(ac_cap, cap_basis * pr * (raw_sine ** 1.05))
                     clearsky_gti = max(10.0, 1000.0 * (raw_sine ** 0.95))
 
                     w_entry = weather_fusion_map.get(b_time_str) if weather_fusion_map else None
