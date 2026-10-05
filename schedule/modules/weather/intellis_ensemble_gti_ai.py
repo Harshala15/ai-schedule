@@ -195,7 +195,7 @@ def load_plant_profile(plant_name: str = "GSNP") -> PlantProfile:
         penalty_regulation=reg,
         tolerance_band_mw=tol_mw,
         band_percentage=band_pct,
-        calibrated_pr=base_pr,
+        calibrated_pr=base_pr if name_upper in NON_METER_SITES else None,
         meter_data=meter_data,
     )
 
