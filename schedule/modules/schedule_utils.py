@@ -820,6 +820,20 @@ def write_full_block_schedule_from_llm_schedule(
                 schedule_by_block[b]["intellis_mw"] = exp_mw
                 schedule_by_block[b]["schedule_mw"] = exp_mw
 
+    # Specialized Multi-Generator Asset-Wise Output for ZTRIC
+    if str(getattr(config, "PLANT_NAME", "")).strip().upper() == "ZTRIC":
+        try:
+            from modules.multi_generator.ztric_asset_schedule import write_ztric_asset_penalty_csv
+            return write_ztric_asset_penalty_csv(
+                schedule_by_block=schedule_by_block,
+                input_csv_path=input_csv_path,
+                output_csv_path=output_csv_path,
+                target_date_str=target_date_str,
+                total_blocks=total_blocks,
+            )
+        except Exception as zt_err:
+            print(f"[WARN] Failed to write ZTRIC asset-wise penalty schedule: {zt_err}; falling back to standard format.")
+
     # Plant regulatory parameters
     cap_mw = float(getattr(config, "PLANT_CAPACITY_MW", 10.0))
     prof_dict = getattr(config, "PLANT_PROFILE", {}) or {}
