@@ -32,7 +32,7 @@ SITE_DISPATCH_RULES: Dict[str, tuple[bool, bool, bool]] = {
     "BAMKHAL": (True, False, False),
     "BHUPALPALLY": (True, False, True),
     "CME": (True, False, False),
-    "ENRICH": (True, False, False),
+    "ENRICH": (True, False, True),
     "GSNP": (True, False, False),
     "GUGARIYAKHEDI": (True, False, False),
     "KASIPET": (True, False, True),
@@ -43,9 +43,9 @@ SITE_DISPATCH_RULES: Dict[str, tuple[bool, bool, bool]] = {
     "REWASEIT": (False, False, False),
     "REWASPRNG": (False, False, False),
     "SAWDA": (True, False, False),
-    "SHAHA": (True, False, False),
+    "SHAHA": (True, False, True),
     "SIRMOUR": (True, False, False),
-    "ZTRIC": (True, False, False),
+    "ZTRIC": (True, False, True),
 }
 
 SHAHA_SUB_PLANTS = ["SIDDEHESH", "PRANAV", "LOKGREENB2"]
@@ -135,13 +135,39 @@ def lambda_handler(event: Dict[str, Any] | None, context: Any = None) -> Dict[st
     for site in candidate_sites:
         print(f"\n>>> Processing Solar Site: {site} ({run_tag.upper()}) for {target_date_str}...")
 
-        # Shaha Park expands into 3 sub-generators
-        plants_to_run = SHAHA_SUB_PLANTS if site == "SHAHA" else [site]
+        if site in ("ZTRIC", "ENRICH", "SHAHA"):
+            try:
+                from modules.multi_generator.multi_generator_engine import MultiGeneratorEngine
+                mg_engine = MultiGeneratorEngine(s3_bucket=bucket)
+                mg_res = mg_engine.generate_and_dispatch_multi_generator_schedules(
+                    plant_name=site,
+                    target_date_str=target_date_str,
+                    today_str=today_str,
+                    run_tag=run_tag,
+                )
+                success_count += 1
+                results.append({
+                    "plant_name": site,
+                    "site_group": site,
+                    "status": "SUCCESS",
+                    "s3_uri": mg_res.get("da_s3_uri"),
+                    "columns": mg_res.get("da_columns"),
+                })
+            except Exception as exc:
+                print(f"  [ERROR] Failed multi-generator DA forecast for {site}: {exc}")
+                fail_count += 1
+                results.append({
+                    "plant_name": site,
+                    "site_group": site,
+                    "status": "FAILED",
+                    "error": str(exc),
+                })
+            continue
+
+        # Standard standalone plants
+        plants_to_run = [site]
 
         for p_name in plants_to_run:
-            # Map run_tag to canonical plant-specific tag:
-            # For LGEPL: da0 (Morning) -> da0, da_afternoon (Afternoon) -> da1, da_night (Night) -> da2
-            # For other plants: da0 (Morning) -> da0, da_night (Night) -> da1
             if p_name == "LGEPL":
                 if run_tag == "da0":
                     plant_run_tag = "da0"
@@ -162,20 +188,19 @@ def lambda_handler(event: Dict[str, Any] | None, context: Any = None) -> Dict[st
                     block_no=block_override,
                 )
 
-
                 if res.get("upload_success"):
                     print(f"  [SUCCESS] {p_name} Day-Ahead uploaded -> {res['s3_uri']}")
                     success_count += 1
                 else:
                     print(f"  [WARN] {p_name} generated locally but S3 upload failed -> {res.get('s3_uri')}")
-                    success_count += 1  # File was computed successfully
+                    success_count += 1
 
                 results.append({
                     "plant_name": p_name,
                     "site_group": site,
                     "status": "SUCCESS",
                     "s3_uri": res.get("s3_uri"),
-                    "regime": res.get("synoptic_regime", "WIND_PHYSICS"),
+                    "regime": res.get("synoptic_regime", "SOLAR_PHYSICS"),
                 })
             except Exception as exc:
                 print(f"  [ERROR] Failed to generate Day-Ahead forecast for {p_name}: {exc}")

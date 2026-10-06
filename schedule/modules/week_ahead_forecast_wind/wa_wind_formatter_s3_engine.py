@@ -51,7 +51,7 @@ class WAWindFormatterS3Engine:
             avc_mw = float(rated_capacity_mw)
 
             rows.append({
-                "S. No": block_of_day,
+                "Block_No": block_of_day,
                 "From": from_str,
                 "To": to_str,
                 "SCH_MW": f"{sch_mw:.2f}",
