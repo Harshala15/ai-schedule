@@ -208,13 +208,18 @@ class PlantControlWindowEngine:
             control_mode = str(item.get("control_mode") or raw_payload.get("control_mode") or "").strip().upper()
 
             shutdown_reduction_mw = _to_float(
-                item.get("shutdown_reduction_mw") or raw_payload.get("shutdown_reduction_mw") or raw_payload.get("mw"),
+                item.get("shutdown_reduction_mw") or raw_payload.get("shutdown_reduction_mw") or raw_payload.get("mw") or item.get("mw"),
                 default=0.0,
             )
 
-            curtailment_capacity = item.get("curtailment_capacity") or item.get("curtailment_capacity_mw")
-            if curtailment_capacity is None and "curtailment_capacity" in raw_payload:
-                curtailment_capacity = raw_payload.get("curtailment_capacity")
+            curtailment_capacity = (
+                item.get("curtailment_capacity")
+                or item.get("curtailment_capacity_mw")
+                or raw_payload.get("curtailment_capacity")
+                or raw_payload.get("curtailment_capacity_mw")
+                or raw_payload.get("mw")
+                or item.get("mw")
+            )
             curtailment_capacity_mw = _to_float(curtailment_capacity, default=None) if curtailment_capacity is not None else None
 
             asset_scope = str(item.get("asset_scope") or raw_payload.get("asset_scope") or "").strip().lower()
