@@ -217,9 +217,18 @@ class PlantControlWindowEngine:
                 curtailment_capacity = raw_payload.get("curtailment_capacity")
             curtailment_capacity_mw = _to_float(curtailment_capacity, default=None) if curtailment_capacity is not None else None
 
+            asset_scope = str(item.get("asset_scope") or raw_payload.get("asset_scope") or "").strip().lower()
+            asset_id = str(item.get("asset_id") or item.get("sub_plant_id") or raw_payload.get("asset_id") or "COMBINED").strip().upper()
+            asset_name = str(item.get("asset_name") or raw_payload.get("asset_name") or "").strip()
+            mg_plant_id = str(item.get("multi_generator_plant_id") or raw_payload.get("multi_generator_plant_id") or "").strip()
+
             validated_windows.append({
                 "window_id": str(item.get("window_id", "")),
                 "site_id": item_site,
+                "asset_scope": asset_scope,
+                "asset_id": asset_id,
+                "asset_name": asset_name,
+                "multi_generator_plant_id": mg_plant_id,
                 "plant_status": status,
                 "control_mode": control_mode,
                 "shutdown_reduction_mw": shutdown_reduction_mw,

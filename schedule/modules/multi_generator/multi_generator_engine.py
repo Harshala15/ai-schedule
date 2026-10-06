@@ -198,22 +198,41 @@ class MultiGeneratorEngine:
 
             base_raw_mw = float(unconstrained_total_mw_96[b - 1])
 
-            # 1. Compute effective block AC capacity per asset considering asset-specific or site-wide control windows
+            # 1. Compute effective block AC capacity per asset considering asset-specific control windows (Case 1: asset_scope == 'asset')
             asset_effective_caps: Dict[str, float] = {}
             for a_key, a_cfg in asset_configs.items():
                 a_ac_cap = a_cfg["ac_cap"]
                 a_dc_cap = a_cfg["dc_cap"]
 
+                a_clean = a_key.upper().strip()
+                a_clean_no_underscore = a_clean.replace("_", "")
+
                 a_windows = [
                     w for w in windows
-                    if str(w.get("asset_id") or w.get("sub_plant_id") or "ALL").strip().upper() in (a_key, "ALL")
+                    if (
+                        str(w.get("asset_scope", "")).lower() == "asset"
+                        and (
+                            str(w.get("asset_id") or "").strip().upper() in (a_clean, a_clean_no_underscore)
+                            or str(w.get("asset_name") or "").strip().upper() in (a_clean, a_clean_no_underscore)
+                            or a_clean in str(w.get("asset_id") or "").strip().upper()
+                        )
+                    )
                 ]
                 ctrl_match = cw_engine.match_block_control(b, target_date_str, a_windows, a_ac_cap, a_dc_cap)
                 asset_effective_caps[a_key] = float(ctrl_match["effective_control_capacity_ac_mw"])
 
-            # 2. Check site-level park curtailment override
-            site_windows = [w for w in windows if str(w.get("asset_id") or w.get("sub_plant_id") or "ALL").strip().upper() == "ALL"]
-            site_ctrl = cw_engine.match_block_control(b, target_date_str, site_windows, nominal_total_ac, nominal_total_ac * 1.3)
+            # 2. Check site-level / combined park control windows (Case 2: asset_scope == 'combined' or asset_id in 'COMBINED', 'ALL')
+            site_windows = [
+                w for w in windows
+                if (
+                    str(w.get("asset_scope", "")).lower() == "combined"
+                    or str(w.get("asset_id") or "").strip().upper() in ("COMBINED", "ALL")
+                )
+            ]
+            nominal_total_dc = sum(cfg["dc_cap"] for cfg in asset_configs.values())
+            if nominal_total_dc <= 0.0:
+                nominal_total_dc = nominal_total_ac * 1.3
+            site_ctrl = cw_engine.match_block_control(b, target_date_str, site_windows, nominal_total_ac, nominal_total_dc)
             site_eff_cap = float(site_ctrl["effective_control_capacity_ac_mw"])
 
             # 3. Calculate asset-wise DA schedule MW for block b
