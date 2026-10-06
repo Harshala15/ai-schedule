@@ -337,6 +337,17 @@ class MultiGeneratorEngine:
 
         print(f"  [SAVED LOCAL] {clean_name} Multi-Generator DA Schedule ({run_tag.upper()}) -> {da_local_path}")
 
+        # S3 Upload for Day-Ahead Schedule
+        da_s3_key = f"intellis Dayhead solar/{clean_name}/{target_date_str}/{da_filename}"
+        da_s3_uri = f"s3://{self.s3_bucket}/{da_s3_key}"
+        da_upload_success = False
+        try:
+            self.s3_client.upload_file(str(da_local_path), self.s3_bucket, da_s3_key, ExtraArgs={"ContentType": "text/csv"})
+            da_upload_success = True
+            print(f"  [S3 UPLOAD] {clean_name} Day-Ahead -> {da_s3_uri}")
+        except Exception as exc:
+            logger.warning("S3 upload failed for %s Day-Ahead CSV: %s", clean_name, exc)
+
         # 3. Build 672-block WA DataFrame
         unconstrained_wa_672 = np.tile(unconstrained_da_96, 7)
         df_wa = self.build_wa_schedule_dataframe(
@@ -353,13 +364,29 @@ class MultiGeneratorEngine:
 
         print(f"  [SAVED LOCAL] {clean_name} Multi-Generator WA Schedule -> {wa_local_path}")
 
+        # S3 Upload for Week-Ahead Schedule
+        wa_s3_key = f"intellis Weekhead solar/{clean_name}/{today_str}/{wa_filename}"
+        wa_s3_uri = f"s3://{self.s3_bucket}/{wa_s3_key}"
+        wa_upload_success = False
+        try:
+            self.s3_client.upload_file(str(wa_local_path), self.s3_bucket, wa_s3_key, ExtraArgs={"ContentType": "text/csv"})
+            wa_upload_success = True
+            print(f"  [S3 UPLOAD] {clean_name} Week-Ahead -> {wa_s3_uri}")
+        except Exception as exc:
+            logger.warning("S3 upload failed for %s Week-Ahead CSV: %s", clean_name, exc)
+
         return {
             "plant_name": clean_name,
             "target_date": target_date_str,
             "da_local_path": str(da_local_path),
+            "da_s3_uri": da_s3_uri,
+            "da_s3_key": da_s3_key,
             "da_columns": list(df_da.columns),
             "wa_local_path": str(wa_local_path),
+            "wa_s3_uri": wa_s3_uri,
+            "wa_s3_key": wa_s3_key,
             "wa_columns": list(df_wa.columns),
+            "upload_success": da_upload_success and wa_upload_success,
             "total_da_blocks": len(df_da),
             "total_wa_blocks": len(df_wa),
         }

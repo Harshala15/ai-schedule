@@ -94,7 +94,38 @@ def lambda_handler(event: Dict[str, Any] | None, context: Any = None) -> Dict[st
     for site in candidate_sites:
         print(f"\n>>> Processing Week-Ahead Solar Site: {site} starting {start_date_str}...")
 
-        plants_to_run = SHAHA_SUB_PLANTS if site == "SHAHA" else [site]
+        if site in ("ZTRIC", "ENRICH", "SHAHA"):
+            try:
+                from modules.multi_generator.multi_generator_engine import MultiGeneratorEngine
+                mg_engine = MultiGeneratorEngine(s3_bucket=bucket)
+                mg_res = mg_engine.generate_and_dispatch_multi_generator_schedules(
+                    plant_name=site,
+                    target_date_str=start_date_str,
+                    today_str=today_str,
+                )
+                success_count += 1
+                results.append({
+                    "plant_name": site,
+                    "site_group": site,
+                    "status": "SUCCESS",
+                    "s3_uri": mg_res.get("wa_s3_uri"),
+                    "columns": mg_res.get("wa_columns"),
+                    "total_blocks": mg_res.get("total_wa_blocks"),
+                    "upload_success": mg_res.get("upload_success", True),
+                })
+            except Exception as exc:
+                print(f"  [ERROR] Failed multi-generator WA forecast for {site}: {exc}")
+                fail_count += 1
+                results.append({
+                    "plant_name": site,
+                    "site_group": site,
+                    "status": "FAILED",
+                    "error": str(exc),
+                    "upload_success": False,
+                })
+            continue
+
+        plants_to_run = [site]
 
         for p_name in plants_to_run:
             try:
