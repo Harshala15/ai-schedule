@@ -284,6 +284,7 @@ class MultiGeneratorEngine:
         Builds statutory 672-block (7 rolling days) Week-Ahead DataFrame:
         Columns: Block_No, From, To, SCH_MW, AvC_MW
         Block_No resets from 1 to 96 for each day.
+        Applies active control windows dynamically per day.
         """
         clean_name = plant_name.upper().strip()
         asset_configs = self.get_plant_asset_configs(clean_name)
@@ -291,20 +292,76 @@ class MultiGeneratorEngine:
         if nominal_total_ac <= 0.0:
             nominal_total_ac = 10.0
 
+        from modules.control_windows import PlantControlWindowEngine
+        cw_engine = PlantControlWindowEngine()
+
         start_dt = dt.datetime.strptime(start_date_str, "%Y-%m-%d").replace(tzinfo=ZoneInfo("Asia/Kolkata"))
         rows = []
 
+        # Cache active control windows per day across the 7-day horizon
+        windows_by_day: Dict[str, List[Dict[str, Any]]] = {}
+        for day_offset in range(7):
+            d_str = (start_dt.date() + dt.timedelta(days=day_offset)).strftime("%Y-%m-%d")
+            windows_by_day[d_str] = cw_engine.load_active_windows(clean_name, d_str)
+
         for b in range(672):
+            day_offset = b // 96
             block_of_day = (b % 96) + 1
+            d_str = (start_dt.date() + dt.timedelta(days=day_offset)).strftime("%Y-%m-%d")
+            windows = windows_by_day.get(d_str, [])
+
             block_start = start_dt + dt.timedelta(minutes=b * 15)
             block_end = block_start + dt.timedelta(minutes=15)
 
             from_str = block_start.strftime("%Y-%m-%d %H:%M")
             to_str = block_end.strftime("%Y-%m-%d %H:%M")
 
-            sch_mw = float(unconstrained_7day_mw_672[b])
-            sch_mw = min(sch_mw, nominal_total_ac)
-            avc_mw = nominal_total_ac
+            base_raw_mw = float(unconstrained_7day_mw_672[b])
+
+            if not windows:
+                sch_mw = min(base_raw_mw, nominal_total_ac)
+                avc_mw = nominal_total_ac
+            else:
+                # 1. Asset-level control windows
+                asset_effective_caps: Dict[str, float] = {}
+                for a_key, a_cfg in asset_configs.items():
+                    a_ac_cap = a_cfg["ac_cap"]
+                    a_dc_cap = a_cfg["dc_cap"]
+                    a_clean = a_key.upper().strip()
+                    a_clean_no_underscore = a_clean.replace("_", "")
+
+                    a_windows = [
+                        w for w in windows
+                        if (
+                            str(w.get("asset_scope", "")).lower() == "asset"
+                            and (
+                                str(w.get("asset_id") or "").strip().upper() in (a_clean, a_clean_no_underscore)
+                                or str(w.get("asset_name") or "").strip().upper() in (a_clean, a_clean_no_underscore)
+                                or a_clean in str(w.get("asset_id") or "").strip().upper()
+                            )
+                        )
+                    ]
+                    ctrl_match = cw_engine.match_block_control(block_of_day, d_str, a_windows, a_ac_cap, a_dc_cap)
+                    asset_effective_caps[a_key] = float(ctrl_match["effective_control_capacity_ac_mw"])
+
+                # 2. Combined park control windows
+                site_windows = [
+                    w for w in windows
+                    if (
+                        str(w.get("asset_scope", "")).lower() == "combined"
+                        or str(w.get("asset_id") or "").strip().upper() in ("COMBINED", "ALL")
+                    )
+                ]
+                nominal_total_dc = sum(cfg["dc_cap"] for cfg in asset_configs.values())
+                if nominal_total_dc <= 0.0:
+                    nominal_total_dc = nominal_total_ac * 1.3
+                site_ctrl = cw_engine.match_block_control(block_of_day, d_str, site_windows, nominal_total_ac, nominal_total_dc)
+                site_eff_cap = float(site_ctrl["effective_control_capacity_ac_mw"])
+
+                active_cap_sum = sum(asset_effective_caps.values())
+                raw_sum = min(base_raw_mw, active_cap_sum)
+                sch_mw = min(raw_sum, site_eff_cap)
+                avc_mw = min(active_cap_sum, site_eff_cap)
 
             rows.append({
                 "Block_No": block_of_day,
