@@ -8,6 +8,8 @@ import math
 import re
 from pathlib import Path
 
+import numpy as np
+
 import config
 
 stabilize_curve = None
@@ -828,6 +830,21 @@ def write_full_block_schedule_from_llm_schedule(
             if b in schedule_by_block:
                 schedule_by_block[b]["intellis_mw"] = exp_mw
                 schedule_by_block[b]["schedule_mw"] = exp_mw
+
+        # Anti-plateau solar curvature guardrail: Ensure no consecutive daylight blocks are identical
+        mw_seq = np.array([float(schedule_by_block.get(b, {}).get("schedule_mw", schedule_by_block.get(b, {}).get("intellis_mw", 0.0))) for b in range(1, total_blocks + 1)])
+        cs_poa_seq = np.zeros(total_blocks, dtype=float)
+        for b in range(1, total_blocks + 1):
+            h_from_noon = abs(((b - 0.5) * 0.25) - 12.25)
+            elev = max(0.0, 90.0 - (h_from_noon * 15.0)) if h_from_noon < 6.0 else 0.0
+            if elev > 0:
+                cs_poa_seq[b - 1] = max(0.0, 1050.0 * (math.sin(math.radians(elev)) ** 1.10))
+        from modules.weather.intellis_ensemble_gti_ai import enforce_anti_plateau_curvature
+        fixed_mw_seq = enforce_anti_plateau_curvature(mw_seq, cs_poa_seq)
+        for b in range(1, total_blocks + 1):
+            if b in schedule_by_block:
+                schedule_by_block[b]["intellis_mw"] = fixed_mw_seq[b - 1]
+                schedule_by_block[b]["schedule_mw"] = fixed_mw_seq[b - 1]
 
     # Specialized Multi-Generator Asset-Wise Output for ZTRIC
     if str(getattr(config, "PLANT_NAME", "")).strip().upper() == "ZTRIC":
