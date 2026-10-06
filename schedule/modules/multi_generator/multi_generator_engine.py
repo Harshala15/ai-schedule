@@ -327,8 +327,11 @@ class MultiGeneratorEngine:
             unconstrained_total_mw_96=unconstrained_da_96,
         )
 
-        # Repository Root: data/output/{date}/{plantname}/Dayahead/{filename}
-        repo_root = Path(__file__).parent.parent.parent.parent
+        # Lambda can write only to /tmp; local runs keep repository data/output layout.
+        if os.environ.get("AWS_LAMBDA_FUNCTION_NAME") or os.environ.get("LAMBDA_TASK_ROOT"):
+            repo_root = Path("/tmp")
+        else:
+            repo_root = Path(__file__).parent.parent.parent.parent
         da_dir = repo_root / "data" / "output" / today_str / clean_name / "Dayahead"
         da_dir.mkdir(parents=True, exist_ok=True)
         da_filename = f"{clean_name.lower()}_{target_date_str}_{run_tag}.csv"
