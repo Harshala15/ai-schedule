@@ -103,6 +103,71 @@ class PlantProfile:
     meter_data: dict[str, Any] = field(default_factory=dict)
 
 
+_ENRICH_DYNAMODB_CACHE: dict[str, dict[str, float]] | None = None
+_ENRICH_DYNAMODB_CACHE_TS: float = 0.0
+
+
+def _fetch_enrich_live_capacities_from_dynamodb() -> dict[str, dict[str, float]]:
+    """Fetch active asset AC and DC capacities for ENRICH sub-plants (EMIL, UPL, CLIMATEDETOX)
+
+    directly from DynamoDB table 'multi_generator_plant'.
+    Caches for 60 seconds to avoid repeated network calls.
+    Restricted strictly to ENRICH sub-plants; all other plants are 100% untouched.
+    """
+    global _ENRICH_DYNAMODB_CACHE, _ENRICH_DYNAMODB_CACHE_TS
+    import time
+    now = time.time()
+    if _ENRICH_DYNAMODB_CACHE is not None and (now - _ENRICH_DYNAMODB_CACHE_TS) < 60.0:
+        return _ENRICH_DYNAMODB_CACHE
+
+    capacities: dict[str, dict[str, float]] = {}
+    table_name = os.getenv("MULTI_GENERATOR_TABLE", "multi_generator_plant")
+    region_name = os.getenv("AWS_DEFAULT_REGION", "ap-south-1")
+
+    try:
+        import boto3
+        dynamodb = boto3.resource("dynamodb", region_name=region_name)
+        table = dynamodb.Table(table_name)
+        resp = table.get_item(Key={"plant_id": "ZETRIC_SOLAR_PARK"})
+        item = resp.get("Item")
+        if item:
+            mgp_list = item.get("template_config", {}).get("multi_generator_plants", [])
+            for plant_entry in mgp_list:
+                if str(plant_entry.get("plantName", "")).strip().upper() == "ENRICH":
+                    tot_ac = plant_entry.get("schedulingCapacityAcMw") or plant_entry.get("totalCapacityAcMw")
+                    tot_dc = plant_entry.get("schedulingCapacityDcMw") or plant_entry.get("totalCapacityDcMw")
+                    if tot_ac is not None and tot_dc is not None:
+                        capacities["ENRICH"] = {
+                            "ac_capacity_mw": float(tot_ac),
+                            "dc_capacity_mw": float(tot_dc),
+                        }
+
+                    for a in plant_entry.get("assets", []):
+                        raw_name = str(a.get("assetName", "")).strip().upper()
+                        clean_name = raw_name.replace(" ", "").replace("_", "").replace("-", "")
+                        matched_key = None
+                        if "EMIL" in clean_name:
+                            matched_key = "EMIL"
+                        elif "UPL" in clean_name:
+                            matched_key = "UPL"
+                        elif "CLIMATE" in clean_name or "DETOX" in clean_name:
+                            matched_key = "CLIMATEDETOX"
+
+                        if matched_key:
+                            ac_val = float(a.get("acCapacityMw", 0.0))
+                            dc_val = float(a.get("dcCapacityMw", ac_val))
+                            capacities[matched_key] = {
+                                "ac_capacity_mw": ac_val,
+                                "dc_capacity_mw": dc_val,
+                            }
+    except Exception:
+        pass
+
+    _ENRICH_DYNAMODB_CACHE = capacities
+    _ENRICH_DYNAMODB_CACHE_TS = now
+    return capacities
+
+
 def load_plant_profile(plant_name: str = "GSNP") -> PlantProfile:
     """Load plant profile from JSON file or config.py fallback."""
     name_upper = plant_name.upper().strip()
@@ -135,6 +200,17 @@ def load_plant_profile(plant_name: str = "GSNP") -> PlantProfile:
         ac_mw = float(ac_kw) / 1000.0
     else:
         ac_mw = float(cfg_profile.get("capacity_mw") or getattr(config, "PLANT_CAPACITY_MW", 20.0))
+
+    # STRICTLY FOR ENRICH ONLY: Dynamically overlay live AC and DC capacities from DynamoDB table 'multi_generator_plant'
+    if name_upper in ("EMIL", "UPL", "CLIMATEDETOX", "ENRICH"):
+        enrich_live = _fetch_enrich_live_capacities_from_dynamodb()
+        if name_upper in enrich_live:
+            live_ac = enrich_live[name_upper].get("ac_capacity_mw")
+            live_dc = enrich_live[name_upper].get("dc_capacity_mw")
+            if live_ac is not None and live_ac > 0.0:
+                ac_mw = live_ac
+            if live_dc is not None and live_dc > 0.0:
+                dc_mw = live_dc
 
     tilt = float(data.get("tilt_deg") or cfg_profile.get("tilt_deg") or getattr(config, "PLANT_TILT_DEG", 15.0))
     orient = float(data.get("orientation_deg_from_south") or cfg_profile.get("orientation_deg_from_south") or getattr(config, "PLANT_ORIENTATION_DEG_FROM_SOUTH", 8.0))
@@ -205,6 +281,49 @@ def load_plant_profile(plant_name: str = "GSNP") -> PlantProfile:
         calibrated_pr=base_pr if is_non_meter else None,
         meter_data=meter_data,
     )
+
+def enforce_anti_plateau_curvature(mw_arr: np.ndarray, cs_poa: np.ndarray, min_step: float = 0.01) -> np.ndarray:
+    """
+    Ensures no consecutive daylight blocks (blocks 24 to 75, > 0.05 MW) have identical generation values.
+    Shapes any flat plateau runs (from low-capacity 2-decimal rounding or inverter clipping) to strictly
+    follow the astronomical clear-sky solar curvature (Clear-Sky POA).
+    """
+    arr = np.copy(mw_arr)
+    for _ in range(10):
+        changed = False
+        i = 23
+        while i < 75:
+            if arr[i] > 0.05:
+                j = i
+                while j + 1 < 76 and arr[j + 1] == arr[i] and arr[i] > 0.05:
+                    j += 1
+                if j > i:
+                    changed = True
+                    sub_cs = cs_poa[i : j + 1]
+                    peak_local = int(np.argmax(sub_cs))
+                    peak_idx = i + peak_local
+                    for k in range(peak_idx - 1, i - 1, -1):
+                        if arr[k] >= arr[k + 1]:
+                            arr[k] = round(max(0.0, arr[k + 1] - min_step), 2)
+                    for k in range(peak_idx + 1, j + 1):
+                        if arr[k] >= arr[k - 1]:
+                            arr[k] = round(max(0.0, arr[k - 1] - min_step), 2)
+                    i = j + 1
+                else:
+                    i += 1
+            else:
+                i += 1
+        if not changed:
+            break
+
+    # Secondary sweep to resolve any remaining adjacent identical daylight pair
+    for b in range(23, 75):
+        if arr[b] > 0.05 and arr[b] == arr[b + 1]:
+            if cs_poa[b + 1] >= cs_poa[b]:
+                arr[b] = round(max(0.0, arr[b + 1] - min_step), 2)
+            else:
+                arr[b + 1] = round(max(0.0, arr[b] - min_step), 2)
+    return arr
 
 
 class IntellisEnsembleGTIAI:
@@ -1168,6 +1287,9 @@ class IntellisEnsembleGTIAI:
         pred_mw[:23] = 0.0
         pred_mw[76:] = 0.0
 
+        # Anti-plateau solar curvature guardrail: Enforce non-identical consecutive blocks during daylight hours
+        pred_mw = enforce_anti_plateau_curvature(pred_mw, cs_poa)
+
         # Calculate DSM Penalties against meter actuals if available
         blocks_data = []
         tot_pen = 0.0
@@ -1835,6 +1957,17 @@ class IntellisEnsembleGTIAI:
             "reasoning": advice.reasoning,
             "source": advice.source,
         }
+
+        # Anti-plateau solar curvature guardrail: Ensure no consecutive daylight blocks are identical
+        mw_vals = np.array([float(b.get("schedule_mw", 0.0)) for b in sched["blocks"]])
+        fixed_vals = enforce_anti_plateau_curvature(mw_vals, cs_poa)
+        for idx, b in enumerate(sched["blocks"]):
+            b["schedule_mw"] = fixed_vals[idx]
+            b["intellis_mw"] = fixed_vals[idx]
+            b["predicted_mw"] = fixed_vals[idx]
+            if self.profile.transfer_ratio > 0 and fixed_vals[idx] > 0:
+                b["intellis_gti"] = round(fixed_vals[idx] / self.profile.transfer_ratio, 1)
+                b["predicted_gti_wm2"] = b["intellis_gti"]
 
         output_csv_path = Path(output_csv_path)
         output_csv_path.parent.mkdir(parents=True, exist_ok=True)

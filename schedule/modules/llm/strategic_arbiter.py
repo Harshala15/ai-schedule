@@ -73,6 +73,9 @@ class LLMStrategicArbiter:
         ac_cap = getattr(self.profile, "ac_capacity_mw", 10.0) if self.profile else 10.0
         ppa_rate = getattr(self.profile, "ppa_rate_inr_per_kwh", 5.0) if self.profile else 5.0
         tol_band = getattr(self.profile, "band_percentage", 0.15) if self.profile else 0.15
+        tol_mw = getattr(self.profile, "tolerance_band_mw", None)
+        if tol_mw is None:
+            tol_mw = round(ac_cap * tol_band, 3)
 
         target_blocks = actionable_blocks if actionable_blocks is not None else (next_12_blocks or [])
         num_blocks = len(target_blocks)
@@ -99,7 +102,7 @@ class LLMStrategicArbiter:
 
         prompt = f"""You are the Chief Renewable Energy Meteorological Scheduling Strategist for {plant_name} Solar Power Plant.
 Target Date: {target_date_str} | Revision Time: {target_time_str}
-Capacity: {ac_cap:.1f} MW AC | PPA Tariff: Rs {ppa_rate:.2f}/kWh | Tolerance Band: {tol_band * 100:.1f}% (+/- {ac_cap * tol_band:.2f} MW)
+Capacity: {ac_cap:.1f} MW AC | PPA Tariff: Rs {ppa_rate:.2f}/kWh | Tolerance Band: {tol_band * 100:.1f}% (+/- {tol_mw:.2f} MW)
 
 ATMOSPHERIC & WEATHER ENSEMBLE INDICATORS:
 - Total Cloud Cover Mean: {weather_indicators.get('cloud_cover_pct', 'N/A')}%
@@ -111,13 +114,15 @@ ATMOSPHERIC & WEATHER ENSEMBLE INDICATORS:
 {header_desc}
 {blocks_formatted}
 
-PURE METEOROLOGICAL SCHEDULING & RISK INSTRUCTIONS:
+PURE METEOROLOGICAL SCHEDULING & REGULATORY DSM RISK INSTRUCTIONS:
 - You operate strictly on macro-atmospheric science and solar geometry {horizon_desc}. Do NOT assume or rely on short-term ground meter noise; immediate 30-minute electrical dispatch is already governed by deterministic SCADA logic.
-- Under Indian CERC/State DSM rules:
-  * Under-generation shortfall penalties are severe and punitive (up to 2x PPA tariff).
-  * Mild over-generation inside the tolerance band (0% to +{tol_band * 100:.0f}%) is safe or credit-earning.
-- CLEAR-SKY PRESERVATION: If atmospheric indicators indicate CLEAR (cloud cover <= 25%), preserve the full convex solar arc. DO NOT make negative downward cuts below the physics baseline!
-- CONVECTIVE CLOUD POSITIONING: Under moderate/uncertain clouds (cloud cover 30-70% or CAPE > 1000 J/kg), apply risk-conscious positioning (quantile_bias_factor 0.90 to 0.96) to shield against shortfall penalties.
+- Under Indian CERC and State DSM Rules (Deviation Settlement Mechanism):
+  * Allowed Safe Band: Deviations within +/- {tol_band * 100:.1f}% (+/- {tol_mw:.2f} MW) are safe and penalty-free.
+  * Shortfall / Under-generation (< -{tol_mw:.2f} MW): Actual generation below schedule minus tolerance band incurs severe DSM shortfall penalties (up to 2x PPA tariff).
+  * Over-generation / Surplus (> +{tol_mw:.2f} MW): Actual generation above schedule plus tolerance band receives ZERO PPA PAYMENT (energy is forfeited/uncompensated) AND incurs DSM over-generation deviation penalty charges.
+  * Symmetrical Accuracy Mandate: Because both over-generation and under-generation beyond +/- {tol_mw:.2f} MW are heavily penalized, you must accurately target the true expected physical generation. Avoid artificial downward or upward skew.
+- CLEAR-SKY PRESERVATION: If atmospheric indicators indicate CLEAR (cloud cover <= 25%), preserve the full convex solar arc at full capability (quantile_bias_factor = 1.00). DO NOT apply artificial downward cuts below the physics baseline!
+- CONVECTIVE CLOUD POSITIONING: Under moderate/uncertain clouds (cloud cover 30-70% or CAPE > 1000 J/kg), adjust realistically based on diffuse irradiance while keeping predictions centered within the +/- {tol_mw:.2f} MW safe band.
 - OVERCAST BOUNDING: If cloud cover >= 80% or rain is active, bound predictions strictly to the overcast diffuse envelope.
 
 TASKS:
@@ -300,11 +305,13 @@ NEXT 12 ACTIONABLE DISPATCH BLOCKS (Physics Aero-Power Baseline):
 
 DSM RISK & WIND SCHEDULING INSTRUCTIONS:
 - You operate strictly on atmospheric wind shear, boundary-layer turbulence, and DSM penalty minimization over a 3-hour horizon.
-- Under Indian CERC/State DSM rules:
-  * Shortfall penalties (actual generation below schedule minus tolerance band) are punitive (up to 2x PPA tariff).
-  * Mild over-generation within the safe tolerance band (+{tol_band_pct * 100:.0f}%) is safe or credit-earning.
+- Under Indian CERC and State DSM Rules (Deviation Settlement Mechanism):
+  * Allowed Safe Band: Deviations within +/- {tol_band_pct * 100:.1f}% (+/- {tol_band_mw:.2f} MW) are safe and penalty-free.
+  * Shortfall / Under-generation (< -{tol_band_mw:.2f} MW): Actual generation below schedule minus tolerance band incurs severe shortfall penalties (up to 2x PPA tariff).
+  * Over-generation / Surplus (> +{tol_band_mw:.2f} MW): Actual generation above schedule plus tolerance band receives ZERO PAYMENT (energy is forfeited for free) AND incurs DSM deviation penalty charges.
+  * Symmetrical Accuracy Mandate: Both over-generation and under-generation beyond +/- {tol_band_mw:.2f} MW are penalized. Keep forecasts centered on expected aero-power output without artificial downward skew.
 - When wind speeds hover near cut-in velocity (3.0 m/s), maintain conservative positioning to prevent severe shortfall penalties from calm dropouts.
-- When wind speeds are steady and moderate (6 to 11 m/s), preserve the aerodynamic power curve.
+- When wind speeds are steady and moderate (6 to 11 m/s), preserve the aerodynamic power curve (quantile_bias_factor centered near 1.00).
 - Ensure smooth aerodynamic ramp rates (avoid abrupt jumps > {max(1.0, rated_cap * 0.15):.1f} MW between consecutive 15-minute blocks).
 - Keep each block within physical bounds: 0.0 <= MW <= {rated_cap:.1f} MW.
 

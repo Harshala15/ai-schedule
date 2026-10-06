@@ -8,7 +8,7 @@
   "orientation_deg_from_south": 0,
   "tilt_deg": 16,
   "eeg_id": "LGEPL",
-  "performance_ratio": 0.64,
+  "performance_ratio": 0.83,
   "ppa_rate_inr_per_kwh": 3.0,
   "penalty_regulation": "Andhra Pradesh",
   "tolerance_band_percent": 15.0,
