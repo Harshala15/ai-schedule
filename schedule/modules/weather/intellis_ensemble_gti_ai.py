@@ -77,7 +77,8 @@ PUBLIC_ENSEMBLE_URL = "https://ensemble-api.open-meteo.com/v1/ensemble"
 # and satellite solar radiation API (GTI) acts as the virtual meter input
 NON_METER_SITES = {
     "ANDAD", "GUGARIYAKHEDI", "SAWDA", "BALAKWADA", "CME", "CLIMATEDETOX",
-    "EMIL", "UPL", "REWASEIT", "SIDDEHESH", "PRANAV", "LOKGREENB2"
+    "EMIL", "UPL", "REWASEIT", "SIDDEHESH", "PRANAV", "LOKGREENB2", "LGEPL",
+    "CHANDWASA", "CHANDAWASA"
 }
 
 
@@ -100,6 +101,71 @@ class PlantProfile:
     band_percentage: float = 0.10
     calibrated_pr: float | None = None
     meter_data: dict[str, Any] = field(default_factory=dict)
+
+
+_ENRICH_DYNAMODB_CACHE: dict[str, dict[str, float]] | None = None
+_ENRICH_DYNAMODB_CACHE_TS: float = 0.0
+
+
+def _fetch_enrich_live_capacities_from_dynamodb() -> dict[str, dict[str, float]]:
+    """Fetch active asset AC and DC capacities for ENRICH sub-plants (EMIL, UPL, CLIMATEDETOX)
+
+    directly from DynamoDB table 'multi_generator_plant'.
+    Caches for 60 seconds to avoid repeated network calls.
+    Restricted strictly to ENRICH sub-plants; all other plants are 100% untouched.
+    """
+    global _ENRICH_DYNAMODB_CACHE, _ENRICH_DYNAMODB_CACHE_TS
+    import time
+    now = time.time()
+    if _ENRICH_DYNAMODB_CACHE is not None and (now - _ENRICH_DYNAMODB_CACHE_TS) < 60.0:
+        return _ENRICH_DYNAMODB_CACHE
+
+    capacities: dict[str, dict[str, float]] = {}
+    table_name = os.getenv("MULTI_GENERATOR_TABLE", "multi_generator_plant")
+    region_name = os.getenv("AWS_DEFAULT_REGION", "ap-south-1")
+
+    try:
+        import boto3
+        dynamodb = boto3.resource("dynamodb", region_name=region_name)
+        table = dynamodb.Table(table_name)
+        resp = table.get_item(Key={"plant_id": "ZETRIC_SOLAR_PARK"})
+        item = resp.get("Item")
+        if item:
+            mgp_list = item.get("template_config", {}).get("multi_generator_plants", [])
+            for plant_entry in mgp_list:
+                if str(plant_entry.get("plantName", "")).strip().upper() == "ENRICH":
+                    tot_ac = plant_entry.get("schedulingCapacityAcMw") or plant_entry.get("totalCapacityAcMw")
+                    tot_dc = plant_entry.get("schedulingCapacityDcMw") or plant_entry.get("totalCapacityDcMw")
+                    if tot_ac is not None and tot_dc is not None:
+                        capacities["ENRICH"] = {
+                            "ac_capacity_mw": float(tot_ac),
+                            "dc_capacity_mw": float(tot_dc),
+                        }
+
+                    for a in plant_entry.get("assets", []):
+                        raw_name = str(a.get("assetName", "")).strip().upper()
+                        clean_name = raw_name.replace(" ", "").replace("_", "").replace("-", "")
+                        matched_key = None
+                        if "EMIL" in clean_name:
+                            matched_key = "EMIL"
+                        elif "UPL" in clean_name:
+                            matched_key = "UPL"
+                        elif "CLIMATE" in clean_name or "DETOX" in clean_name:
+                            matched_key = "CLIMATEDETOX"
+
+                        if matched_key:
+                            ac_val = float(a.get("acCapacityMw", 0.0))
+                            dc_val = float(a.get("dcCapacityMw", ac_val))
+                            capacities[matched_key] = {
+                                "ac_capacity_mw": ac_val,
+                                "dc_capacity_mw": dc_val,
+                            }
+    except Exception:
+        pass
+
+    _ENRICH_DYNAMODB_CACHE = capacities
+    _ENRICH_DYNAMODB_CACHE_TS = now
+    return capacities
 
 
 def load_plant_profile(plant_name: str = "GSNP") -> PlantProfile:
@@ -135,15 +201,43 @@ def load_plant_profile(plant_name: str = "GSNP") -> PlantProfile:
     else:
         ac_mw = float(cfg_profile.get("capacity_mw") or getattr(config, "PLANT_CAPACITY_MW", 20.0))
 
+    # STRICTLY FOR ENRICH ONLY: Dynamically overlay live AC and DC capacities from DynamoDB table 'multi_generator_plant'
+    if name_upper in ("EMIL", "UPL", "CLIMATEDETOX", "ENRICH"):
+        enrich_live = _fetch_enrich_live_capacities_from_dynamodb()
+        if name_upper in enrich_live:
+            live_ac = enrich_live[name_upper].get("ac_capacity_mw")
+            live_dc = enrich_live[name_upper].get("dc_capacity_mw")
+            if live_ac is not None and live_ac > 0.0:
+                ac_mw = live_ac
+            if live_dc is not None and live_dc > 0.0:
+                dc_mw = live_dc
+
     tilt = float(data.get("tilt_deg") or cfg_profile.get("tilt_deg") or getattr(config, "PLANT_TILT_DEG", 15.0))
     orient = float(data.get("orientation_deg_from_south") or cfg_profile.get("orientation_deg_from_south") or getattr(config, "PLANT_ORIENTATION_DEG_FROM_SOUTH", 8.0))
 
     az_om = orient
     az_pvlib = 180.0 + orient
 
-    # Plant-specific base PR
-    base_pr = float(data.get("performance_ratio") or cfg_profile.get("performance_ratio") or getattr(config, "PERFORMANCE_RATIO", 0.78))
-    transfer_ratio = round((dc_mw * base_pr) / 1000.0, 6)
+    meter_data = data.get("meter_data", {})
+    is_non_meter = (
+        name_upper in NON_METER_SITES
+        or bool(meter_data.get("is_non_meter_site", False))
+        or bool(meter_data.get("is_virtual", False))
+        or bool(data.get("is_non_meter_site", False))
+    )
+
+    # Plant-specific base PR and transfer ratio configuration
+    if is_non_meter:
+        # Non-meter sites follow Tier 2 Dynamic Weather-Driven Physics Derivation:
+        # Irradiance absorption is based on physical DC panels (e.g. 8.54 MW for ANDAD)
+        # and capped at AC inverter capacity (e.g. 7.50 MW), matching Enercast's ~82% AC peak.
+        explicit_pr = data.get("performance_ratio") or cfg_profile.get("performance_ratio")
+        base_pr = float(explicit_pr) if explicit_pr is not None else 0.8300
+        transfer_ratio = round((dc_mw * base_pr) / 1000.0, 6)
+    else:
+        explicit_pr = data.get("performance_ratio") or cfg_profile.get("performance_ratio")
+        base_pr = float(explicit_pr) if explicit_pr is not None else float(getattr(config, "PERFORMANCE_RATIO", 0.78))
+        transfer_ratio = round((dc_mw * base_pr) / 1000.0, 6)
 
     ppa = float(data.get("ppa_rate_inr_per_kwh") or cfg_profile.get("ppa_rate_inr_per_kwh") or getattr(config, "PPA_RATE_INR_PER_KWH", 6.97))
     reg = str(data.get("penalty_regulation") or cfg_profile.get("penalty_regulation") or "Madhya Pradesh")
@@ -168,7 +262,6 @@ def load_plant_profile(plant_name: str = "GSNP") -> PlantProfile:
         tol_mw = float(data["tolerance_band_mw"])
     else:
         tol_mw = round(ac_mw * band_pct, 3)
-    meter_data = data.get("meter_data", {})
 
     return PlantProfile(
         plant_name=name_upper,
@@ -185,9 +278,52 @@ def load_plant_profile(plant_name: str = "GSNP") -> PlantProfile:
         penalty_regulation=reg,
         tolerance_band_mw=tol_mw,
         band_percentage=band_pct,
-        calibrated_pr=None,
+        calibrated_pr=base_pr if is_non_meter else None,
         meter_data=meter_data,
     )
+
+def enforce_anti_plateau_curvature(mw_arr: np.ndarray, cs_poa: np.ndarray, min_step: float = 0.01) -> np.ndarray:
+    """
+    Ensures no consecutive daylight blocks (blocks 24 to 75, > 0.05 MW) have identical generation values.
+    Shapes any flat plateau runs (from low-capacity 2-decimal rounding or inverter clipping) to strictly
+    follow the astronomical clear-sky solar curvature (Clear-Sky POA).
+    """
+    arr = np.copy(mw_arr)
+    for _ in range(10):
+        changed = False
+        i = 23
+        while i < 75:
+            if arr[i] > 0.05:
+                j = i
+                while j + 1 < 76 and arr[j + 1] == arr[i] and arr[i] > 0.05:
+                    j += 1
+                if j > i:
+                    changed = True
+                    sub_cs = cs_poa[i : j + 1]
+                    peak_local = int(np.argmax(sub_cs))
+                    peak_idx = i + peak_local
+                    for k in range(peak_idx - 1, i - 1, -1):
+                        if arr[k] >= arr[k + 1]:
+                            arr[k] = round(max(0.0, arr[k + 1] - min_step), 2)
+                    for k in range(peak_idx + 1, j + 1):
+                        if arr[k] >= arr[k - 1]:
+                            arr[k] = round(max(0.0, arr[k - 1] - min_step), 2)
+                    i = j + 1
+                else:
+                    i += 1
+            else:
+                i += 1
+        if not changed:
+            break
+
+    # Secondary sweep to resolve any remaining adjacent identical daylight pair
+    for b in range(23, 75):
+        if arr[b] > 0.05 and arr[b] == arr[b + 1]:
+            if cs_poa[b + 1] >= cs_poa[b]:
+                arr[b] = round(max(0.0, arr[b + 1] - min_step), 2)
+            else:
+                arr[b + 1] = round(max(0.0, arr[b] - min_step), 2)
+    return arr
 
 
 class IntellisEnsembleGTIAI:
@@ -364,8 +500,13 @@ class IntellisEnsembleGTIAI:
     def load_meter_actuals_with_poa(self, target_date_str: str) -> tuple[np.ndarray, np.ndarray]:
         """Load 96-block active generation (MW) and POA sensor irradiance (W/m²)."""
         p_name = self.profile.plant_name
+        is_non_meter = (
+            p_name.upper() in NON_METER_SITES
+            or bool(self.profile.meter_data.get("is_non_meter_site", False))
+            or bool(self.profile.meter_data.get("is_virtual", False))
+        )
         # For designated non-meter sites, use satellite solar radiation API as the virtual meter input
-        if p_name.upper() in NON_METER_SITES:
+        if is_non_meter:
             try:
                 from modules.weather.satellite_virtual_meter import fetch_satellite_96block_profile
                 mw_arr, poa_arr = fetch_satellite_96block_profile(
@@ -375,8 +516,9 @@ class IntellisEnsembleGTIAI:
                     tilt=self.profile.tilt_deg,
                     azimuth=self.profile.azimuth_openmeteo,
                     plant_capacity_mw=self.profile.ac_capacity_mw,
-                    dc_capacity_mw=self.profile.dc_capacity_mw,
-                    performance_ratio=getattr(self.profile, "calibrated_pr", 0.78),
+                    dc_capacity_mw=self.profile.ac_capacity_mw,
+                    performance_ratio=getattr(self.profile, "calibrated_pr", 0.8300),
+                    is_non_meter=True,
                 )
                 return mw_arr, poa_arr
             except Exception as exc:
@@ -505,10 +647,20 @@ class IntellisEnsembleGTIAI:
         during high-irradiance daylight blocks by normalizing for cell temperature.
         Clamps within physical limits [0.78, 0.95].
         """
-        if self.profile.plant_name.upper() in NON_METER_SITES:
-            learned_pr = getattr(self.profile, "calibrated_pr", None) or getattr(config, "PERFORMANCE_RATIO", 0.78)
+        site_upper = self.profile.plant_name.upper()
+        is_non_meter = (
+            site_upper in NON_METER_SITES
+            or bool(self.profile.meter_data.get("is_non_meter_site", False))
+            or bool(self.profile.meter_data.get("is_virtual", False))
+        )
+        if is_non_meter:
+            learned_pr = getattr(self.profile, "calibrated_pr", None)
+            if learned_pr is None:
+                learned_pr = 0.8300
             self.profile.calibrated_pr = round(learned_pr, 4)
-            self.profile.transfer_ratio = round((self.profile.dc_capacity_mw * self.profile.calibrated_pr) / 1000.0, 6)
+            # For non-meter sites, solar irradiance is absorbed by physical DC panels, capped at AC capacity
+            dc_cap = getattr(self.profile, "dc_capacity_mw", None) or self.profile.ac_capacity_mw
+            self.profile.transfer_ratio = round((dc_cap * self.profile.calibrated_pr) / 1000.0, 6)
             return self.profile.calibrated_pr
 
         target_dt = datetime.strptime(target_date_str, "%Y-%m-%d")
@@ -1016,144 +1168,127 @@ class IntellisEnsembleGTIAI:
             self.calibrate_plant_pr(target_date_str)
 
         site_upper = (self.profile.plant_name or "").upper()
-        if site_upper in NON_METER_SITES:
-            from modules.weather.satellite_virtual_meter import fetch_satellite_day_profile
-            try:
-                target_d = dt.date.fromisoformat(target_date_str)
-            except Exception:
-                target_d = dt.date.today()
-            sat_hourly = fetch_satellite_day_profile(
-                target_date=target_d,
-                latitude=self.profile.latitude,
-                longitude=self.profile.longitude,
-                tilt=self.profile.tilt_deg,
-                azimuth=self.profile.azimuth_openmeteo,
-            )
-            times = sat_hourly.get("time", [])
-            gtis = sat_hourly.get("global_tilted_irradiance", [])
-            hour_gti = {int(t.split("T")[1].split(":")[0]): float(g) for t, g in zip(times, gtis) if "T" in t}
+        is_non_meter = (
+            site_upper in NON_METER_SITES
+            or bool(self.profile.meter_data.get("is_non_meter_site", False))
+            or bool(self.profile.meter_data.get("is_virtual", False))
+        )
+        weather = self.fetch_ensemble_weather(target_date_str)
+        meter_mw = self.load_meter_actuals(target_date_str)
+        cs_poa = self.compute_clearsky_poa_96block(target_date_str)
 
-            fused_gti = np.zeros(96, dtype=float)
-            pred_mw = np.zeros(96, dtype=float)
-            tr = self.profile.transfer_ratio
-
-            for b in range(1, 97):
-                if b < 24 or b > 75:
-                    continue
-                mid_min = (b - 0.5) * 15
-                h = int(mid_min // 60)
-                frac = (mid_min % 60) / 60.0
-                curr_g = hour_gti.get(h, 0.0)
-                nxt_g = hour_gti.get(min(23, h + 1), curr_g)
-                g_interp = max(0.0, curr_g + frac * (nxt_g - curr_g))
-                fused_gti[b - 1] = round(g_interp, 1)
-                pred_mw[b - 1] = round(min(self.profile.ac_capacity_mw, g_interp * tr), 3)
-
-            meter_mw = np.zeros(96, dtype=float)
-        else:
-            weather = self.fetch_ensemble_weather(target_date_str)
-            meter_mw = self.load_meter_actuals(target_date_str)
-            cs_poa = self.compute_clearsky_poa_96block(target_date_str)
-
-            if not selected_keys or not weights_map:
-                slot_selections = self.benchmark_and_select_slot_models(target_date_str)
-                all_selected = []
-                all_weights = {}
-                for s_name, slot_data in slot_selections.items():
-                    s_keys = slot_data[0]
-                    s_w = slot_data[1]
-                    all_selected.extend(s_keys)
-                    all_weights.update(s_w)
-                selected_keys = list(dict.fromkeys(all_selected))
-                weights_map = {k: all_weights.get(k, round(1.0 / len(selected_keys), 4)) for k in selected_keys}
-                w_sum = sum(weights_map.values())
-                weights_map = {k: round(v / w_sum, 4) for k, v in weights_map.items()}
-            else:
-                slot_selections = {
-                    "morning": (selected_keys, weights_map),
-                    "midday": (selected_keys, weights_map),
-                    "afternoon": (selected_keys, weights_map),
-                }
-
-            # Physical Cloud Optical Attenuation Ceiling (Kasten-Czeplak formulation)
-            cloud_metrics = self.get_cloud_and_atmospheric_metrics_96block(weather)
-            tot_cloud = cloud_metrics["tot_cloud_96"]
-            low_cloud = cloud_metrics["low_cloud_96"]
-            precip = cloud_metrics["precip_96"]
-
-            t_cloud = 1.0 - 0.75 * ((tot_cloud / 100.0) ** 3.4)
-            eta_low = 1.0 - 0.50 * (low_cloud / 100.0)
-            eta_rain = np.where(precip > 0.5, 0.50, np.where(precip > 0.05, 0.70, 1.0))
-            cloud_cap = cs_poa * t_cloud * eta_low * eta_rain
-
-            # Compute Clearness Index (Kt) array for each slot
-            kt_slots = {}
+        if not selected_keys or not weights_map:
+            slot_selections = self.benchmark_and_select_slot_models(target_date_str)
+            all_selected = []
+            all_weights = {}
             for s_name, slot_data in slot_selections.items():
                 s_keys = slot_data[0]
                 s_w = slot_data[1]
-                s_gains = slot_data[2] if len(slot_data) > 2 else {}
-                slot_kt = np.zeros(96, dtype=float)
-                total_w = sum(s_w.values()) if s_w else 1.0
-                for k in s_keys:
-                    w_k = s_w.get(k, 1.0 / max(1, len(s_keys))) / total_w
-                    gain_k = s_gains.get(k, 1.0)
-                    m_gti = self.extract_member_96block_gti(weather, k, target_date_str) * gain_k
-                    # Physically cap inflated diffuse irradiance under overcast / thick cloud regimes
-                    m_gti = np.minimum(m_gti, np.maximum(35.0, cloud_cap))
-                    denom = np.maximum(15.0, cs_poa)
-                    m_kt = np.clip(m_gti / denom, 0.0, 1.15)
-                    slot_kt += w_k * m_kt
-                kt_slots[s_name] = slot_kt
+                all_selected.extend(s_keys)
+                all_weights.update(s_w)
+            selected_keys = list(dict.fromkeys(all_selected))
+            weights_map = {k: all_weights.get(k, round(1.0 / len(selected_keys), 4)) for k in selected_keys}
+            w_sum = sum(weights_map.values())
+            weights_map = {k: round(v / w_sum, 4) for k, v in weights_map.items()}
+        else:
+            slot_selections = {
+                "morning": (selected_keys, weights_map),
+                "midday": (selected_keys, weights_map),
+                "afternoon": (selected_keys, weights_map),
+            }
 
-            # Smooth cosine spline blending across diurnal slots
-            blended_kt = np.zeros(96, dtype=float)
-            for b in range(96):
-                if b < 24 or b >= 76:
-                    blended_kt[b] = 0.0
-                elif b < 38:
-                    blended_kt[b] = kt_slots["morning"][b]
-                elif b <= 42:
-                    # Transition Morning -> Midday (Blocks 39 to 43)
-                    alpha = 0.5 * (1.0 - math.cos(math.pi * (b - 38) / 4.0))
-                    blended_kt[b] = (1.0 - alpha) * kt_slots["morning"][b] + alpha * kt_slots["midday"][b]
-                elif b < 54:
-                    blended_kt[b] = kt_slots["midday"][b]
-                elif b <= 58:
-                    # Transition Midday -> Afternoon (Blocks 55 to 59)
-                    alpha = 0.5 * (1.0 - math.cos(math.pi * (b - 54) / 4.0))
-                    blended_kt[b] = (1.0 - alpha) * kt_slots["midday"][b] + alpha * kt_slots["afternoon"][b]
-                else:
-                    blended_kt[b] = kt_slots["afternoon"][b]
+        # Physical Cloud Optical Attenuation Ceiling (Kasten-Czeplak formulation)
+        cloud_metrics = self.get_cloud_and_atmospheric_metrics_96block(weather)
+        tot_cloud = cloud_metrics["tot_cloud_96"]
+        low_cloud = cloud_metrics["low_cloud_96"]
+        precip = cloud_metrics["precip_96"]
 
-            # Re-synthesize fused GTI from physical Clearness Index and astronomical Clear-Sky curve
-            fused_gti = np.round(blended_kt * cs_poa, 1)
-            fused_gti[:23] = 0.0
-            fused_gti[76:] = 0.0
-            fused_gti = np.maximum(0.0, fused_gti)
+        t_cloud = 1.0 - 0.75 * ((tot_cloud / 100.0) ** 3.4)
+        eta_low = 1.0 - 0.50 * (low_cloud / 100.0)
+        eta_rain = np.where(precip > 0.5, 0.50, np.where(precip > 0.05, 0.70, 1.0))
+        cloud_cap = cs_poa * t_cloud * eta_low * eta_rain
 
-            # Ambient temperature & Wind speed convective derating from Open-Meteo Premium
-            hourly = weather.get("hourly", {})
-            if "temperature_2m" in hourly and hourly["temperature_2m"]:
-                h_t = [float(v) if v is not None else 28.0 for v in hourly["temperature_2m"][:24]]
-                amb_temp = np.interp(np.arange(0, 24, 0.25), np.arange(0, 24, 1.0), h_t)
+        # Compute Clearness Index (Kt) array for each slot
+        kt_slots = {}
+        for s_name, slot_data in slot_selections.items():
+            s_keys = slot_data[0]
+            s_w = slot_data[1]
+            s_gains = slot_data[2] if len(slot_data) > 2 else {}
+            slot_kt = np.zeros(96, dtype=float)
+            total_w = sum(s_w.values()) if s_w else 1.0
+            for k in s_keys:
+                w_k = s_w.get(k, 1.0 / max(1, len(s_keys))) / total_w
+                gain_k = s_gains.get(k, 1.0)
+                m_gti = self.extract_member_96block_gti(weather, k, target_date_str) * gain_k
+                # Physically cap inflated diffuse irradiance under overcast / thick cloud regimes
+                m_gti = np.minimum(m_gti, np.maximum(35.0, cloud_cap))
+                denom = np.maximum(15.0, cs_poa)
+                m_kt = np.clip(m_gti / denom, 0.0, 1.15)
+                slot_kt += w_k * m_kt
+            kt_slots[s_name] = slot_kt
+
+        # Smooth cosine spline blending across diurnal slots
+        blended_kt = np.zeros(96, dtype=float)
+        for b in range(96):
+            if b < 24 or b >= 76:
+                blended_kt[b] = 0.0
+            elif b < 38:
+                blended_kt[b] = kt_slots["morning"][b]
+            elif b <= 42:
+                # Transition Morning -> Midday (Blocks 39 to 43)
+                alpha = 0.5 * (1.0 - math.cos(math.pi * (b - 38) / 4.0))
+                blended_kt[b] = (1.0 - alpha) * kt_slots["morning"][b] + alpha * kt_slots["midday"][b]
+            elif b < 54:
+                blended_kt[b] = kt_slots["midday"][b]
+            elif b <= 58:
+                # Transition Midday -> Afternoon (Blocks 55 to 59)
+                alpha = 0.5 * (1.0 - math.cos(math.pi * (b - 54) / 4.0))
+                blended_kt[b] = (1.0 - alpha) * kt_slots["midday"][b] + alpha * kt_slots["afternoon"][b]
             else:
-                amb_temp = 25.0 + 10.0 * np.sin(np.pi * np.maximum(0, np.arange(96) - 24) / 56.0)
+                blended_kt[b] = kt_slots["afternoon"][b]
 
-            if "wind_speed_10m" in hourly and hourly["wind_speed_10m"]:
-                h_ws = [float(v) if v is not None else 2.5 for v in hourly["wind_speed_10m"][:24]]
-                wind_speed = np.interp(np.arange(0, 24, 0.25), np.arange(0, 24, 1.0), h_ws)
-            else:
-                wind_speed = np.full(96, 2.5)
+        # Re-synthesize fused GTI from physical Clearness Index and astronomical Clear-Sky curve
+        fused_gti = np.round(blended_kt * cs_poa, 1)
+        fused_gti[:23] = 0.0
+        fused_gti[76:] = 0.0
+        fused_gti = np.maximum(0.0, fused_gti)
 
-            # Faiman / Sandia convective module temperature model
-            # Tcell = Tamb + GTI / (u0 + u1 * WindSpeed), where u0=25.0, u1=1.2 for open-rack modules
-            cell_temp = amb_temp + fused_gti / (25.0 + 1.2 * wind_speed)
-            temp_factor = np.clip(1.0 - 0.0038 * (cell_temp - 25.0), 0.82, 1.06)
+        # Ambient temperature & Wind speed convective derating from Open-Meteo Premium
+        hourly = weather.get("hourly", {})
+        if "temperature_2m" in hourly and hourly["temperature_2m"]:
+            h_t = [float(v) if v is not None else 28.0 for v in hourly["temperature_2m"][:24]]
+            amb_temp = np.interp(np.arange(0, 24, 0.25), np.arange(0, 24, 1.0), h_t)
+        else:
+            amb_temp = 25.0 + 10.0 * np.sin(np.pi * np.maximum(0, np.arange(96) - 24) / 56.0)
 
-            # Predicted MW = GTI * transfer_ratio * temp_factor clipped to AC capacity
+        if "wind_speed_10m" in hourly and hourly["wind_speed_10m"]:
+            h_ws = [float(v) if v is not None else 2.5 for v in hourly["wind_speed_10m"][:24]]
+            wind_speed = np.interp(np.arange(0, 24, 0.25), np.arange(0, 24, 1.0), h_ws)
+        else:
+            wind_speed = np.full(96, 2.5)
+
+        # Faiman / Sandia convective module temperature model
+        # Tcell = Tamb + GTI / (u0 + u1 * WindSpeed), where u0=25.0, u1=1.2 for open-rack modules
+        cell_temp = amb_temp + fused_gti / (25.0 + 1.2 * wind_speed)
+        temp_factor = np.clip(1.0 - 0.0038 * (cell_temp - 25.0), 0.82, 1.06)
+
+        # Predicted MW calculation
+        if is_non_meter:
+            # Non-meter sites: DC capacity absorbs irradiance with Sandia thermal derating; capped at AC inverter capacity
+            target_pr = getattr(self.profile, "calibrated_pr", 0.8300) or 0.8300
+            base_bop = target_pr / 0.905
+            dc_cap = getattr(self.profile, "dc_capacity_mw", None) or self.profile.ac_capacity_mw
+            tr_dynamic = (dc_cap * base_bop) / 1000.0
+            pred_mw = np.round(np.clip(fused_gti * tr_dynamic * temp_factor, 0.0, self.profile.ac_capacity_mw), 2)
+        else:
+            # Metered sites: DC capacity basis with SCADA dynamic PR calibration
             pred_mw = np.round(np.clip(fused_gti * self.profile.transfer_ratio * temp_factor, 0.0, self.profile.ac_capacity_mw), 2)
-            pred_mw[:23] = 0.0
-            pred_mw[76:] = 0.0
+
+        pred_mw[:23] = 0.0
+        pred_mw[76:] = 0.0
+
+        # Anti-plateau solar curvature guardrail: Enforce non-identical consecutive blocks during daylight hours
+        pred_mw = enforce_anti_plateau_curvature(pred_mw, cs_poa)
 
         # Calculate DSM Penalties against meter actuals if available
         blocks_data = []
@@ -1259,7 +1394,7 @@ class IntellisEnsembleGTIAI:
             self.profile.penalty_regulation == "Madhya Pradesh"
             or site_upper in {
                 "SIRMOUR", "ANJANGOAN", "ANJANGAON", "ANDAD", "BALAKWADA",
-                "BAMKHAL", "CHANDAWASA", "GSNP", "GSPPL", "GUGARIYAKHEDI", "NANDGAON", "SAWDA", "REWASPRNG", "REWASEIT"
+                "BAMKHAL", "CHANDAWASA", "CHANDWASA", "GSNP", "GSPPL", "GUGARIYAKHEDI", "NANDGAON", "SAWDA", "REWASPRNG", "REWASEIT"
             }
         )
         freeze_lag_blocks = 6 if is_90min_site else 3
@@ -1527,12 +1662,16 @@ class IntellisEnsembleGTIAI:
         curr_idx = curr_block - 1
 
         site_upper = (self.profile.plant_name or "").upper()
-        is_non_meter_site = site_upper in NON_METER_SITES
+        is_non_meter_site = (
+            site_upper in NON_METER_SITES
+            or bool(self.profile.meter_data.get("is_non_meter_site", False))
+            or bool(self.profile.meter_data.get("is_virtual", False))
+        )
         is_90min_site = (
             self.profile.penalty_regulation == "Madhya Pradesh"
             or site_upper in {
                 "SIRMOUR", "ANJANGOAN", "ANJANGAON", "ANDAD", "BALAKWADA",
-                "BAMKHAL", "CHANDAWASA", "GSNP", "GSPPL", "GUGARIYAKHEDI", "NANDGAON", "SAWDA", "REWASPRNG", "REWASEIT"
+                "BAMKHAL", "CHANDAWASA", "CHANDWASA", "GSNP", "GSPPL", "GUGARIYAKHEDI", "NANDGAON", "SAWDA", "REWASPRNG", "REWASEIT"
             }
         )
         freeze_lag_blocks = 6 if is_90min_site else 3
@@ -1580,9 +1719,10 @@ class IntellisEnsembleGTIAI:
                     tilt=self.profile.tilt_deg,
                     azimuth=self.profile.azimuth_openmeteo,
                     plant_capacity_mw=self.profile.ac_capacity_mw,
-                    dc_capacity_mw=self.profile.dc_capacity_mw,
-                    performance_ratio=getattr(self.profile, "calibrated_pr", 0.78),
+                    dc_capacity_mw=self.profile.ac_capacity_mw if is_non_meter_site else self.profile.dc_capacity_mw,
+                    performance_ratio=getattr(self.profile, "calibrated_pr", 0.8300 if is_non_meter_site else 0.78),
                     cutoff_time=target_dt,
+                    is_non_meter=is_non_meter_site,
                 )
                 if curr_block >= 1 and np.max(virt_mw[:curr_block]) > (0.02 * self.profile.ac_capacity_mw):
                     live_mw = float(virt_mw[curr_block - 1])
@@ -1650,11 +1790,11 @@ class IntellisEnsembleGTIAI:
             except Exception as exc:
                 print(f"  [WARN] Intraday SCADA feedback failed: {exc}; using strategic forecast.")
 
-        # Extract next 12 actionable dispatch blocks for the LLM to forecast
-        next_12_blocks = []
+        # Extract actionable daylight dispatch blocks up to 19:00 (Block 76 / 7:00 PM) for the LLM to forecast
+        solar_actionable_blocks = []
         for b in sched["blocks"]:
-            if actionable_block <= b["block"] < actionable_block + 12 and 24 <= b["block"] <= 76:
-                next_12_blocks.append({
+            if actionable_block <= b["block"] <= 76 and b["block"] >= 24:
+                solar_actionable_blocks.append({
                     "block": b["block"],
                     "time_interval": b["time_interval"],
                     "predicted_mw": b["schedule_mw"],
@@ -1662,39 +1802,52 @@ class IntellisEnsembleGTIAI:
                 })
 
         # 5. Consult LLM Strategic Arbiter (for metered and non-metered sites)
-        try:
-            from modules.llm.strategic_arbiter import LLMStrategicArbiter
-            arbiter = LLMStrategicArbiter(plant_profile=self.profile)
-            advice = arbiter.get_strategic_guidance(
-                target_date_str=target_date_str,
-                target_time_str=target_time_str,
-                weather_indicators=weather_ind,
-                live_telemetry=telemetry_ind,
-                next_12_blocks=next_12_blocks,
-            )
-            print(f"  [LLM STRATEGY] Regime: {advice.regime} | Risk Quantile: {advice.quantile_bias_factor:.3f} | Agency: {advice.preferred_agency} | Trip Flag: {advice.is_trip_or_curtailment}")
-            print(f"                 Reasoning: {advice.reasoning}")
-        except Exception as arb_err:
-            print(f"  [WARN] LLM Strategic Arbiter invocation skipped: {arb_err}")
+        if not solar_actionable_blocks:
+            # Past sunset (after 19:00) or no actionable daylight blocks remaining
             from modules.llm.strategic_arbiter import StrategicAdvice
-            source_lbl = "SATELLITE_PHYSICS" if is_non_meter_site else "PHYSICS_BASELINE"
             advice = StrategicAdvice(
-                regime="CLEAR_SKY",
+                regime="NIGHT",
                 quantile_bias_factor=1.0,
-                preferred_agency="SATELLITE_PHYSICS" if is_non_meter_site else "BALANCED",
+                preferred_agency="PHYSICS_BASELINE",
                 is_trip_or_curtailment=False,
-                reasoning=f"Deterministic fallback physics mode ({arb_err})",
+                reasoning="Night hours (no actionable daylight blocks remaining up to 7:00 PM).",
                 block_predictions={},
-                source=source_lbl,
+                source="NIGHT_PHYSICS_BASELINE",
             )
+        else:
+            try:
+                from modules.llm.strategic_arbiter import LLMStrategicArbiter
+                arbiter = LLMStrategicArbiter(plant_profile=self.profile)
+                advice = arbiter.get_strategic_guidance(
+                    target_date_str=target_date_str,
+                    target_time_str=target_time_str,
+                    weather_indicators=weather_ind,
+                    live_telemetry=telemetry_ind,
+                    actionable_blocks=solar_actionable_blocks,
+                    next_12_blocks=solar_actionable_blocks,
+                )
+                print(f"  [LLM STRATEGY] Regime: {advice.regime} | Risk Quantile: {advice.quantile_bias_factor:.3f} | Agency: {advice.preferred_agency} | Trip Flag: {advice.is_trip_or_curtailment}")
+                print(f"                 Reasoning: {advice.reasoning}")
+            except Exception as arb_err:
+                print(f"  [WARN] LLM Strategic Arbiter invocation skipped: {arb_err}")
+                from modules.llm.strategic_arbiter import StrategicAdvice
+                source_lbl = "SATELLITE_PHYSICS" if is_non_meter_site else "PHYSICS_BASELINE"
+                advice = StrategicAdvice(
+                    regime="CLEAR_SKY",
+                    quantile_bias_factor=1.0,
+                    preferred_agency="SATELLITE_PHYSICS" if is_non_meter_site else "BALANCED",
+                    is_trip_or_curtailment=False,
+                    reasoning=f"Deterministic fallback physics mode ({arb_err})",
+                    block_predictions={},
+                    source=source_lbl,
+                )
 
         # Note: Hardware trip / inverter outage logic is disabled per industry standard (Enercast alignment).
         # Electrical breaker resets cannot be predicted in advance; scheduling strictly reflects meteorological potential.
         advice.is_trip_or_curtailment = False
 
-        # 6. Apply LLM Predictions for next 12 blocks, and pure Intellis GTI up to 19:00 (Block 76 / night 7)
+        # 6. Apply LLM Predictions for all actionable daylight blocks up to 19:00 (Block 76 / 7:00 PM)
         is_clear_sky = (
-            
             real_clearness_ratio >= 0.85
             or advice.regime in ("CLEAR", "CLEAR_SKY")
             or (weather_ind and weather_ind.get("cloud_cover_pct", 100) <= 30.0)
@@ -1706,70 +1859,75 @@ class IntellisEnsembleGTIAI:
         )
 
         if advice.block_predictions:
-            print(f"  [LLM 12-BLOCK PREDICTIONS] Applying direct LLM predictions to {len(advice.block_predictions)} blocks...")
+            print(f"  [LLM SOLAR HORIZON PREDICTIONS] Applying direct LLM predictions up to 7 PM to {len(advice.block_predictions)} blocks...")
             prev_val = None
-            max_llm_block = max(int(k) for k in advice.block_predictions.keys()) if advice.block_predictions else (actionable_block + 11)
+            max_llm_block = max((int(k) for k in advice.block_predictions.keys() if str(k).strip().isdigit()), default=76)
             for b in sched["blocks"]:
                 b_str = str(b["block"])
-                if b["block"] >= actionable_block and b_str in advice.block_predictions:
-                    pred_mw = float(advice.block_predictions[b_str])
-                    pred_mw = max(0.0, min(self.profile.ac_capacity_mw, pred_mw))
-                    b_idx = b["block"] - 1
-                    physics_base_mw = float(b["schedule_mw"])
+                if b["block"] >= actionable_block:
+                    if b_str in advice.block_predictions:
+                        pred_mw = float(advice.block_predictions[b_str])
+                        pred_mw = max(0.0, min(self.profile.ac_capacity_mw, pred_mw))
+                        b_idx = b["block"] - 1
+                        physics_base_mw = float(b["schedule_mw"])
 
-                    # --- PHYSICAL GUARDRAIL 1: Solar Geometry Hard Cutoff ---
-                    if b["block"] > 74 or b["block"] < 24:
-                        pred_mw = 0.0
+                        # --- PHYSICAL GUARDRAIL 1: Solar Geometry Hard Cutoff ---
+                        if b["block"] > 74 or b["block"] < 24:
+                            pred_mw = 0.0
 
-                    # --- PHYSICAL GUARDRAIL 2: Clear-Sky Negative Cut Lockout ---
-                    # If ground telemetry, weather, or regime confirms clear sky,
-                    # forbid LLM from slashing predictions below the physics baseline.
-                    if is_clear_sky:
-                        if pred_mw < physics_base_mw:
-                            pred_mw = physics_base_mw
+                        # --- PHYSICAL GUARDRAIL 2: Clear-Sky Negative Cut Lockout ---
+                        # If ground telemetry, weather, or regime confirms clear sky,
+                        # forbid LLM from slashing predictions below the physics baseline.
+                        if is_clear_sky:
+                            if pred_mw < physics_base_mw:
+                                pred_mw = physics_base_mw
 
-                    # --- PHYSICAL GUARDRAIL 3: Overcast Optical Cloud Ceiling Upper Bound ---
-                    # If today is overcast, forbid LLM from inflating generation above the cloud ceiling
-                    if is_overcast:
-                        overcast_max = max(physics_base_mw * 1.10, self.profile.ac_capacity_mw * 0.25)
-                        if pred_mw > overcast_max:
-                            pred_mw = overcast_max
+                        # --- PHYSICAL GUARDRAIL 3: Overcast Optical Cloud Ceiling Upper Bound ---
+                        # If today is overcast, forbid LLM from inflating generation above the cloud ceiling
+                        if is_overcast:
+                            overcast_max = max(physics_base_mw * 1.10, self.profile.ac_capacity_mw * 0.25)
+                            if pred_mw > overcast_max:
+                                pred_mw = overcast_max
 
-                    # --- PHYSICAL GUARDRAIL 4: Ramp-Rate Continuity Filter ---
-                    # Only apply downward ramp clamping if we are NOT locked to clear-sky physics baseline
-                    if prev_val is not None and 24 <= b["block"] <= 74:
-                        if is_clear_sky and pred_mw >= physics_base_mw and not advice.is_trip_or_curtailment:
-                            # Physics baseline is already smooth and continuous
-                            pred_mw = max(pred_mw, physics_base_mw)
-                        else:
-                            if b["block"] == actionable_block and (advice.is_trip_or_curtailment or real_clearness_ratio < 0.65):
-                                max_ramp = max(abs(pred_mw - prev_val), max(0.50, self.profile.ac_capacity_mw * 0.10))
+                        # --- PHYSICAL GUARDRAIL 4: Ramp-Rate & Anti-Sawtooth Monotonic Descent Filter ---
+                        # Only apply downward ramp clamping if we are NOT locked to clear-sky physics baseline
+                        if prev_val is not None and 24 <= b["block"] <= 74:
+                            if is_clear_sky and pred_mw >= physics_base_mw and not advice.is_trip_or_curtailment:
+                                # Physics baseline is already smooth and continuous
+                                pred_mw = max(pred_mw, physics_base_mw)
                             else:
-                                max_ramp = max(0.50, self.profile.ac_capacity_mw * 0.10)
-                            if abs(pred_mw - prev_val) > max_ramp:
-                                pred_mw = prev_val + (max_ramp if pred_mw > prev_val else -max_ramp)
-                    pred_mw = round(pred_mw, 2)
-                    b["predicted_mw"] = pred_mw
-                    b["intellis_mw"] = pred_mw
-                    b["schedule_mw"] = pred_mw
-                    if self.profile.transfer_ratio > 0:
-                        b["intellis_gti"] = round(pred_mw / self.profile.transfer_ratio, 1)
-                        b["predicted_gti_wm2"] = b["intellis_gti"]
-                elif b["block"] > max_llm_block and b["block"] <= 76:
-                    # After 12 LLM blocks up to 19:00 (Block 76 / night 7), use pure physical Intellis GTI
-                    raw_gti_mw = float(b.get("predicted_mw", b.get("intellis_mw", 0.0)))
-                    raw_gti_mw = max(0.0, min(self.profile.ac_capacity_mw, raw_gti_mw))
-                    if b["block"] > 72:  # Sunset transition (18:00 - 19:00)
-                        raw_gti_mw = min(raw_gti_mw, max(0.0, round((76 - b["block"]) * 0.03, 2)))
-                    b["schedule_mw"] = raw_gti_mw
-                    b["intellis_mw"] = raw_gti_mw
-                    b["predicted_mw"] = raw_gti_mw
-                elif b["block"] > 76 or b["block"] < 24:
-                    # Night hours past 19:00 (Block 76) are strictly 0.0 MW
-                    b["schedule_mw"] = 0.0
-                    b["intellis_mw"] = 0.0
-                    b["intellis_gti"] = 0.0
-                    b["predicted_gti_wm2"] = 0.0
+                                if b["block"] == actionable_block and (advice.is_trip_or_curtailment or real_clearness_ratio < 0.65):
+                                    max_ramp = max(abs(pred_mw - prev_val), max(0.50, self.profile.ac_capacity_mw * 0.10))
+                                else:
+                                    max_ramp = max(0.50, self.profile.ac_capacity_mw * 0.10)
+                                if abs(pred_mw - prev_val) > max_ramp:
+                                    pred_mw = prev_val + (max_ramp if pred_mw > prev_val else -max_ramp)
+                                # Afternoon descent guardrail (blocks 50 to 76): generation must not spike upward
+                                if b["block"] >= 50 and not is_clear_sky and pred_mw > prev_val + 0.05:
+                                    pred_mw = prev_val
+
+                        pred_mw = round(pred_mw, 2)
+                        b["predicted_mw"] = pred_mw
+                        b["intellis_mw"] = pred_mw
+                        b["schedule_mw"] = pred_mw
+                        if self.profile.transfer_ratio > 0:
+                            b["intellis_gti"] = round(pred_mw / self.profile.transfer_ratio, 1)
+                            b["predicted_gti_wm2"] = b["intellis_gti"]
+                    elif b["block"] > max_llm_block and b["block"] <= 76:
+                        # After LLM blocks up to 19:00 (Block 76 / 7:00 PM), use pure physical Intellis GTI
+                        raw_gti_mw = float(b.get("predicted_mw", b.get("intellis_mw", 0.0)))
+                        raw_gti_mw = max(0.0, min(self.profile.ac_capacity_mw, raw_gti_mw))
+                        if b["block"] > 72:  # Sunset transition (18:00 - 19:00)
+                            raw_gti_mw = min(raw_gti_mw, max(0.0, round((76 - b["block"]) * 0.03, 2)))
+                        b["schedule_mw"] = raw_gti_mw
+                        b["intellis_mw"] = raw_gti_mw
+                        b["predicted_mw"] = raw_gti_mw
+                    elif b["block"] > 76 or b["block"] < 24:
+                        # Night hours past 19:00 (Block 76) or before sunrise are strictly 0.0 MW
+                        b["schedule_mw"] = 0.0
+                        b["intellis_mw"] = 0.0
+                        b["intellis_gti"] = 0.0
+                        b["predicted_gti_wm2"] = 0.0
                 prev_val = float(b["schedule_mw"])
         elif abs(advice.quantile_bias_factor - 1.0) > 0.005:
             q_factor = advice.quantile_bias_factor
@@ -1799,6 +1957,17 @@ class IntellisEnsembleGTIAI:
             "reasoning": advice.reasoning,
             "source": advice.source,
         }
+
+        # Anti-plateau solar curvature guardrail: Ensure no consecutive daylight blocks are identical
+        mw_vals = np.array([float(b.get("schedule_mw", 0.0)) for b in sched["blocks"]])
+        fixed_vals = enforce_anti_plateau_curvature(mw_vals, cs_poa)
+        for idx, b in enumerate(sched["blocks"]):
+            b["schedule_mw"] = fixed_vals[idx]
+            b["intellis_mw"] = fixed_vals[idx]
+            b["predicted_mw"] = fixed_vals[idx]
+            if self.profile.transfer_ratio > 0 and fixed_vals[idx] > 0:
+                b["intellis_gti"] = round(fixed_vals[idx] / self.profile.transfer_ratio, 1)
+                b["predicted_gti_wm2"] = b["intellis_gti"]
 
         output_csv_path = Path(output_csv_path)
         output_csv_path.parent.mkdir(parents=True, exist_ok=True)

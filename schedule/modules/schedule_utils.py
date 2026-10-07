@@ -8,6 +8,8 @@ import math
 import re
 from pathlib import Path
 
+import numpy as np
+
 import config
 
 stabilize_curve = None
@@ -255,6 +257,7 @@ def freeze_from_datetime(target_date: str, target_time: str, block_minutes: int 
         "LOKGREENB2": 45,
         "PRANAV": 45,
         "SIDDEHESH": 45,
+        "LGEPL": 45,
     }
     freeze_lag_minutes = freeze_lag_minutes_by_plant.get(config.PLANT_NAME.upper(), 45)
     return freeze_from_datetime_with_lag(
@@ -328,6 +331,7 @@ def write_current_final_schedule(
         "LOKGREENB2": 45,
         "PRANAV": 45,
         "SIDDEHESH": 45,
+        "LGEPL": 45,
     }.get(config.PLANT_NAME.upper(), 45)
     freeze_from = freeze_from_datetime_with_lag(
         target_date,
@@ -597,6 +601,16 @@ def write_full_block_schedule_from_llm_schedule(
     """
     schedule_by_block: dict[int, dict] = {}
 
+    def _row_float(row: dict, *names: str, default: float = 0.0) -> float:
+        for name in names:
+            raw = row.get(name)
+            if raw is None or raw == "":
+                continue
+            try:
+                return float(raw)
+            except (TypeError, ValueError):
+                continue
+        return default
     target_date_str = str(target_date) if target_date else None
     if not target_date_str:
         for p_cand in (input_csv_path, fallback_csv_path):
@@ -615,16 +629,13 @@ def write_full_block_schedule_from_llm_schedule(
                 raw_b = str(row.get("Block", "") or row.get("block", "")).strip()
                 try:
                     b = int(raw_b)
-                    mw = float(
-                        row.get("intellis_mw")
-                        or row.get("schedule_mw")
-                        or row.get("Schedule MW")
-                        or 0.0
-                    )
-                    gti = float(row.get("intellis_gti", 0.0) or 0.0)
+                    schedule_mw = _row_float(row, "schedule_mw", "Schedule MW", "intellis_mw")
+                    intellis_mw = _row_float(row, "intellis_mw", "schedule_mw", "Schedule MW")
+                    gti = _row_float(row, "intellis_gti")
                     schedule_by_block[b] = {
                         "intellis_gti": gti,
-                        "intellis_mw": mw,
+                        "intellis_mw": intellis_mw,
+                        "schedule_mw": schedule_mw,
                         "time_interval": row.get("Time Interval (15 minute interval)", ""),
                     }
                 except (ValueError, TypeError):
@@ -639,29 +650,35 @@ def write_full_block_schedule_from_llm_schedule(
                 raw_b = str(row.get("Block", "") or row.get("block", "")).strip()
                 try:
                     b = int(raw_b)
-                    mw = float(
-                        row.get("intellis_mw")
-                        or row.get("schedule_mw")
-                        or row.get("Schedule MW")
-                        or 0.0
-                    )
-                    gti = float(row.get("intellis_gti", 0.0) or 0.0)
+                    schedule_mw = _row_float(row, "schedule_mw", "Schedule MW", "intellis_mw")
+                    intellis_mw = _row_float(row, "intellis_mw", "schedule_mw", "Schedule MW")
+                    gti = _row_float(row, "intellis_gti")
                     schedule_by_block[b] = {
                         "intellis_gti": gti,
-                        "intellis_mw": mw,
+                        "intellis_mw": intellis_mw,
+                        "schedule_mw": schedule_mw,
                         "time_interval": row.get("Time Interval (15 minute interval)", ""),
                     }
-                    input_explicit_mw[b] = mw
-                    if 28 <= b <= 72 and mw > 0.02:
+                    input_explicit_mw[b] = schedule_mw
+                    if 28 <= b <= 72 and schedule_mw > 0.02:
                         input_daylight_blocks.append(b)
                 except (ValueError, TypeError):
                     continue
 
-    is_wind = getattr(config, "is_wind_plant", lambda: False)() or getattr(config, "PLANT_TYPE", "") == "wind" or (getattr(config, "PLANT_NAME", "") or "").upper() == "CHANDAWASA"
+    is_wind = getattr(config, "is_wind_plant", lambda: False)() or getattr(config, "PLANT_TYPE", "") == "wind" or (getattr(config, "PLANT_NAME", "") or "").upper() in ("CHANDAWASA", "CHANDWASA")
     if not is_wind:
-        dc_cap = float(getattr(config, "PLANT_DC_CAPACITY_MW", getattr(config, "PLANT_CAPACITY_MW", 10.0)))
+        p_name = (getattr(config, "PLANT_NAME", "") or "").upper()
+        from modules.weather.intellis_ensemble_gti_ai import NON_METER_SITES
+        is_non_meter = p_name in NON_METER_SITES or getattr(config, "IS_NON_METER_SITE", False)
+
         ac_cap = float(getattr(config, "PLANT_CAPACITY_MW", 10.0))
-        pr = float(getattr(config, "PERFORMANCE_RATIO", 0.78))
+        if is_non_meter:
+            # Enercast alignment for non-meter sites: DC absorption with Sandia thermal derating capped at AC capacity (~82% of AC)
+            cap_basis = float(getattr(config, "PLANT_DC_CAPACITY_MW", getattr(config, "PLANT_CAPACITY_MW", 10.0)))
+            pr = 0.8300
+        else:
+            cap_basis = float(getattr(config, "PLANT_DC_CAPACITY_MW", getattr(config, "PLANT_CAPACITY_MW", 10.0)))
+            pr = float(getattr(config, "PERFORMANCE_RATIO", 0.78))
 
         if input_daylight_blocks:
             max_populated_daylight_block = max(input_daylight_blocks)
@@ -678,7 +695,7 @@ def write_full_block_schedule_from_llm_schedule(
                     h_from_noon = abs(b_hour - 12.25)
                     if h_from_noon < 6.0:
                         elev_sin = math.cos((h_from_noon / 6.0) * (math.pi / 2.0))
-                        clear_theoretical = dc_cap * pr * (elev_sin ** 1.05)
+                        clear_theoretical = cap_basis * pr * (elev_sin ** 1.05)
                         if clear_theoretical > 0.1:
                             clearness_ratios.append(min(1.0, mw / clear_theoretical))
 
@@ -705,7 +722,7 @@ def write_full_block_schedule_from_llm_schedule(
                     synth_mw = round(min(0.20, ac_cap * 0.04), 3)
                 else:
                     raw_sine = math.sin(math.radians(max(0.0, elev)))
-                    clearsky_mw = min(ac_cap, dc_cap * pr * (raw_sine ** 1.05))
+                    clearsky_mw = min(ac_cap, cap_basis * pr * (raw_sine ** 1.05))
                     clearsky_gti = max(10.0, 1000.0 * (raw_sine ** 0.95))
 
                     w_entry = weather_fusion_map.get(b_time_str) if weather_fusion_map else None
@@ -750,6 +767,7 @@ def write_full_block_schedule_from_llm_schedule(
                 final_block_mw = round(max(0.0, min(ac_cap, synth_mw)), 3)
                 schedule_by_block[block] = {
                     "intellis_mw": final_block_mw if final_block_mw > 0.02 else 0.0,
+                    "schedule_mw": final_block_mw if final_block_mw > 0.02 else 0.0,
                     "intellis_gti": round(final_block_mw / max(0.001, getattr(config, "TRANSFER_RATIO", 0.01)), 1) if final_block_mw > 0.02 else 0.0,
                     "time_interval": f"{b_time_str} - {b_time_str}",
                 }
@@ -811,6 +829,36 @@ def write_full_block_schedule_from_llm_schedule(
         for b, exp_mw in input_explicit_mw.items():
             if b in schedule_by_block:
                 schedule_by_block[b]["intellis_mw"] = exp_mw
+                schedule_by_block[b]["schedule_mw"] = exp_mw
+
+        # Anti-plateau solar curvature guardrail: Ensure no consecutive daylight blocks are identical
+        mw_seq = np.array([float(schedule_by_block.get(b, {}).get("schedule_mw", schedule_by_block.get(b, {}).get("intellis_mw", 0.0))) for b in range(1, total_blocks + 1)])
+        cs_poa_seq = np.zeros(total_blocks, dtype=float)
+        for b in range(1, total_blocks + 1):
+            h_from_noon = abs(((b - 0.5) * 0.25) - 12.25)
+            elev = max(0.0, 90.0 - (h_from_noon * 15.0)) if h_from_noon < 6.0 else 0.0
+            if elev > 0:
+                cs_poa_seq[b - 1] = max(0.0, 1050.0 * (math.sin(math.radians(elev)) ** 1.10))
+        from modules.weather.intellis_ensemble_gti_ai import enforce_anti_plateau_curvature
+        fixed_mw_seq = enforce_anti_plateau_curvature(mw_seq, cs_poa_seq)
+        for b in range(1, total_blocks + 1):
+            if b in schedule_by_block:
+                schedule_by_block[b]["intellis_mw"] = fixed_mw_seq[b - 1]
+                schedule_by_block[b]["schedule_mw"] = fixed_mw_seq[b - 1]
+
+    # Specialized Multi-Generator Asset-Wise Output for ZTRIC
+    if str(getattr(config, "PLANT_NAME", "")).strip().upper() == "ZTRIC":
+        try:
+            from modules.multi_generator.ztric_asset_schedule import write_ztric_asset_penalty_csv
+            return write_ztric_asset_penalty_csv(
+                schedule_by_block=schedule_by_block,
+                input_csv_path=input_csv_path,
+                output_csv_path=output_csv_path,
+                target_date_str=target_date_str,
+                total_blocks=total_blocks,
+            )
+        except Exception as zt_err:
+            print(f"[WARN] Failed to write ZTRIC asset-wise penalty schedule: {zt_err}; falling back to standard format.")
 
     # Plant regulatory parameters
     cap_mw = float(getattr(config, "PLANT_CAPACITY_MW", 10.0))
@@ -872,9 +920,11 @@ def write_full_block_schedule_from_llm_schedule(
 
         b_data = schedule_by_block.get(block, {})
         gti_val = float(b_data.get("intellis_gti", 0.0))
-        mw_val = float(b_data.get("intellis_mw", 0.0))
+        intellis_val = float(b_data.get("intellis_mw", 0.0))
+        mw_val = float(b_data.get("schedule_mw", intellis_val))
         if not getattr(config, "is_wind_plant", lambda: False)() and (block < 24 or block > 76):
             mw_val = 0.0
+            intellis_val = 0.0
             gti_val = 0.0
 
         m_val = float(meter_by_block.get(block, 0.0))
@@ -908,7 +958,7 @@ def write_full_block_schedule_from_llm_schedule(
             "block": block,
             "time": t_str,
             "intellis_gti": round(gti_val, 1),
-            "intellis_mw": round(mw_val, 2),
+            "intellis_mw": round(intellis_val, 2),
             "schedule_mw": round(mw_val, 2),
             "dev_mw": dev,
             "dsm_slab": slab,
@@ -977,7 +1027,6 @@ def download_recent_meter_history_files(
         downloaded.append(local_path)
 
     return downloaded
-
 
 
 

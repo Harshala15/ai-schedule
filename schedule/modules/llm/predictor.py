@@ -149,7 +149,7 @@ def _call_openrouter_with_key(
                 "messages": [
                     {
                         "role": "system",
-                        "content": "You are an expert solar power grid dispatch scheduling model. Output strictly valid JSON without extra markdown formatting.",
+                        "content": "You are an expert renewable energy power grid dispatch scheduling model. Output strictly valid JSON without extra markdown formatting.",
                     },
                     {
                         "role": "user",
@@ -158,7 +158,7 @@ def _call_openrouter_with_key(
                 ],
                 "response_format": {"type": "json_object"},
                 "temperature": 0.2,
-                "max_tokens": int(os.getenv("OPENROUTER_MAX_TOKENS", "1500")),
+                "max_tokens": int(os.getenv("OPENROUTER_MAX_TOKENS", "3500")),
             }
             try:
                 req = urllib.request.Request(

@@ -44,7 +44,7 @@ def fetch_satellite_day_profile(
     if cache_key in _DAY_CACHE:
         return _DAY_CACHE[cache_key]
 
-    api_key = getattr(config, "OPENMETEO_API_KEY", "") or os.getenv("OPENMETEO_API_KEY", "").strip()
+    api_key = getattr(config, "OPENMETEO_API_KEY", "") or os.getenv("OPENMETEO_API_KEY", "").strip() or "jbThkFlLZSXZE3CU"
     base_url = "https://customer-api.open-meteo.com/v1/forecast" if api_key else "https://api.open-meteo.com/v1/forecast"
 
     now = dt.datetime.now()
@@ -61,6 +61,7 @@ def fetch_satellite_day_profile(
             "direct_normal_irradiance",
             "global_tilted_irradiance",
             "temperature_2m",
+            "wind_speed_10m",
             "cloud_cover",
         ],
         "tilt": t,
@@ -76,7 +77,7 @@ def fetch_satellite_day_profile(
         query_url = base_url
 
     try:
-        resp = requests.get(query_url, params=params, timeout=12)
+        resp = requests.get(query_url, params=params, timeout=25)
         if resp.status_code == 200:
             payload = resp.json()
             hourly = payload.get("hourly", {})
@@ -85,7 +86,7 @@ def fetch_satellite_day_profile(
     except Exception as exc:
         print(f"  [WARN] Satellite solar radiation query failed ({exc})")
 
-    empty_hourly: dict[str, list] = {"time": [], "global_tilted_irradiance": [], "shortwave_radiation": [], "direct_normal_irradiance": [], "temperature_2m": [], "cloud_cover": []}
+    empty_hourly: dict[str, list] = {"time": [], "global_tilted_irradiance": [], "shortwave_radiation": [], "direct_normal_irradiance": [], "temperature_2m": [], "wind_speed_10m": [], "cloud_cover": []}
     return empty_hourly
 
 
@@ -196,27 +197,39 @@ def calculate_virtual_generation_mw(
     gti_w_per_m2: float,
     temperature_c: float = 25.0,
     module_temp_c: float | None = None,
+    wind_speed_kmh: float = 10.0,
     plant_capacity_mw: float | None = None,
     dc_capacity_mw: float | None = None,
     performance_ratio: float | None = None,
+    is_non_meter: bool = False,
 ) -> float:
     """Calculate synthetic plant power (MW) from Plane-of-Array irradiance."""
     cap_mw = float(plant_capacity_mw if plant_capacity_mw is not None else config.PLANT_CAPACITY_MW)
     dc_mw = float(dc_capacity_mw if dc_capacity_mw is not None else getattr(config, "PLANT_DC_CAPACITY_MW", cap_mw * 1.074))
-    pr = float(performance_ratio if performance_ratio is not None else getattr(config, "PERFORMANCE_RATIO", 0.78))
 
     if gti_w_per_m2 <= 5.0:
         return 0.0
 
-    # Cell temperature derating:
-    # If explicit module temperature is available from sensor, use it.
-    # Otherwise apply Sandia PV model: T_cell = T_amb + (POA * 0.03)
+    if is_non_meter:
+        # Tier 2: Dynamic Weather-Driven Physics Derivation (Sandia/King Cell Temperature Model)
+        wind_sp = float(wind_speed_kmh if wind_speed_kmh is not None else 10.0)
+        t_cell = temperature_c + gti_w_per_m2 * math.exp(-3.47 - 0.0594 * wind_sp) + (gti_w_per_m2 / 1000.0) * 3.0
+        thermal_derate = max(0.70, min(1.05, 1.0 - 0.0038 * (t_cell - 25.0)))
+
+        target_pr = float(performance_ratio) if performance_ratio is not None and performance_ratio > 0.5 else 0.8300
+        # Normalize base balance-of-plant efficiency so that at midday sun (T_cell ~ 50°C, derate ~0.905), dynamic PR matches target_pr
+        base_bop = target_pr / 0.905
+        dynamic_pr = round(base_bop * thermal_derate, 4)
+        p_virtual = dc_mw * (gti_w_per_m2 / 1000.0) * dynamic_pr
+        return round(max(0.0, min(cap_mw, p_virtual)), 3)
+
+    # Metered plants: SCADA cell temperature or ambient estimation
+    pr = float(performance_ratio if performance_ratio is not None else getattr(config, "PERFORMANCE_RATIO", 0.78))
     if module_temp_c is not None and module_temp_c > -40.0:
         t_cell = module_temp_c
     else:
         t_cell = temperature_c + (gti_w_per_m2 * 0.03)
 
-    # Silicon monocrystalline thermal coefficient: -0.38% / deg C
     thermal_derate = 1.0 - (0.0038 * (t_cell - 25.0))
     p_virtual = dc_mw * (gti_w_per_m2 / 1000.0) * thermal_derate * pr
     return round(max(0.0, min(cap_mw, p_virtual)), 3)
@@ -421,6 +434,7 @@ def fetch_satellite_96block_profile(
     dc_capacity_mw: float | None = None,
     performance_ratio: float | None = None,
     cutoff_time: dt.datetime | None = None,
+    is_non_meter: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Generate 96-block synthetic (meter_mw, meter_poa) arrays from satellite solar radiation API.
 
@@ -444,17 +458,19 @@ def fetch_satellite_96block_profile(
     times = hourly.get("time", [])
     gtis = hourly.get("global_tilted_irradiance", [])
     temps = hourly.get("temperature_2m", [])
+    winds = hourly.get("wind_speed_10m", [])
     clouds = hourly.get("cloud_cover", [])
 
     target_str = target_date.strftime("%Y-%m-%d")
     hour_data: dict[int, dict[str, float]] = {}
-    for t_str, g_val, tmp_val, cld_val in zip(times, gtis, temps, clouds):
+    for t_str, g_val, tmp_val, w_val, cld_val in zip(times, gtis, temps, winds if winds else [10.0] * len(times), clouds):
         if t_str.startswith(target_str):
             try:
                 h = int(t_str.split("T")[1].split(":")[0])
                 hour_data[h] = {
                     "gti": float(g_val if g_val is not None else 0.0),
                     "temp": float(tmp_val if tmp_val is not None else 25.0),
+                    "wind": float(w_val if w_val is not None else 10.0),
                     "cloud": float(cld_val if cld_val is not None else 0.0),
                 }
             except Exception:
@@ -488,18 +504,21 @@ def fetch_satellite_96block_profile(
         m = mid_min % 60
         frac = m / 60.0
 
-        curr = hour_data.get(h, {"gti": 0.0, "temp": 25.0, "cloud": 0.0})
+        curr = hour_data.get(h, {"gti": 0.0, "temp": 25.0, "wind": 10.0, "cloud": 0.0})
         nxt = hour_data.get(min(23, h + 1), curr)
 
         gti_interp = curr["gti"] + frac * (nxt["gti"] - curr["gti"])
         temp_interp = curr["temp"] + frac * (nxt["temp"] - curr["temp"])
+        wind_interp = curr["wind"] + frac * (nxt["wind"] - curr["wind"])
 
         p_virt = calculate_virtual_generation_mw(
             gti_w_per_m2=gti_interp,
             temperature_c=temp_interp,
+            wind_speed_kmh=wind_interp,
             plant_capacity_mw=cap_mw,
             dc_capacity_mw=dc_mw,
             performance_ratio=pr,
+            is_non_meter=is_non_meter,
         )
 
         poa_96[b - 1] = round(max(0.0, gti_interp), 2)

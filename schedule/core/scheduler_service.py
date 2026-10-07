@@ -457,6 +457,67 @@ def run_schedule_job(
     if not snapshot_source.exists():
         raise FileNotFoundError(f"Expected schedule output was not produced: {snapshot_source}")
 
+    # --- Active Plant Control Windows Guardrail (DynamoDB) ---
+    control_summary: dict[str, Any] = {}
+    try:
+        from modules.control_windows import PlantControlWindowEngine
+        cw_engine = PlantControlWindowEngine()
+        freeze_from = _freeze_from_datetime(target_date, target_time)
+        freeze_end_block = ((freeze_from.hour * 60 + freeze_from.minute) // config.BLOCK_MINUTES)
+
+        ss_fields, ss_rows = _read_csv_rows(snapshot_source)
+        if ss_rows:
+            raw_sched_mw = []
+            for r in ss_rows:
+                v = r.get("schedule_mw") or r.get("intellis_mw") or 0.0
+                try:
+                    raw_sched_mw.append(float(v))
+                except Exception:
+                    raw_sched_mw.append(0.0)
+
+            ac_cap = float(getattr(config, "PLANT_CAPACITY_MW", 0.0) or (prof.ac_capacity_mw if "prof" in locals() else 37.0))
+            dc_cap = float(getattr(config, "PLANT_DC_CAPACITY_MW", 0.0) or (getattr(prof, "dc_capacity_mw", ac_cap) if "prof" in locals() else ac_cap))
+
+            if len(raw_sched_mw) == 96:
+                controlled_mw, block_audit, control_summary = cw_engine.apply_to_blocks(
+                    raw_forecast_mw_96=raw_sched_mw,
+                    site_id=config.PLANT_NAME,
+                    target_date_str=target_date,
+                    site_ac_capacity_mw=ac_cap,
+                    site_dc_capacity_mw=dc_cap,
+                    freeze_end_block=freeze_end_block,
+                )
+
+                new_fields = list(ss_fields)
+                audit_cols = [
+                    "raw_forecast_mw",
+                    "block_control_status",
+                    "block_control_mode",
+                    "block_control_type",
+                    "effective_control_capacity_ac_mw",
+                    "control_applied",
+                ]
+                for col in audit_cols:
+                    if col not in new_fields:
+                        new_fields.append(col)
+
+                for i, r in enumerate(ss_rows):
+                    audit_info = block_audit[i]
+                    r["raw_forecast_mw"] = audit_info["raw_forecast_mw"]
+                    r["block_control_status"] = audit_info["block_control_status"]
+                    r["block_control_mode"] = audit_info["block_control_mode"]
+                    r["block_control_type"] = audit_info["block_control_type"]
+                    r["effective_control_capacity_ac_mw"] = audit_info["effective_control_capacity_ac_mw"]
+                    r["control_applied"] = audit_info["control_applied"]
+                    r["schedule_mw"] = round(float(controlled_mw[i]), 2)
+                    if "intellis_mw" in r and not audit_info.get("frozen", False):
+                        r["intellis_mw"] = round(float(controlled_mw[i]), 2)
+
+                _write_csv(snapshot_source, new_fields, ss_rows)
+                print(f"  [CONTROL_WINDOWS] Applied control windows: {control_summary.get('windows_applied', 0)} active window(s) applied for {config.PLANT_NAME}.")
+    except Exception as cw_err:
+        print(f"  [WARN] PlantControlWindowEngine execution failed; continuing without control windows: {cw_err}")
+
     snapshot_block = ((target_dt.hour * 60 + target_dt.minute) // config.BLOCK_MINUTES) + 1
     snapshot_stamp = f"{target_date.replace('-', '')}t{target_dt.strftime('%H%M%S')}"
     snapshot_csv = generated_root / f"schedule_from_{snapshot_block}_{snapshot_stamp}.csv"
@@ -478,6 +539,12 @@ def run_schedule_job(
     snapshot_rows, preserved_rows, merged_rows = _merge_latest_schedule(snapshot_source, latest_csv)
     shutil.copyfile(latest_csv, snapshot_csv)
     current_final_rows = _write_current_final_schedule(latest_csv, current_final_csv, target_date, target_time)
+    if int((control_summary or {}).get("windows_applied") or 0) > 0:
+        # Publish already-applied plant-control output into current-final so
+        # downstream IP/UI and penalty outputs match the effective schedule.
+        shutil.copyfile(latest_csv, current_final_csv)
+        _, current_final_rows_data = _read_csv_rows(current_final_csv)
+        current_final_rows = len(current_final_rows_data)
     penalty_summary = shared_schedule_utils.write_full_block_schedule_from_llm_schedule(
         current_final_csv,
         penalty_csv,
@@ -505,19 +572,79 @@ def run_schedule_job(
     metadata["snapshot_rows"] = snapshot_rows
     metadata["plant_type"] = getattr(config, "PLANT_TYPE", "")
     metadata["is_wind_plant"] = bool(is_wind_site)
+    metadata["control_windows"] = control_summary
     if is_wind_site:
         metadata["weather_summary_type"] = "wind_ensemble"
         if isinstance(wind_sched_result, dict) and "llm_strategy" in wind_sched_result:
             metadata["llm_strategy"] = wind_sched_result["llm_strategy"]
     elif isinstance(solar_sched_result, dict) and "llm_strategy" in solar_sched_result:
         metadata["llm_strategy"] = solar_sched_result["llm_strategy"]
-    snapshot_metadata.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
-    latest_metadata.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+    snapshot_metadata.write_text(json.dumps(metadata, indent=2, default=str), encoding="utf-8")
+    latest_metadata.write_text(json.dumps(metadata, indent=2, default=str), encoding="utf-8")
 
     storage.upload_file(bucket, metadata["snapshot_csv_key"], snapshot_csv, content_type="text/csv")
     storage.upload_file(bucket, metadata["latest_csv_key"], latest_csv, content_type="text/csv")
     storage.upload_file(bucket, f"{schedule_prefix.rstrip('/')}/{target_date}/{current_final_csv.name}", current_final_csv, content_type="text/csv")
     storage.upload_file(bucket, metadata["penalty_csv_key"], penalty_csv, content_type="text/csv")
+
+    # Specialized revision penalty replica exclusively for LGEPL
+    if str(getattr(config, "PLANT_NAME", "")).strip().upper() == "LGEPL":
+        try:
+            # 1. Resolve block number at revision run
+            run_block = (event or {}).get("block") or (event or {}).get("block_no")
+            if run_block is None:
+                run_block = (target_dt.hour * 60 + target_dt.minute) // 15
+                if run_block == 0:
+                    run_block = 96
+
+            # 2. Resolve revision tag (R1 to R8)
+            rev_tag = (event or {}).get("rev") or (event or {}).get("revision_no") or (event or {}).get("revision")
+            if not rev_tag:
+                lgepl_rev_map = {
+                    "06:30": "R1", "06:45": "R1",
+                    "08:00": "R2", "08:15": "R2",
+                    "09:30": "R3", "09:45": "R3",
+                    "11:00": "R4", "11:15": "R4",
+                    "12:30": "R5", "12:45": "R5",
+                    "14:00": "R6", "14:15": "R6",
+                    "15:30": "R7", "15:45": "R7",
+                }
+                t_clean = target_time.strip()
+                rev_tag = lgepl_rev_map.get(t_clean)
+                if not rev_tag:
+                    t_mins = target_dt.hour * 60 + target_dt.minute
+                    if t_mins <= 420:
+                        rev_tag = "R1"
+                    elif t_mins <= 510:
+                        rev_tag = "R2"
+                    elif t_mins <= 600:
+                        rev_tag = "R3"
+                    elif t_mins <= 690:
+                        rev_tag = "R4"
+                    elif t_mins <= 780:
+                        rev_tag = "R5"
+                    elif t_mins <= 870:
+                        rev_tag = "R6"
+                    else:
+                        rev_tag = "R7"
+
+            else:
+                rev_tag = str(rev_tag).strip().upper()
+                if not rev_tag.startswith("R"):
+                    rev_tag = f"R{rev_tag}"
+
+            # Format: LGEPL_DD-MM-YYYY_<BLOCK>_ID_<REV>.csv
+            dd_mm_yyyy = target_dt.strftime("%d-%m-%Y")
+            lgepl_replica_filename = f"LGEPL_{dd_mm_yyyy}_{run_block}_ID_{rev_tag}.csv"
+            lgepl_replica_csv = generated_root / lgepl_replica_filename
+            shutil.copyfile(penalty_csv, lgepl_replica_csv)
+
+            lgepl_replica_key = f"{schedule_prefix.rstrip('/')}/{target_date}/{lgepl_replica_csv.name}"
+            storage.upload_file(bucket, lgepl_replica_key, lgepl_replica_csv, content_type="text/csv")
+            metadata["lgepl_revision_penalty_csv_key"] = lgepl_replica_key
+            print(f"  [LGEPL] Created & uploaded revision penalty replica: {lgepl_replica_key}")
+        except Exception as lgepl_err:
+            print(f"  [WARN] Failed to write LGEPL revision penalty replica: {lgepl_err}")
 
     legacy_current_final_csv = generated_root / "current_final_schedule.csv"
     if legacy_current_final_csv != current_final_csv:
@@ -528,5 +655,5 @@ def run_schedule_job(
     storage.upload_json(bucket, metadata["snapshot_metadata_key"], metadata)
     storage.upload_json(bucket, metadata["latest_metadata_key"], metadata)
 
-    return metadata
+    return json.loads(json.dumps(metadata, default=str))
 

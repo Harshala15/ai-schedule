@@ -46,6 +46,8 @@
     ]
   },
   "meter_data": {
+    "is_non_meter_site": true,
+    "has_meter": false,
     "is_virtual": true,
     "meter_type": "WIND_REANALYSIS_VIRTUAL",
     "description": "Gamesa G114/2000 (80m Hub Height, 5x2MW) boundary SCADA meter unavailable; virtual wind reanalysis telemetry utilized."

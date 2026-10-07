@@ -119,4 +119,5 @@ meter_history/
 plant_performance/
 pvlib_summary/
 
-
+# Generated Output Data
+data/

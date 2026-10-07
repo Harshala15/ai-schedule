@@ -405,6 +405,7 @@ _PLANT_FALLBACKS = {
         "max_feed_in_mw": 5.0,
         "tilt_deg": 12.0,
         "orientation_deg_from_south": 0.0,
+        "performance_ratio": 0.64,
         "ppa_rate_inr_per_kwh": 3.00,
         "penalty_regulation": "Maharashtra",
         "tolerance_band_mw": 0.50,
@@ -433,6 +434,7 @@ _PLANT_FALLBACKS = {
         "max_feed_in_mw": 1.0,
         "tilt_deg": 12.0,
         "orientation_deg_from_south": 0.0,
+        "performance_ratio": 0.60,
         "ppa_rate_inr_per_kwh": 3.00,
         "penalty_regulation": "Maharashtra",
         "tolerance_band_mw": 0.10,
@@ -447,6 +449,7 @@ _PLANT_FALLBACKS = {
         "max_feed_in_mw": 3.30,
         "tilt_deg": 17.0,
         "orientation_deg_from_south": 0.0,
+        "performance_ratio": 0.68,
         "ppa_rate_inr_per_kwh": 3.00,
         "penalty_regulation": "Maharashtra",
         "tolerance_band_mw": 0.330,
@@ -462,6 +465,7 @@ _PLANT_FALLBACKS = {
         "max_feed_in_mw": 4.00,
         "tilt_deg": 18.0,
         "orientation_deg_from_south": 0.0,
+        "performance_ratio": 0.64,
         "ppa_rate_inr_per_kwh": 3.00,
         "penalty_regulation": "Maharashtra",
         "tolerance_band_mw": 0.400,
@@ -477,12 +481,29 @@ _PLANT_FALLBACKS = {
         "max_feed_in_mw": 3.00,
         "tilt_deg": 18.0,
         "orientation_deg_from_south": 0.0,
+        "performance_ratio": 0.63,
         "ppa_rate_inr_per_kwh": 3.00,
         "penalty_regulation": "Maharashtra",
         "tolerance_band_mw": 0.300,
         "band_percentage": 0.10,
         "freeze_lag_minutes": 45,
         "eeg_id": "SIDDEHESH",
+    },
+    "LGEPL": {
+        "latitude": 15.120426,
+        "longitude": 79.729956,
+        "capacity_mw": 3.00,
+        "dc_capacity_mw": 4.20,
+        "max_feed_in_mw": 3.00,
+        "tilt_deg": 16.0,
+        "orientation_deg_from_south": 0.0,
+        "performance_ratio": 0.64,
+        "ppa_rate_inr_per_kwh": 3.00,
+        "penalty_regulation": "Andhra Pradesh",
+        "tolerance_band_mw": 0.450,
+        "band_percentage": 0.15,
+        "freeze_lag_minutes": 45,
+        "eeg_id": "LGEPL",
     },
 }
 SITES = _PLANT_FALLBACKS
@@ -632,6 +653,8 @@ def get_plant_tolerance_band_pct(penalty_regulation: str | None = None, plant_na
         return 10.0
     if "telangana" in reg or "tserc" in reg:
         return 15.0
+    if "andhra pradesh" in reg or "aperc" in reg or "ap" in reg:
+        return 15.0
 
     # Plant-name fallback if penalty_regulation was omitted or generic
     mp_plants = {
@@ -647,7 +670,8 @@ def get_plant_tolerance_band_pct(penalty_regulation: str | None = None, plant_na
         return 10.0
 
     tg_plants = {"BHUPALPALLY", "KASIPET", "KOTHAGUDEM", "MANDAMARRI"}
-    if name in tg_plants:
+    ap_plants = {"LGEPL"}
+    if name in tg_plants or name in ap_plants:
         return 15.0
 
     if is_wind_plant(name):
@@ -684,6 +708,22 @@ def load_plant_profile(plant_name: str | None = None) -> dict:
     PLANT_CAPACITY_MW = _profile_float(profile, "maximum_feed_in_ac_kw", fallback["capacity_mw"] * 1000.0) / 1000.0
     PLANT_DC_CAPACITY_MW = _profile_float(profile, "dc_capacity_kw", fallback["dc_capacity_mw"] * 1000.0) / 1000.0
     PLANT_MAX_FEED_IN_MW = _profile_float(profile, "maximum_feed_in_ac_kw", fallback["max_feed_in_mw"] * 1000.0) / 1000.0
+
+    # STRICTLY FOR ENRICH ONLY: Dynamically overlay live AC and DC capacities from DynamoDB table 'multi_generator_plant'
+    if name in ("EMIL", "UPL", "CLIMATEDETOX", "ENRICH"):
+        try:
+            from modules.weather.intellis_ensemble_gti_ai import _fetch_enrich_live_capacities_from_dynamodb
+            enrich_live = _fetch_enrich_live_capacities_from_dynamodb()
+            if name in enrich_live:
+                live_ac = enrich_live[name].get("ac_capacity_mw")
+                live_dc = enrich_live[name].get("dc_capacity_mw")
+                if live_ac is not None and live_ac > 0.0:
+                    PLANT_CAPACITY_MW = live_ac
+                    PLANT_MAX_FEED_IN_MW = live_ac
+                if live_dc is not None and live_dc > 0.0:
+                    PLANT_DC_CAPACITY_MW = live_dc
+        except Exception:
+            pass
     PLANT_TILT_DEG = _profile_float(profile, "tilt_deg", fallback.get("tilt_deg", 20.0))
     PLANT_ORIENTATION_FROM_SOUTH_DEG = _profile_float(profile, "orientation_deg_from_south", fallback.get("orientation_deg_from_south", 0.0))
     PLANT_ORIENTATION_DEG_FROM_SOUTH = PLANT_ORIENTATION_FROM_SOUTH_DEG

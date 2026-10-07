@@ -8,6 +8,7 @@
   "orientation_deg_from_south": 0,
   "tilt_deg": 12,
   "eeg_id": "UPL",
+  "performance_ratio": 0.60,
   "ppa_rate_inr_per_kwh": 3.00,
   "penalty_regulation": "Maharashtra",
   "tolerance_band_mw": 0.10,

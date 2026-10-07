@@ -44,8 +44,9 @@ class LLMStrategicArbiter:
         weather_indicators: dict[str, Any] | None = None,
         live_telemetry: dict[str, Any] | None = None,
         next_12_blocks: list[dict[str, Any]] | None = None,
+        actionable_blocks: list[dict[str, Any]] | None = None,
     ) -> StrategicAdvice:
-        """Consults the LLM for strategic advice and 12-block prediction, with immediate deterministic fallback."""
+        """Consults the LLM for strategic advice and predictions up to 7:00 PM (Block 76), with immediate deterministic fallback."""
         default_advice = StrategicAdvice(
             regime="CLEAR_SKY",
             quantile_bias_factor=1.0,
@@ -72,23 +73,36 @@ class LLMStrategicArbiter:
         ac_cap = getattr(self.profile, "ac_capacity_mw", 10.0) if self.profile else 10.0
         ppa_rate = getattr(self.profile, "ppa_rate_inr_per_kwh", 5.0) if self.profile else 5.0
         tol_band = getattr(self.profile, "band_percentage", 0.15) if self.profile else 0.15
+        tol_mw = getattr(self.profile, "tolerance_band_mw", None)
+        if tol_mw is None:
+            tol_mw = round(ac_cap * tol_band, 3)
 
+        target_blocks = actionable_blocks if actionable_blocks is not None else (next_12_blocks or [])
+        num_blocks = len(target_blocks)
         blocks_formatted = ""
-        if next_12_blocks:
+        if target_blocks:
             lines = []
-            for b in next_12_blocks:
+            for b in target_blocks:
                 lines.append(
                     f"  - Block {b['block']} ({b.get('time_interval', '')}): "
                     f"Physics Baseline = {float(b.get('predicted_mw', 0.0)):.2f} MW | "
                     f"GTI = {float(b.get('gti_wm2', 0.0)):.1f} W/m2"
                 )
             blocks_formatted = "\n".join(lines)
+            start_b = target_blocks[0]['block']
+            end_b = target_blocks[-1]['block']
+            header_desc = f"ACTIONABLE DISPATCH BLOCKS UP TO 7:00 PM (Blocks {start_b} to {end_b} - {num_blocks} Blocks Total - Physics Baseline Anchor):"
+            horizon_desc = f"over the actionable daylight horizon from Block {start_b} up to 7:00 PM (Block {end_b})"
+            sample_blocks = f'"{start_b}": <predicted_mw_for_block_{start_b}>,\n    "{end_b}": <predicted_mw_for_block_{end_b}>'
         else:
             blocks_formatted = "  (No specific block list provided; recommend global bias factor)"
+            header_desc = "ACTIONABLE DISPATCH BLOCKS (Physics Baseline Anchor):"
+            horizon_desc = "over the actionable daylight horizon up to 7:00 PM"
+            sample_blocks = '"55": 5.25,\n    "56": 5.15'
 
         prompt = f"""You are the Chief Renewable Energy Meteorological Scheduling Strategist for {plant_name} Solar Power Plant.
 Target Date: {target_date_str} | Revision Time: {target_time_str}
-Capacity: {ac_cap:.1f} MW AC | PPA Tariff: Rs {ppa_rate:.2f}/kWh | Tolerance Band: {tol_band * 100:.1f}% (+/- {ac_cap * tol_band:.2f} MW)
+Capacity: {ac_cap:.1f} MW AC | PPA Tariff: Rs {ppa_rate:.2f}/kWh | Tolerance Band: {tol_band * 100:.1f}% (+/- {tol_mw:.2f} MW)
 
 ATMOSPHERIC & WEATHER ENSEMBLE INDICATORS:
 - Total Cloud Cover Mean: {weather_indicators.get('cloud_cover_pct', 'N/A')}%
@@ -97,24 +111,26 @@ ATMOSPHERIC & WEATHER ENSEMBLE INDICATORS:
 - Precipitation Forecast: {weather_indicators.get('precip_mm', 0.0)} mm
 - 2m Ambient Temperature: {weather_indicators.get('temp_c', 28.0)} C
 
-NEXT 12 ACTIONABLE DISPATCH BLOCKS (Physics Baseline Anchor):
+{header_desc}
 {blocks_formatted}
 
-PURE METEOROLOGICAL SCHEDULING & RISK INSTRUCTIONS:
-- You operate strictly on macro-atmospheric science over a 3-hour horizon. Do NOT assume or rely on short-term ground meter noise; immediate 30-minute electrical dispatch is already governed by deterministic SCADA logic.
-- Under Indian CERC/State DSM rules:
-  * Under-generation shortfall penalties are severe and punitive (up to 2x PPA tariff).
-  * Mild over-generation inside the tolerance band (0% to +{tol_band * 100:.0f}%) is safe or credit-earning.
-- CLEAR-SKY PRESERVATION: If atmospheric indicators indicate CLEAR (cloud cover <= 25%), preserve the full convex solar arc. DO NOT make negative downward cuts below the physics baseline!
-- CONVECTIVE CLOUD POSITIONING: Under moderate/uncertain clouds (cloud cover 30-70% or CAPE > 1000 J/kg), apply risk-conscious positioning (quantile_bias_factor 0.90 to 0.96) to shield against shortfall penalties.
+PURE METEOROLOGICAL SCHEDULING & REGULATORY DSM RISK INSTRUCTIONS:
+- You operate strictly on macro-atmospheric science and solar geometry {horizon_desc}. Do NOT assume or rely on short-term ground meter noise; immediate 30-minute electrical dispatch is already governed by deterministic SCADA logic.
+- Under Indian CERC and State DSM Rules (Deviation Settlement Mechanism):
+  * Allowed Safe Band: Deviations within +/- {tol_band * 100:.1f}% (+/- {tol_mw:.2f} MW) are safe and penalty-free.
+  * Shortfall / Under-generation (< -{tol_mw:.2f} MW): Actual generation below schedule minus tolerance band incurs severe DSM shortfall penalties (up to 2x PPA tariff).
+  * Over-generation / Surplus (> +{tol_mw:.2f} MW): Actual generation above schedule plus tolerance band receives ZERO PPA PAYMENT (energy is forfeited/uncompensated) AND incurs DSM over-generation deviation penalty charges.
+  * Symmetrical Accuracy Mandate: Because both over-generation and under-generation beyond +/- {tol_mw:.2f} MW are heavily penalized, you must accurately target the true expected physical generation. Avoid artificial downward or upward skew.
+- CLEAR-SKY PRESERVATION: If atmospheric indicators indicate CLEAR (cloud cover <= 25%), preserve the full convex solar arc at full capability (quantile_bias_factor = 1.00). DO NOT apply artificial downward cuts below the physics baseline!
+- CONVECTIVE CLOUD POSITIONING: Under moderate/uncertain clouds (cloud cover 30-70% or CAPE > 1000 J/kg), adjust realistically based on diffuse irradiance while keeping predictions centered within the +/- {tol_mw:.2f} MW safe band.
 - OVERCAST BOUNDING: If cloud cover >= 80% or rain is active, bound predictions strictly to the overcast diffuse envelope.
 
 TASKS:
 1. Classify the day's meteorological regime: ["CLEAR_SKY", "PARTLY_CLOUDY", "CONVECTIVE_MONSOON", "OVERCAST"].
-2. Predict the generation (in MW) for EACH of the next 12 blocks in "block_predictions":
+2. Predict the generation (in MW) for EACH of the {num_blocks} blocks in "block_predictions":
    - Use the physics baseline as the core anchor.
    - Adjust realistically according to atmospheric cloudiness and convective risk.
-   - Maintain a smooth physical solar ramp (no abrupt jumps > 0.5 MW between consecutive 15-min blocks).
+   - Maintain a smooth physical solar diurnal arc (monotonically rising in the morning to solar noon, and decaying smoothly toward sunset without erratic sawtooth oscillation).
    - Keep each block within physical bounds: 0.0 <= MW <= {ac_cap:.1f} MW.
 3. Recommend preferred ensemble agency: ["BALANCED", "ECMWF", "ICON", "GEFS"].
 4. Set "is_trip_or_curtailment" to false (electrical trips are handled outside meteorology).
@@ -125,10 +141,9 @@ Respond ONLY with a JSON object in this exact schema:
   "quantile_bias_factor": 1.0,
   "preferred_agency": "BALANCED",
   "is_trip_or_curtailment": false,
-  "reasoning": "Brief operational rationale for the 12-block prediction based on atmospheric indicators",
+  "reasoning": "Brief operational rationale for the prediction based on atmospheric indicators",
   "block_predictions": {{
-    "55": 5.25,
-    "56": 5.15
+    {sample_blocks}
   }}
 }}"""
 
@@ -185,9 +200,12 @@ Respond ONLY with a JSON object in this exact schema:
             if isinstance(raw_preds, dict):
                 for k, v in raw_preds.items():
                     try:
+                        b_num = int(str(k).strip())
+                        if not (1 <= b_num <= 96):
+                            continue
                         val = float(v)
                         val = max(0.0, min(ac_cap, val))
-                        block_preds[str(k).strip()] = round(val, 2)
+                        block_preds[str(b_num)] = round(val, 2)
                     except (ValueError, TypeError):
                         continue
 
@@ -287,11 +305,13 @@ NEXT 12 ACTIONABLE DISPATCH BLOCKS (Physics Aero-Power Baseline):
 
 DSM RISK & WIND SCHEDULING INSTRUCTIONS:
 - You operate strictly on atmospheric wind shear, boundary-layer turbulence, and DSM penalty minimization over a 3-hour horizon.
-- Under Indian CERC/State DSM rules:
-  * Shortfall penalties (actual generation below schedule minus tolerance band) are punitive (up to 2x PPA tariff).
-  * Mild over-generation within the safe tolerance band (+{tol_band_pct * 100:.0f}%) is safe or credit-earning.
+- Under Indian CERC and State DSM Rules (Deviation Settlement Mechanism):
+  * Allowed Safe Band: Deviations within +/- {tol_band_pct * 100:.1f}% (+/- {tol_band_mw:.2f} MW) are safe and penalty-free.
+  * Shortfall / Under-generation (< -{tol_band_mw:.2f} MW): Actual generation below schedule minus tolerance band incurs severe shortfall penalties (up to 2x PPA tariff).
+  * Over-generation / Surplus (> +{tol_band_mw:.2f} MW): Actual generation above schedule plus tolerance band receives ZERO PAYMENT (energy is forfeited for free) AND incurs DSM deviation penalty charges.
+  * Symmetrical Accuracy Mandate: Both over-generation and under-generation beyond +/- {tol_band_mw:.2f} MW are penalized. Keep forecasts centered on expected aero-power output without artificial downward skew.
 - When wind speeds hover near cut-in velocity (3.0 m/s), maintain conservative positioning to prevent severe shortfall penalties from calm dropouts.
-- When wind speeds are steady and moderate (6 to 11 m/s), preserve the aerodynamic power curve.
+- When wind speeds are steady and moderate (6 to 11 m/s), preserve the aerodynamic power curve (quantile_bias_factor centered near 1.00).
 - Ensure smooth aerodynamic ramp rates (avoid abrupt jumps > {max(1.0, rated_cap * 0.15):.1f} MW between consecutive 15-minute blocks).
 - Keep each block within physical bounds: 0.0 <= MW <= {rated_cap:.1f} MW.
 
@@ -353,9 +373,12 @@ Respond ONLY with a JSON object in this exact schema:
             if isinstance(raw_preds, dict):
                 for k, v in raw_preds.items():
                     try:
+                        b_num = int(str(k).strip())
+                        if not (1 <= b_num <= 96):
+                            continue
                         val = float(v)
                         val = max(0.0, min(rated_cap, val))
-                        block_preds[str(k).strip()] = round(val, 2)
+                        block_preds[str(b_num)] = round(val, 2)
                     except (ValueError, TypeError):
                         continue
 

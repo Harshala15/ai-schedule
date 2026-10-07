@@ -1,0 +1,39 @@
+{
+  "plant_name": "LGEPL",
+  "latitude": 15.120426,
+  "longitude": 79.729956,
+  "dc_capacity_kw": 4200,
+  "maximum_feed_in_ac_kw": 3000,
+  "tracker_type": "None",
+  "orientation_deg_from_south": 0,
+  "tilt_deg": 16,
+  "eeg_id": "LGEPL",
+  "performance_ratio": 0.83,
+  "ppa_rate_inr_per_kwh": 3.0,
+  "penalty_regulation": "Andhra Pradesh",
+  "tolerance_band_percent": 15.0,
+  "band_percentage": 0.15,
+  "tolerance_band_mw": 0.450,
+  "freeze_lag_minutes": 45,
+  "meter_data": {
+    "is_non_meter_site": true,
+    "has_meter": false,
+    "is_virtual": true,
+    "meter_type": "SOLAR_VIRTUAL_METER",
+    "description": "Non-meter solar plant in Andhra Pradesh. Operates with satellite virtual radiation and NWP multi-model physics without live SCADA meter actuals."
+  },
+  "revision_schedule": {
+    "num_revisions": 7,
+    "freeze_lag_minutes": 45,
+    "slots": [
+      "06:45",
+      "08:15",
+      "09:45",
+      "11:15",
+      "12:45",
+      "14:15",
+      "15:45"
+    ]
+  }
+}
+
