@@ -85,10 +85,22 @@ def read_csv_rows(csv_path: Path) -> tuple[list[str], list[dict]]:
 
 def row_time_key(row: dict) -> str:
     if row.get("Time"):
-        return row["Time"]
-    interval = row.get("Time Interval (15 minute interval)", "")
+        return str(row["Time"]).strip()
+    if row.get("From"):
+        from_val = str(row["From"]).strip()
+        if " " in from_val:
+            return from_val.split(" ")[1]
+        return from_val
+    interval = str(row.get("Time Interval (15 minute interval)", "")).strip()
     if " - " in interval:
         return interval.split(" - ", 1)[0]
+    raw_b = str(row.get("Block", "") or row.get("block", "") or row.get("Block_No", "")).strip()
+    if raw_b.isdigit():
+        b = int(raw_b)
+        if 1 <= b <= 96:
+            end_min = (b - 1) * 15
+            s_hr, s_min = divmod(end_min, 60)
+            return f"{s_hr:02d}:{s_min:02d}"
     return ""
 
 
@@ -103,6 +115,13 @@ def write_csv(path: Path, fieldnames: list[str], rows: list[dict]) -> None:
 
 def _current_final_fieldnames(existing_fieldnames: list[str]) -> list[str]:
     """Return the frozen current-final header order for Intellis AI 2.0."""
+    is_mg_plant = (
+        getattr(config, "PLANT_NAME", "").upper() in ("ZTRIC", "ZETRIC", "ENRICH", "SHAHA")
+        or "Block_No" in existing_fieldnames
+        or any(c.endswith("_MW") and c not in ("schedule_mw", "intellis_mw") for c in existing_fieldnames)
+    )
+    if is_mg_plant and existing_fieldnames:
+        return list(existing_fieldnames)
     return [
         "Block",
         "Time Interval (15 minute interval)",
@@ -388,7 +407,7 @@ def write_current_final_schedule(
             merged_by_time[key] = dict(row)
 
     def _sort_key(row: dict) -> int:
-        raw_b = str(row.get("Block", "") or row.get("block", "")).strip()
+        raw_b = str(row.get("Block", "") or row.get("block", "") or row.get("Block_No", "")).strip()
         try:
             return int(raw_b)
         except (ValueError, TypeError):
@@ -399,28 +418,39 @@ def write_current_final_schedule(
         return 999999
 
     frozen_rows = sorted(merged_by_time.values(), key=_sort_key)
-    current_final_fieldnames = [
-        "Block",
-        "Time Interval (15 minute interval)",
-        "intellis_gti",
-        "intellis_mw",
-        "schedule_mw",
-    ]
+
+    is_mg_plant = (
+        getattr(config, "PLANT_NAME", "").upper() in ("ZTRIC", "ZETRIC", "ENRICH", "SHAHA")
+        or "Block_No" in (latest_fields or previous_fields or [])
+        or any(c.endswith("_MW") and c not in ("schedule_mw", "intellis_mw") for c in (latest_fields or previous_fields or []))
+    )
+
+    if is_mg_plant:
+        current_final_fieldnames = list(latest_fields) if latest_fields else list(previous_fields)
+    else:
+        current_final_fieldnames = [
+            "Block",
+            "Time Interval (15 minute interval)",
+            "intellis_gti",
+            "intellis_mw",
+            "schedule_mw",
+        ]
 
     is_jewli = "JEWLI" in getattr(config, "PLANT_NAME", "").upper()
     for row in frozen_rows:
-        if "intellis_mw" not in row or not str(row.get("intellis_mw", "")).strip():
-            row["intellis_mw"] = str(
-                row.get("schedule_mw")
-                or row.get("Step 2 Weather Adjustment MW")
-                or row.get("Schedule MW")
-                or row.get("Final Validated MW")
-                or row.get("step2_mw")
-                or "0.0"
-            )
-        row["schedule_mw"] = row["intellis_mw"]
-        if "intellis_gti" not in row or not str(row.get("intellis_gti", "")).strip():
-            row["intellis_gti"] = "0.0"
+        if not is_mg_plant:
+            if "intellis_mw" not in row or not str(row.get("intellis_mw", "")).strip():
+                row["intellis_mw"] = str(
+                    row.get("schedule_mw")
+                    or row.get("Step 2 Weather Adjustment MW")
+                    or row.get("Schedule MW")
+                    or row.get("Final Validated MW")
+                    or row.get("step2_mw")
+                    or "0.0"
+                )
+            row["schedule_mw"] = row["intellis_mw"]
+            if "intellis_gti" not in row or not str(row.get("intellis_gti", "")).strip():
+                row["intellis_gti"] = "0.0"
 
         if is_jewli:
             raw_b = str(row.get("Block", "") or row.get("block", "")).strip()
