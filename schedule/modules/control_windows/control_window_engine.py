@@ -113,6 +113,15 @@ class PlantControlWindowEngine:
             return []
 
         clean_site = str(site_id).strip().upper()
+        site_aliases_map = {
+            "ZTRIC": {"ZTRIC", "ZETRIC", "ZETRIC_SOLAR_PARK", "ZETRIC SOLAR PARK"},
+            "ZETRIC": {"ZTRIC", "ZETRIC", "ZETRIC_SOLAR_PARK", "ZETRIC SOLAR PARK"},
+            "BHUPALPALLY": {"BHUPALPALLY", "BHUPALAPALLY"},
+            "CHANDWASA": {"CHANDWASA", "CHANDAWASA"},
+            "ANJANGOAN": {"ANJANGOAN", "ANJANGAON"},
+        }
+        valid_sites = site_aliases_map.get(clean_site, {clean_site}) | {clean_site, "ALL"}
+
         # Parse target schedule day boundaries in IST
         try:
             d_target = dt.date.fromisoformat(target_date_str)
@@ -128,8 +137,13 @@ class PlantControlWindowEngine:
             table = self.dynamodb_resource.Table(self.table_name)
 
             if partition_key == "site_id":
-                # Schema A: Query site_id = clean_site, and also site_id = 'ALL'
-                for query_val in (clean_site, "ALL"):
+                # Schema A: Query site_id across clean_site, aliases, and 'ALL'
+                seen_q: set[str] = set()
+                for query_val in list(valid_sites):
+                    query_val = str(query_val or "").strip()
+                    if not query_val or query_val in seen_q:
+                        continue
+                    seen_q.add(query_val)
                     try:
                         resp = table.query(
                             KeyConditionExpression=Key("site_id").eq(query_val)
@@ -140,11 +154,10 @@ class PlantControlWindowEngine:
             else:
                 # Schema B: Partitioned by plant_id (normal scheduler style) or another grouping key.
                 # Query the plant/group partition first, then filter by site/site_id below.
-                # This avoids missing records stored as plant_id=vedanjay, site=KOTHAGUDEM.
                 query_values: list[str] = []
                 if partition_key == "plant_id":
                     query_values.extend([self.plant_id, self.plant_id.upper(), self.plant_id.lower()])
-                query_values.extend([clean_site, "ALL"])
+                query_values.extend(list(valid_sites))
 
                 seen_query_values: set[str] = set()
                 for query_val in query_values:
@@ -176,9 +189,10 @@ class PlantControlWindowEngine:
         # Filter and validate items
         validated_windows: List[Dict[str, Any]] = []
         for item in raw_items:
-            # 1. Site matching check
+            # 1. Site matching check (includes site_id, site, multi_generator_plant_id)
             item_site = str(item.get("site") or item.get("site_id") or "").strip().upper()
-            if item_site not in (clean_site, "ALL"):
+            item_mg_plant = str(item.get("multi_generator_plant_id") or "").strip().upper()
+            if item_site not in valid_sites and item_mg_plant not in valid_sites:
                 continue
 
             # 2. Active status check
