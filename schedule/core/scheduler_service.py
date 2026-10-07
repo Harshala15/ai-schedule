@@ -460,61 +460,104 @@ def run_schedule_job(
     # --- Active Plant Control Windows Guardrail (DynamoDB) ---
     control_summary: dict[str, Any] = {}
     try:
-        from modules.control_windows import PlantControlWindowEngine
-        cw_engine = PlantControlWindowEngine()
-        freeze_from = _freeze_from_datetime(target_date, target_time)
-        freeze_end_block = ((freeze_from.hour * 60 + freeze_from.minute) // config.BLOCK_MINUTES)
+        clean_mg_plant = str(config.PLANT_NAME or "").upper().strip()
+        if clean_mg_plant in ("ZETRIC", "ZETRIC_SOLAR_PARK"):
+            clean_mg_plant = "ZTRIC"
 
-        ss_fields, ss_rows = _read_csv_rows(snapshot_source)
-        if ss_rows:
-            raw_sched_mw = []
-            for r in ss_rows:
-                v = r.get("schedule_mw") or r.get("intellis_mw") or 0.0
+        if clean_mg_plant in ("ZTRIC", "ENRICH", "SHAHA"):
+            from modules.multi_generator import MultiGeneratorEngine
+            mg_engine = MultiGeneratorEngine()
+
+            freeze_from = _freeze_from_datetime(target_date, target_time)
+            freeze_end_block = ((freeze_from.hour * 60 + freeze_from.minute) // config.BLOCK_MINUTES)
+
+            prev_df = None
+            latest_csv_path = generated_root / f"{target_date}_latest_schedule.csv"
+            if latest_csv_path.exists():
                 try:
-                    raw_sched_mw.append(float(v))
+                    import pandas as pd
+                    prev_df = pd.read_csv(latest_csv_path)
                 except Exception:
-                    raw_sched_mw.append(0.0)
+                    prev_df = None
 
-            ac_cap = float(getattr(config, "PLANT_CAPACITY_MW", 0.0) or (prof.ac_capacity_mw if "prof" in locals() else 37.0))
-            dc_cap = float(getattr(config, "PLANT_DC_CAPACITY_MW", 0.0) or (getattr(prof, "dc_capacity_mw", ac_cap) if "prof" in locals() else ac_cap))
+            ss_fields, ss_rows = _read_csv_rows(snapshot_source)
+            raw_sched_mw = []
+            if ss_rows:
+                for r in ss_rows:
+                    v = r.get("schedule_mw") or r.get("intellis_mw") or 0.0
+                    try:
+                        raw_sched_mw.append(float(v))
+                    except Exception:
+                        raw_sched_mw.append(0.0)
 
-            if len(raw_sched_mw) == 96:
-                controlled_mw, block_audit, control_summary = cw_engine.apply_to_blocks(
-                    raw_forecast_mw_96=raw_sched_mw,
-                    site_id=config.PLANT_NAME,
-                    target_date_str=target_date,
-                    site_ac_capacity_mw=ac_cap,
-                    site_dc_capacity_mw=dc_cap,
-                    freeze_end_block=freeze_end_block,
-                )
+            raw_arr_96 = np.array(raw_sched_mw, dtype=float) if len(raw_sched_mw) == 96 else np.zeros(96)
 
-                new_fields = list(ss_fields)
-                audit_cols = [
-                    "raw_forecast_mw",
-                    "block_control_status",
-                    "block_control_mode",
-                    "block_control_type",
-                    "effective_control_capacity_ac_mw",
-                    "control_applied",
-                ]
-                for col in audit_cols:
-                    if col not in new_fields:
-                        new_fields.append(col)
+            df_mg_intraday = mg_engine.build_intraday_schedule_dataframe(
+                plant_name=clean_mg_plant,
+                target_date_str=target_date,
+                unconstrained_total_mw_96=raw_arr_96,
+                freeze_end_block=freeze_end_block,
+                previous_df=prev_df,
+            )
+            df_mg_intraday.to_csv(snapshot_source, index=False)
+            print(f"  [MULTI_GENERATOR INTRADAY] Applied sub-asset control windows & generated multi-column schedule for {clean_mg_plant}.")
 
-                for i, r in enumerate(ss_rows):
-                    audit_info = block_audit[i]
-                    r["raw_forecast_mw"] = audit_info["raw_forecast_mw"]
-                    r["block_control_status"] = audit_info["block_control_status"]
-                    r["block_control_mode"] = audit_info["block_control_mode"]
-                    r["block_control_type"] = audit_info["block_control_type"]
-                    r["effective_control_capacity_ac_mw"] = audit_info["effective_control_capacity_ac_mw"]
-                    r["control_applied"] = audit_info["control_applied"]
-                    r["schedule_mw"] = round(float(controlled_mw[i]), 2)
-                    if "intellis_mw" in r and not audit_info.get("frozen", False):
-                        r["intellis_mw"] = round(float(controlled_mw[i]), 2)
+        else:
+            from modules.control_windows import PlantControlWindowEngine
+            cw_engine = PlantControlWindowEngine()
+            freeze_from = _freeze_from_datetime(target_date, target_time)
+            freeze_end_block = ((freeze_from.hour * 60 + freeze_from.minute) // config.BLOCK_MINUTES)
 
-                _write_csv(snapshot_source, new_fields, ss_rows)
-                print(f"  [CONTROL_WINDOWS] Applied control windows: {control_summary.get('windows_applied', 0)} active window(s) applied for {config.PLANT_NAME}.")
+            ss_fields, ss_rows = _read_csv_rows(snapshot_source)
+            if ss_rows:
+                raw_sched_mw = []
+                for r in ss_rows:
+                    v = r.get("schedule_mw") or r.get("intellis_mw") or 0.0
+                    try:
+                        raw_sched_mw.append(float(v))
+                    except Exception:
+                        raw_sched_mw.append(0.0)
+
+                ac_cap = float(getattr(config, "PLANT_CAPACITY_MW", 0.0) or (prof.ac_capacity_mw if "prof" in locals() else 37.0))
+                dc_cap = float(getattr(config, "PLANT_DC_CAPACITY_MW", 0.0) or (getattr(prof, "dc_capacity_mw", ac_cap) if "prof" in locals() else ac_cap))
+
+                if len(raw_sched_mw) == 96:
+                    controlled_mw, block_audit, control_summary = cw_engine.apply_to_blocks(
+                        raw_forecast_mw_96=raw_sched_mw,
+                        site_id=config.PLANT_NAME,
+                        target_date_str=target_date,
+                        site_ac_capacity_mw=ac_cap,
+                        site_dc_capacity_mw=dc_cap,
+                        freeze_end_block=freeze_end_block,
+                    )
+
+                    new_fields = list(ss_fields)
+                    audit_cols = [
+                        "raw_forecast_mw",
+                        "block_control_status",
+                        "block_control_mode",
+                        "block_control_type",
+                        "effective_control_capacity_ac_mw",
+                        "control_applied",
+                    ]
+                    for col in audit_cols:
+                        if col not in new_fields:
+                            new_fields.append(col)
+
+                    for i, r in enumerate(ss_rows):
+                        audit_info = block_audit[i]
+                        r["raw_forecast_mw"] = audit_info["raw_forecast_mw"]
+                        r["block_control_status"] = audit_info["block_control_status"]
+                        r["block_control_mode"] = audit_info["block_control_mode"]
+                        r["block_control_type"] = audit_info["block_control_type"]
+                        r["effective_control_capacity_ac_mw"] = audit_info["effective_control_capacity_ac_mw"]
+                        r["control_applied"] = audit_info["control_applied"]
+                        r["schedule_mw"] = round(float(controlled_mw[i]), 2)
+                        if "intellis_mw" in r and not audit_info.get("frozen", False):
+                            r["intellis_mw"] = round(float(controlled_mw[i]), 2)
+
+                    _write_csv(snapshot_source, new_fields, ss_rows)
+                    print(f"  [CONTROL_WINDOWS] Applied control windows: {control_summary.get('windows_applied', 0)} active window(s) applied for {config.PLANT_NAME}.")
     except Exception as cw_err:
         print(f"  [WARN] PlantControlWindowEngine execution failed; continuing without control windows: {cw_err}")
 

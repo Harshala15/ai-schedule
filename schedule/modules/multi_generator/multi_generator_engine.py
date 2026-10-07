@@ -274,6 +274,156 @@ class MultiGeneratorEngine:
 
         return pd.DataFrame(rows)
 
+    def build_intraday_schedule_dataframe(
+        self,
+        plant_name: str,
+        target_date_str: str,
+        unconstrained_total_mw_96: np.ndarray,
+        freeze_end_block: int = 0,
+        previous_df: Optional[pd.DataFrame] = None,
+    ) -> pd.DataFrame:
+        """
+        Builds statutory 96-block Intraday DataFrame for a multi-generator plant:
+        Columns: Block_No, From, To, <ASSET_1>, ..., <PLANT>_MW, <PLANT>_AvC_MW
+
+        Preserves committed sub-asset outputs for frozen blocks (b <= freeze_end_block)
+        and applies dynamic asset-scope + combined-scope control windows for actionable blocks (b > freeze_end_block).
+        """
+        clean_name = plant_name.upper().strip()
+        if clean_name in ("ZETRIC", "ZETRIC_SOLAR_PARK"):
+            clean_name = "ZTRIC"
+
+        asset_configs = self.get_plant_asset_configs(clean_name)
+        asset_keys = list(asset_configs.keys())
+
+        nominal_total_ac = sum(cfg["ac_cap"] for cfg in asset_configs.values())
+        if nominal_total_ac <= 0.0:
+            nominal_total_ac = 10.0
+
+        from modules.control_windows import PlantControlWindowEngine
+        cw_engine = PlantControlWindowEngine()
+        windows = cw_engine.load_active_windows(clean_name, target_date_str)
+
+        start_dt = dt.datetime.strptime(target_date_str, "%Y-%m-%d").replace(tzinfo=ZoneInfo("Asia/Kolkata"))
+        rows = []
+
+        # Convert previous_df rows to a dictionary keyed by Block_No for fast lookup if available
+        prev_blocks_map: Dict[int, Dict[str, Any]] = {}
+        if previous_df is not None and not previous_df.empty and "Block_No" in previous_df.columns:
+            for _, p_row in previous_df.iterrows():
+                try:
+                    b_num = int(p_row["Block_No"])
+                    prev_blocks_map[b_num] = p_row.to_dict()
+                except Exception:
+                    continue
+
+        for b in range(1, 97):
+            block_start = start_dt + dt.timedelta(minutes=(b - 1) * 15)
+            block_end = block_start + dt.timedelta(minutes=15)
+            from_str = block_start.strftime("%Y-%m-%d %H:%M")
+            to_str = block_end.strftime("%Y-%m-%d %H:%M")
+
+            base_raw_mw = float(unconstrained_total_mw_96[b - 1])
+
+            # Frozen Block check: Preserve sub-asset values from previous revision
+            if b <= freeze_end_block and b in prev_blocks_map:
+                p_dict = prev_blocks_map[b]
+                row_dict = {
+                    "Block_No": b,
+                    "From": from_str,
+                    "To": to_str,
+                }
+                has_all_assets = True
+                for a_key in asset_keys:
+                    val = p_dict.get(a_key)
+                    if val is None:
+                        has_all_assets = False
+                        break
+                    row_dict[a_key] = f"{_to_float(val):.2f}"
+
+                if has_all_assets:
+                    total_mw_val = p_dict.get(f"{clean_name}_MW") or p_dict.get("schedule_mw") or p_dict.get("intellis_mw") or "0.00"
+                    total_avc_val = p_dict.get(f"{clean_name}_AvC_MW") or f"{nominal_total_ac:.2f}"
+
+                    row_dict[f"{clean_name}_MW"] = f"{_to_float(total_mw_val):.2f}"
+                    row_dict[f"{clean_name}_AvC_MW"] = f"{_to_float(total_avc_val):.2f}"
+                    rows.append(row_dict)
+                    continue
+
+            # Actionable Block (b > freeze_end_block): Apply dynamic asset-level & site-level control windows
+            asset_effective_caps: Dict[str, float] = {}
+            for a_key, a_cfg in asset_configs.items():
+                a_ac_cap = a_cfg["ac_cap"]
+                a_dc_cap = a_cfg["dc_cap"]
+
+                a_clean = a_key.upper().strip()
+                a_clean_no_underscore = a_clean.replace("_", "")
+
+                a_windows = [
+                    w for w in windows
+                    if (
+                        str(w.get("asset_scope", "")).lower() == "asset"
+                        and (
+                            str(w.get("asset_id") or "").strip().upper() in (a_clean, a_clean_no_underscore)
+                            or str(w.get("asset_name") or "").strip().upper() in (a_clean, a_clean_no_underscore)
+                            or a_clean in str(w.get("asset_id") or "").strip().upper()
+                        )
+                    )
+                ]
+                ctrl_match = cw_engine.match_block_control(b, target_date_str, a_windows, a_ac_cap, a_dc_cap)
+                asset_effective_caps[a_key] = float(ctrl_match["effective_control_capacity_ac_mw"])
+
+            site_windows = [
+                w for w in windows
+                if (
+                    str(w.get("asset_scope", "")).lower() == "combined"
+                    or str(w.get("asset_id") or "").strip().upper() in ("COMBINED", "ALL")
+                )
+            ]
+            nominal_total_dc = sum(cfg["dc_cap"] for cfg in asset_configs.values())
+            if nominal_total_dc <= 0.0:
+                nominal_total_dc = nominal_total_ac * 1.3
+            site_ctrl = cw_engine.match_block_control(b, target_date_str, site_windows, nominal_total_ac, nominal_total_dc)
+            site_eff_cap = float(site_ctrl["effective_control_capacity_ac_mw"])
+
+            asset_mw_map: Dict[str, float] = {}
+            active_cap_sum = sum(asset_effective_caps.values())
+
+            for a_key, a_cfg in asset_configs.items():
+                eff_cap = asset_effective_caps[a_key]
+                if eff_cap <= 0.0 or nominal_total_ac <= 0.0:
+                    asset_mw_map[a_key] = 0.0
+                else:
+                    capacity_share = a_cfg["ac_cap"] / nominal_total_ac
+                    raw_asset_mw = base_raw_mw * capacity_share
+                    asset_mw_map[a_key] = min(raw_asset_mw, eff_cap)
+
+            total_unconstrained = sum(asset_mw_map.values())
+            if site_eff_cap < nominal_total_ac and total_unconstrained > site_eff_cap:
+                scale = site_eff_cap / max(0.001, total_unconstrained)
+                for a_key in asset_keys:
+                    asset_mw_map[a_key] = round(asset_mw_map[a_key] * scale, 2)
+            else:
+                for a_key in asset_keys:
+                    asset_mw_map[a_key] = round(asset_mw_map[a_key], 2)
+
+            total_plant_mw = round(sum(asset_mw_map.values()), 2)
+            total_plant_avc = round(min(active_cap_sum, site_eff_cap), 2)
+
+            row_dict = {
+                "Block_No": b,
+                "From": from_str,
+                "To": to_str,
+            }
+            for a_key in asset_keys:
+                row_dict[a_key] = f"{asset_mw_map[a_key]:.2f}"
+
+            row_dict[f"{clean_name}_MW"] = f"{total_plant_mw:.2f}"
+            row_dict[f"{clean_name}_AvC_MW"] = f"{total_plant_avc:.2f}"
+            rows.append(row_dict)
+
+        return pd.DataFrame(rows)
+
     def build_wa_schedule_dataframe(
         self,
         plant_name: str,
