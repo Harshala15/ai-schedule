@@ -712,7 +712,7 @@ def load_plant_profile(plant_name: str | None = None) -> dict:
     # STRICTLY FOR ENRICH ONLY: Dynamically overlay live AC and DC capacities from DynamoDB table 'multi_generator_plant'
     if name in ("EMIL", "UPL", "CLIMATEDETOX", "ENRICH"):
         try:
-            from modules.weather.intellis_ensemble_gti_ai import _fetch_enrich_live_capacities_from_dynamodb
+            from modules.plant.plant_profile import _fetch_enrich_live_capacities_from_dynamodb
             enrich_live = _fetch_enrich_live_capacities_from_dynamodb()
             if name in enrich_live:
                 live_ac = enrich_live[name].get("ac_capacity_mw")

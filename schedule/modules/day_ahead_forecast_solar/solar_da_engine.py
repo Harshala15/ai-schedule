@@ -166,11 +166,11 @@ def generate_solar_day_ahead_schedule(
     Generates statutory 96-block Day-Ahead forecast for a solar plant using
     pure multi-agency NWP physics and 24h MOS consensus, then uploads to S3.
     """
-    from modules.weather.intellis_ensemble_gti_ai import IntellisEnsembleGTIAI, load_plant_profile
+    from modules.solar_schedule.solar_scheduler import SolarScheduleEngine, load_plant_profile
     import boto3
 
     prof = load_plant_profile(plant_name)
-    ai_engine = IntellisEnsembleGTIAI(plant_profile=prof)
+    ai_engine = SolarScheduleEngine(plant_profile=prof)
 
     # 1. 143-Member NWP Multi-Model Physics Forecast
     sched_result = ai_engine.predict_96block_schedule(target_date_str)

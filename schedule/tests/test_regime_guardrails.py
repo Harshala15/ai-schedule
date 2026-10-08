@@ -134,7 +134,7 @@ class TestRegimeGuardrails(unittest.TestCase):
 
     def test_satellite_radiation_excluded_for_future_blocks(self):
         """Verify that satellite solar radiation is strictly prohibited for future blocks beyond revision cutoff."""
-        from modules.weather import satellite_virtual_meter
+        from modules.weather.strategies.intellis_gti import non_meter_gti_strategy as satellite_virtual_meter
         revision_time = dt.datetime(2026, 9, 11, 10, 0)
         future_block_time = dt.datetime(2026, 9, 11, 10, 15)
 
@@ -151,7 +151,7 @@ class TestRegimeGuardrails(unittest.TestCase):
 
     def test_satellite_irradiance_cutoff_check(self):
         """Verify get_satellite_irradiance_for_timestamp rejects requests beyond cutoff."""
-        from modules.weather import satellite_virtual_meter
+        from modules.weather.strategies.intellis_gti import non_meter_gti_strategy as satellite_virtual_meter
         revision_time = dt.datetime(2026, 9, 11, 10, 0)
         future_time = dt.datetime(2026, 9, 11, 11, 30)
 
@@ -164,7 +164,7 @@ class TestRegimeGuardrails(unittest.TestCase):
 
     def test_satellite_virtual_meter_permitted_upto_revision_time(self):
         """Verify that satellite solar radiation works properly as a virtual meter up to revision time."""
-        from modules.weather import satellite_virtual_meter
+        from modules.weather.strategies.intellis_gti import non_meter_gti_strategy as satellite_virtual_meter
         revision_time = dt.datetime(2026, 8, 16, 9, 0)
         intraday_block_time = dt.datetime(2026, 8, 16, 9, 0) # t == cutoff_time
 
@@ -959,9 +959,9 @@ class TestDiurnalContinuityAndAntiSawtooth(unittest.TestCase):
 
     def test_slot_candidate_diagnostics(self):
         """Verify IntellisEnsembleGTIAI.get_slot_candidate_diagnostics extracts slot models and 60-min biases."""
-        from modules.weather.intellis_ensemble_gti_ai import IntellisEnsembleGTIAI, load_plant_profile
+        from modules.solar_schedule.solar_scheduler import SolarScheduleEngine, load_plant_profile
         prof = load_plant_profile("GSNP")
-        ai_engine = IntellisEnsembleGTIAI(plant_profile=prof)
+        ai_engine = SolarScheduleEngine(plant_profile=prof)
 
         # Midday block (block 48 = 12:00)
         diag = ai_engine.get_slot_candidate_diagnostics(

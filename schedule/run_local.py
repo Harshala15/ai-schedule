@@ -58,7 +58,7 @@ def run_local_schedule(
 
     if is_wind:
         print(f"\n[Wind Pipeline] Running 24-hr Calibrated Multi-Model Wind Ensemble for {plant_name}...")
-        from modules.weather.wind_ensemble import calculate_wind_schedule_96block, WindTurbineProfile
+        from modules.weather.strategies.intellis_wind import calculate_wind_schedule_96block, WindTurbineProfile
         wind_prof = WindTurbineProfile.from_plant_profile(getattr(config, "PLANT_PROFILE", {}) or plant_name)
         t_hr, t_min = [int(p) for p in target_time.split(":")[:2]]
         curr_block = ((t_hr * 60 + t_min) // 15) + 1
@@ -93,9 +93,9 @@ def run_local_schedule(
         blocks = wind_sched["blocks"]
     else:
         print(f"\n[Solar Pipeline] Running 143-Model Ensemble GTI AI + Arbiter for {plant_name}...")
-        from modules.weather.intellis_ensemble_gti_ai import IntellisEnsembleGTIAI, load_plant_profile
+        from modules.solar_schedule.solar_scheduler import SolarScheduleEngine, load_plant_profile
         prof = load_plant_profile(plant_name)
-        ai_engine = IntellisEnsembleGTIAI(plant_profile=prof)
+        ai_engine = SolarScheduleEngine(plant_profile=prof)
 
         sched_res = ai_engine.generate_revision_schedule_csv(
             target_date_str=target_date,

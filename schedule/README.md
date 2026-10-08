@@ -26,9 +26,9 @@ If you are a new engineer or developer onboarding to this repository, here is ho
             ┌──────────────────────────┴──────────────────────────┐
             ▼                                                     ▼
  [Step 3A: Solar Physics Engine]                       [Step 3B: Wind Physics Engine]
- File: schedule/modules/weather/                       File: schedule/modules/weather/
-       intellis_ensemble_gti_ai.py                           wind_ensemble.py
- - Queries 143-member NWP weather models.              - Blends ECMWF IFS + DWD ICON 100m wind speeds.
+ File: schedule/modules/solar_schedule/                File: schedule/modules/weather/strategies/
+       solar_scheduler.py                                    intellis_wind/wind_ensemble_strategy.py
+ - Queries dedicated GTI weather strategies.           - Blends ECMWF IFS + DWD ICON 100m wind speeds.
  - Computes PVLib Clear-Sky POA envelope.              - Computes air density adjustment at hub height.
  - Calculates ground Clearness Index (k_t).            - Evaluates turbine power curve + wake losses.
             │                                                     │
@@ -72,8 +72,8 @@ New team members should refer to this table to know **where active production lo
 | :--- | :--- | :--- |
 | **System Entrypoint** | [`schedule/intellis_ai_lambda.py`](file:///d:/14%20sept%20intellis/schedule/intellis_ai_lambda.py) | AWS Lambda entrypoint (`lambda_handler`), S3 idempotency locks, run orchestration. |
 | **Local CLI Runner** | [`run_local.py`](file:///d:/14%20sept%20intellis/run_local.py) & [`schedule/run_local.py`](file:///d:/14%20sept%20intellis/schedule/run_local.py) | Unified command-line interface to run any plant locally without AWS or cloud dependencies. |
-| **Solar Engine** | [`schedule/modules/weather/intellis_ensemble_gti_ai.py`](file:///d:/14%20sept%20intellis/schedule/modules/weather/intellis_ensemble_gti_ai.py) | **Primary Solar Forecast Engine**: PVLib clear sky, NWP blending, SCADA handover, guardrails. |
-| **Wind Engine** | [`schedule/modules/weather/wind_ensemble.py`](file:///d:/14%20sept%20intellis/schedule/modules/weather/wind_ensemble.py) | **Primary Wind Forecast Engine**: 100m hub wind, air density correction, power curve mapping. |
+| **Solar Engine** | [`schedule/modules/solar_schedule/solar_scheduler.py`](file:///d:/14%20sept%20intellis/schedule/modules/solar_schedule/solar_scheduler.py) | **Primary Solar Forecast Engine**: PVLib clear sky, NWP blending, SCADA handover, guardrails. |
+| **Wind Engine** | [`schedule/modules/weather/strategies/intellis_wind/wind_ensemble_strategy.py`](file:///d:/14%20sept%20intellis/schedule/modules/weather/strategies/intellis_wind/wind_ensemble_strategy.py) | **Primary Wind Forecast Engine**: 100m hub wind, air density correction, power curve mapping. |
 | **AI Risk Arbiter** | [`schedule/modules/llm/strategic_arbiter.py`](file:///d:/14%20sept%20intellis/schedule/modules/llm/strategic_arbiter.py) | **LLM Strategic Agent**: Analyzes atmospheric risk, satellite cover, and regulatory bias. |
 | **LLM Transport** | [`schedule/modules/llm/predictor.py`](file:///d:/14%20sept%20intellis/schedule/modules/llm/predictor.py) | OpenRouter API client, model fallback chain, retry handler. |
 | **Plant Profiles** | [`schedule/plant_profiles/`](file:///d:/14%20sept%20intellis/schedule/plant_profiles/) | Master JSON configs for each of the 23 plants (capacities, coordinates, tilt, azimuth, SLDC rules). |

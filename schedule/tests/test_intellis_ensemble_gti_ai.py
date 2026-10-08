@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from modules.weather.intellis_ensemble_gti_ai import (
+from modules.solar_schedule.solar_scheduler import (
     IntellisEnsembleGTIAI,
     PlantProfile,
     load_plant_profile,

@@ -349,7 +349,7 @@ def run_schedule_job(
     solar_sched_result = None
     wind_sched_result = None
     if is_wind_site:
-        from modules.weather.wind_ensemble import calculate_wind_schedule_96block, WindTurbineProfile
+        from modules.weather.strategies.intellis_wind import calculate_wind_schedule_96block, WindTurbineProfile
         wind_prof = WindTurbineProfile.from_plant_profile(getattr(config, "PLANT_PROFILE", {}) or config.PLANT_NAME)
         snapshot_block = ((target_dt.hour * 60 + target_dt.minute) // config.BLOCK_MINUTES) + 1
         wind_sched = calculate_wind_schedule_96block(
@@ -443,9 +443,9 @@ def run_schedule_job(
             })
         shared_schedule_utils.write_csv(snapshot_source, fieldnames, rows_to_write)
     else:
-        from modules.weather.intellis_ensemble_gti_ai import IntellisEnsembleGTIAI, load_plant_profile
+        from modules.solar_schedule.solar_scheduler import SolarScheduleEngine, load_plant_profile
         prof = load_plant_profile(config.PLANT_NAME)
-        ai_engine = IntellisEnsembleGTIAI(plant_profile=prof)
+        ai_engine = SolarScheduleEngine(plant_profile=prof)
         solar_sched_result = ai_engine.generate_revision_schedule_csv(
             target_date_str=target_date,
             target_time_str=target_time,
