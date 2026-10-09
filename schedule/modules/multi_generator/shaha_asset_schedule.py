@@ -246,16 +246,20 @@ def write_shaha_asset_penalty_csv(
             a_ac_cap = a_cfg["ac_cap"]
             a_dc_cap = a_cfg.get("dc_cap", a_ac_cap)
             a_clean = a_key.upper().strip()
-            a_clean_no_underscore = a_clean.replace("_", "")
+            a_aliases = [al.upper().strip() for al in a_cfg.get("aliases", [a_key])]
+            if a_clean not in a_aliases:
+                a_aliases.append(a_clean)
+            clean_al_set = set(a_aliases) | {a.replace("_", "").replace(" ", "").replace("-", "") for a in a_aliases}
 
             a_windows = [
                 w for w in windows
                 if (
                     str(w.get("asset_scope", "")).lower() == "asset"
                     and (
-                        str(w.get("asset_id") or "").strip().upper() in (a_clean, a_clean_no_underscore)
-                        or str(w.get("asset_name") or "").strip().upper() in (a_clean, a_clean_no_underscore)
-                        or a_clean in str(w.get("asset_id") or "").strip().upper()
+                        str(w.get("asset_id") or "").strip().upper() in clean_al_set
+                        or str(w.get("asset_name") or "").strip().upper() in clean_al_set
+                        or any(al in str(w.get("asset_id") or "").strip().upper() for al in clean_al_set)
+                        or any(str(w.get("asset_id") or "").strip().upper() in al for al in clean_al_set)
                     )
                 )
             ]

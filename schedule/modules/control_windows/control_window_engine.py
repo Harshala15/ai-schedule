@@ -15,8 +15,6 @@ from typing import Any, Dict, List, Optional, Tuple
 import boto3
 from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
-import numpy as np
-import pandas as pd
 
 logger = logging.getLogger(__name__)
 
