@@ -112,6 +112,7 @@ class SolarScheduleEngine:
         plant_name: str = "GSNP",
         api_key: str | None = None,
         cache_dir: Path | None = None,
+        use_api: bool | None = None,
     ):
         if isinstance(plant_profile, str):
             self.profile = load_plant_profile(plant_profile)
@@ -122,6 +123,7 @@ class SolarScheduleEngine:
         self.api_key = api_key or getattr(config, "OPENMETEO_API_KEY", "") or os.getenv("OPENMETEO_API_KEY", "jbThkFlLZSXZE3CU").strip()
         self.cache_dir = cache_dir or (Path("/tmp/openmeteo_premium_data") if (os.environ.get("AWS_LAMBDA_FUNCTION_NAME") or os.environ.get("LAMBDA_TASK_ROOT")) else Path("openmeteo_premium_data"))
         self.tz = ZoneInfo("Asia/Kolkata")
+        self.use_api = use_api
 
     def predict_gti(
         self,
@@ -133,6 +135,7 @@ class SolarScheduleEngine:
         """Compute 96-block GTI curve via dedicated strategy (Meter vs Non-Meter Satellite)."""
         strategy = get_gti_strategy(
             self.profile,
+            use_api=self.use_api,
             api_key=self.api_key,
             cache_dir=self.cache_dir,
             engine_delegate=self,
@@ -147,6 +150,7 @@ class SolarScheduleEngine:
     def get_strategy(self) -> BaseGTIStrategy:
         return get_gti_strategy(
             self.profile,
+            use_api=self.use_api,
             api_key=self.api_key,
             cache_dir=self.cache_dir,
             engine_delegate=self,
@@ -239,6 +243,7 @@ class SolarScheduleEngine:
 
         gti_strategy = get_gti_strategy(
             self.profile,
+            use_api=self.use_api,
             api_key=self.api_key,
             cache_dir=self.cache_dir,
             engine_delegate=self,
@@ -353,7 +358,7 @@ class SolarScheduleEngine:
     ) -> dict[str, Any]:
         """Closed-loop intraday SCADA telemetry relaxation (T+4 Nudge)."""
         target_date_str = schedule_result["target_date"]
-        cs_poa = get_gti_strategy(self.profile, api_key=self.api_key, cache_dir=self.cache_dir).compute_clearsky_poa_96block(target_date_str)
+        cs_poa = get_gti_strategy(self.profile, use_api=self.use_api, api_key=self.api_key, cache_dir=self.cache_dir).compute_clearsky_poa_96block(target_date_str)
 
         curr_idx = current_block - 1
         cs_theoretical = cs_poa[curr_idx] * self.profile.transfer_ratio if 0 <= curr_idx < 96 else 0.0
@@ -506,7 +511,7 @@ class SolarScheduleEngine:
         enercast_intraday_csv_path: Path | None = None,
     ) -> dict[str, Any]:
         """Generate revision schedule CSV directly with intellis_gti and intellis_mw."""
-        strategy = get_gti_strategy(self.profile, api_key=self.api_key, cache_dir=self.cache_dir)
+        strategy = get_gti_strategy(self.profile, use_api=self.use_api, api_key=self.api_key, cache_dir=self.cache_dir)
         gti_res = strategy.compute_gti(target_date_str)
         cs_poa = gti_res.cs_poa_96
 

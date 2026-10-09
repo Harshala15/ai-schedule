@@ -18,6 +18,10 @@ from modules.weather.strategies.intellis_gti.meter_gti_strategy import (
 from modules.weather.strategies.intellis_gti.non_meter_gti_strategy import (
     NonMeterGTIStrategy,
 )
+from modules.weather.strategies.intellis_gti.remote_api_strategy import (
+    RemoteAPIGTIStrategy,
+    DEFAULT_GTI_API_URL,
+)
 
 NON_METER_SITES = {
     "ANDAD", "GUGARIYAKHEDI", "SAWDA", "BALAKWADA", "CME", "CLIMATEDETOX",
@@ -28,9 +32,18 @@ NON_METER_SITES = {
 
 def get_gti_strategy(
     plant_profile: Any,
+    use_api: bool | None = None,
     **kwargs: Any,
 ) -> BaseGTIStrategy:
-    """Factory function to instantiate the correct GTI calculation strategy based on plant telemetry configuration."""
+    """Factory function to instantiate the correct GTI calculation strategy.
+    
+    Supports:
+    1. Remote API Strategy with automatic local fallback (when use_api=True or USE_GTI_API=true).
+    2. Non-Meter Satellite Strategy for non-meter sites.
+    3. Meter NWP Ensemble Strategy for physical SCADA sites.
+    """
+    import os
+
     if isinstance(plant_profile, str):
         from modules.plant.plant_profile import load_plant_profile
         plant_profile = load_plant_profile(plant_profile)
@@ -46,9 +59,29 @@ def get_gti_strategy(
         or bool(getattr(plant_profile, "is_non_meter_site", False))
     )
 
-    if is_non_meter:
-        return NonMeterGTIStrategy(plant_profile=plant_profile, **kwargs)
-    return MeterGTIStrategy(plant_profile=plant_profile, **kwargs)
+    api_url = kwargs.pop("api_url", None)
+    timeout = kwargs.pop("timeout", 35)
+
+    local_strat = (
+        NonMeterGTIStrategy(plant_profile=plant_profile, **kwargs)
+        if is_non_meter
+        else MeterGTIStrategy(plant_profile=plant_profile, **kwargs)
+    )
+
+    should_use_api = use_api if use_api is not None else (
+        os.getenv("USE_GTI_API", "").lower() in ("1", "true", "yes")
+    )
+
+    if should_use_api:
+        return RemoteAPIGTIStrategy(
+            plant_profile=plant_profile,
+            fallback_strategy=local_strat,
+            api_url=api_url,
+            timeout=timeout,
+            **kwargs,
+        )
+
+    return local_strat
 
 
 __all__ = [
@@ -56,6 +89,8 @@ __all__ = [
     "GTIForecastResult",
     "MeterGTIStrategy",
     "NonMeterGTIStrategy",
+    "RemoteAPIGTIStrategy",
     "get_gti_strategy",
     "NON_METER_SITES",
+    "DEFAULT_GTI_API_URL",
 ]
