@@ -113,6 +113,17 @@ class PlantControlWindowEngine:
             return []
 
         clean_site = str(site_id).strip().upper()
+        site_aliases_map = {
+            "ZTRIC": {"ZTRIC", "ZETRIC", "ZETRIC_SOLAR_PARK", "ZETRIC SOLAR PARK"},
+            "ZETRIC": {"ZTRIC", "ZETRIC", "ZETRIC_SOLAR_PARK", "ZETRIC SOLAR PARK"},
+            "ENRICH": {"ENRICH", "ENRICH_SOLAR_PARK", "ENRICH SOLAR PARK", "ZETRIC_SOLAR_PARK"},
+            "SHAHA": {"SHAHA", "SHAHA_SOLAR_PARK", "SHAHA SOLAR PARK", "ZETRIC_SOLAR_PARK"},
+            "BHUPALPALLY": {"BHUPALPALLY", "BHUPALAPALLY"},
+            "CHANDWASA": {"CHANDWASA", "CHANDAWASA"},
+            "ANJANGOAN": {"ANJANGOAN", "ANJANGAON"},
+        }
+        valid_sites = site_aliases_map.get(clean_site, {clean_site}) | {clean_site, "ALL"}
+
         # Parse target schedule day boundaries in IST
         try:
             d_target = dt.date.fromisoformat(target_date_str)
@@ -128,8 +139,13 @@ class PlantControlWindowEngine:
             table = self.dynamodb_resource.Table(self.table_name)
 
             if partition_key == "site_id":
-                # Schema A: Query site_id = clean_site, and also site_id = 'ALL'
-                for query_val in (clean_site, "ALL"):
+                # Schema A: Query site_id across clean_site, aliases, and 'ALL'
+                seen_q: set[str] = set()
+                for query_val in list(valid_sites):
+                    query_val = str(query_val or "").strip()
+                    if not query_val or query_val in seen_q:
+                        continue
+                    seen_q.add(query_val)
                     try:
                         resp = table.query(
                             KeyConditionExpression=Key("site_id").eq(query_val)
@@ -140,11 +156,10 @@ class PlantControlWindowEngine:
             else:
                 # Schema B: Partitioned by plant_id (normal scheduler style) or another grouping key.
                 # Query the plant/group partition first, then filter by site/site_id below.
-                # This avoids missing records stored as plant_id=vedanjay, site=KOTHAGUDEM.
                 query_values: list[str] = []
                 if partition_key == "plant_id":
                     query_values.extend([self.plant_id, self.plant_id.upper(), self.plant_id.lower()])
-                query_values.extend([clean_site, "ALL"])
+                query_values.extend(list(valid_sites))
 
                 seen_query_values: set[str] = set()
                 for query_val in query_values:
@@ -176,9 +191,10 @@ class PlantControlWindowEngine:
         # Filter and validate items
         validated_windows: List[Dict[str, Any]] = []
         for item in raw_items:
-            # 1. Site matching check
+            # 1. Site matching check (includes site_id, site, multi_generator_plant_id)
             item_site = str(item.get("site") or item.get("site_id") or "").strip().upper()
-            if item_site not in (clean_site, "ALL"):
+            item_mg_plant = str(item.get("multi_generator_plant_id") or "").strip().upper()
+            if item_site not in valid_sites and item_mg_plant not in valid_sites:
                 continue
 
             # 2. Active status check
@@ -193,33 +209,83 @@ class PlantControlWindowEngine:
                 continue
 
             # 4. Parse start_time and end_time
-            start_dt = parse_iso_ist(item.get("start_time"))
-            end_dt = parse_iso_ist(item.get("end_time"))
-            if start_dt is None or end_dt is None or end_dt <= start_dt:
+            raw_payload = item.get("raw_payload") if isinstance(item.get("raw_payload"), dict) else {}
+            start_raw = item.get("start_time") or raw_payload.get("start_time")
+            start_dt = parse_iso_ist(start_raw)
+            if start_dt is None and start_raw:
+                event_date = item.get("event_date") or raw_payload.get("event_date") or target_date_str
+                try:
+                    clean_t = str(start_raw).strip()
+                    if len(clean_t.split(":")) == 2:
+                        clean_t += ":00"
+                    start_dt = dt.datetime.fromisoformat(f"{event_date}T{clean_t}").replace(tzinfo=IST)
+                except Exception:
+                    pass
+
+            if start_dt is None:
+                continue
+
+            end_raw = item.get("end_time") or raw_payload.get("end_time")
+            is_open_ended = (
+                item.get("is_open_ended") is True
+                or str(item.get("is_open_ended", "")).strip().lower() in ("true", "1", "yes")
+                or not end_raw
+            )
+
+            end_dt = parse_iso_ist(end_raw)
+            if end_dt is None and end_raw:
+                event_date = item.get("event_date") or raw_payload.get("event_date") or target_date_str
+                try:
+                    clean_t = str(end_raw).strip()
+                    if len(clean_t.split(":")) == 2:
+                        clean_t += ":00"
+                    end_dt = dt.datetime.fromisoformat(f"{event_date}T{clean_t}").replace(tzinfo=IST)
+                except Exception:
+                    pass
+
+            # Where starting time is present and end time is not, the plant status change
+            # event continues from start time till the 96th block (day_end / 24:00 IST).
+            if end_dt is None or is_open_ended:
+                end_dt = day_end
+
+            if not is_open_ended and end_dt <= start_dt:
                 continue
 
             # 5. Date overlap check with target schedule day
-            # If window ends before day_start (yesterday or older), or starts after day_end, discard!
+            # If window ends on or before day_start (yesterday or older), or starts on or after day_end, discard!
             if end_dt <= day_start or start_dt >= day_end:
                 continue
 
             # Extract reduction / capacity parameters
-            raw_payload = item.get("raw_payload") if isinstance(item.get("raw_payload"), dict) else {}
             control_mode = str(item.get("control_mode") or raw_payload.get("control_mode") or "").strip().upper()
 
             shutdown_reduction_mw = _to_float(
-                item.get("shutdown_reduction_mw") or raw_payload.get("shutdown_reduction_mw") or raw_payload.get("mw"),
+                item.get("shutdown_reduction_mw") or raw_payload.get("shutdown_reduction_mw") or raw_payload.get("mw") or item.get("mw"),
                 default=0.0,
             )
 
-            curtailment_capacity = item.get("curtailment_capacity") or item.get("curtailment_capacity_mw")
-            if curtailment_capacity is None and "curtailment_capacity" in raw_payload:
-                curtailment_capacity = raw_payload.get("curtailment_capacity")
+            curtailment_capacity = (
+                item.get("curtailment_capacity")
+                or item.get("curtailment_capacity_mw")
+                or raw_payload.get("curtailment_capacity")
+                or raw_payload.get("curtailment_capacity_mw")
+                or raw_payload.get("mw")
+                or item.get("mw")
+            )
             curtailment_capacity_mw = _to_float(curtailment_capacity, default=None) if curtailment_capacity is not None else None
+
+            asset_scope = str(item.get("asset_scope") or raw_payload.get("asset_scope") or "").strip().lower()
+            asset_id = str(item.get("asset_id") or item.get("sub_plant_id") or raw_payload.get("asset_id") or "COMBINED").strip().upper()
+            asset_name = str(item.get("asset_name") or raw_payload.get("asset_name") or "").strip()
+            mg_plant_id = str(item.get("multi_generator_plant_id") or raw_payload.get("multi_generator_plant_id") or "").strip()
 
             validated_windows.append({
                 "window_id": str(item.get("window_id", "")),
                 "site_id": item_site,
+                "asset_scope": asset_scope,
+                "asset_id": asset_id,
+                "asset_name": asset_name,
+                "multi_generator_plant_id": mg_plant_id,
                 "plant_status": status,
                 "control_mode": control_mode,
                 "shutdown_reduction_mw": shutdown_reduction_mw,
@@ -228,6 +294,7 @@ class PlantControlWindowEngine:
                 "end_time_dt": end_dt,
                 "start_time_iso": start_dt.isoformat(),
                 "end_time_iso": end_dt.isoformat(),
+                "is_open_ended": is_open_ended,
                 "last_message": str(item.get("last_message", "")),
             })
 

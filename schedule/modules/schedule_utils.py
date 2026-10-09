@@ -623,14 +623,16 @@ def write_full_block_schedule_from_llm_schedule(
         target_date_str = dt.datetime.now(IST).strftime("%Y-%m-%d")
 
     # Read fallback latest schedule first
+    p_plant = str(getattr(config, "PLANT_NAME", "")).strip().upper()
+    p_col = f"{p_plant}_MW"
     if fallback_csv_path and fallback_csv_path.exists():
         with open(fallback_csv_path, "r", newline="", encoding="utf-8-sig") as handle:
             for row in csv.DictReader(handle):
-                raw_b = str(row.get("Block", "") or row.get("block", "")).strip()
+                raw_b = str(row.get("Block", "") or row.get("block", "") or row.get("Block_No", "")).strip()
                 try:
                     b = int(raw_b)
-                    schedule_mw = _row_float(row, "schedule_mw", "Schedule MW", "intellis_mw", "Final Validated MW", "Step 2 Weather Adjustment MW", "Forecast MW")
-                    intellis_mw = _row_float(row, "intellis_mw", "schedule_mw", "Schedule MW", "Final Validated MW", "Step 2 Weather Adjustment MW", "Forecast MW")
+                    schedule_mw = _row_float(row, "schedule_mw", "Schedule MW", "intellis_mw", p_col, "total_ai_schedule_mw", "Final Validated MW", "Step 2 Weather Adjustment MW", "Forecast MW")
+                    intellis_mw = _row_float(row, "intellis_mw", "schedule_mw", "Schedule MW", p_col, "total_ai_schedule_mw", "Final Validated MW", "Step 2 Weather Adjustment MW", "Forecast MW")
                     gti = _row_float(row, "intellis_gti")
                     schedule_by_block[b] = {
                         "intellis_gti": gti,
@@ -647,11 +649,11 @@ def write_full_block_schedule_from_llm_schedule(
     if input_csv_path.exists():
         with open(input_csv_path, "r", newline="", encoding="utf-8-sig") as handle:
             for row in csv.DictReader(handle):
-                raw_b = str(row.get("Block", "") or row.get("block", "")).strip()
+                raw_b = str(row.get("Block", "") or row.get("block", "") or row.get("Block_No", "")).strip()
                 try:
                     b = int(raw_b)
-                    schedule_mw = _row_float(row, "schedule_mw", "Schedule MW", "intellis_mw", "Final Validated MW", "Step 2 Weather Adjustment MW", "Forecast MW")
-                    intellis_mw = _row_float(row, "intellis_mw", "schedule_mw", "Schedule MW", "Final Validated MW", "Step 2 Weather Adjustment MW", "Forecast MW")
+                    schedule_mw = _row_float(row, "schedule_mw", "Schedule MW", "intellis_mw", p_col, "total_ai_schedule_mw", "Final Validated MW", "Step 2 Weather Adjustment MW", "Forecast MW")
+                    intellis_mw = _row_float(row, "intellis_mw", "schedule_mw", "Schedule MW", p_col, "total_ai_schedule_mw", "Final Validated MW", "Step 2 Weather Adjustment MW", "Forecast MW")
                     gti = _row_float(row, "intellis_gti")
                     schedule_by_block[b] = {
                         "intellis_gti": gti,

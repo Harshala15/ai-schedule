@@ -209,6 +209,10 @@ def write_shaha_asset_penalty_csv(
     """
     asset_capacities = load_shaha_asset_capacities()
 
+    from modules.control_windows.control_window_engine import PlantControlWindowEngine
+    cw_engine = PlantControlWindowEngine()
+    windows = cw_engine.load_active_windows("SHAHA", target_date_str)
+
     rows: List[Dict[str, Any]] = []
     total_generated_mw = 0.0
 
@@ -216,6 +220,9 @@ def write_shaha_asset_penalty_csv(
     individual_asset_rows: Dict[str, List[Dict[str, Any]]] = {
         col: [] for col in SHAHA_ASSET_COLUMNS
     }
+
+    nom_ac = sum(c["ac_cap"] for c in asset_capacities.values())
+    nom_dc = sum(c.get("dc_cap", c["ac_cap"]) for c in asset_capacities.values())
 
     for block in range(1, total_blocks + 1):
         start_min = (block - 1) * 15
@@ -233,7 +240,49 @@ def write_shaha_asset_penalty_csv(
         if block < 24 or block > 74:
             raw_mw = 0.0
 
-        asset_vals = disaggregate_shaha_block_mw(raw_mw, asset_capacities)
+        # 1. Compute dynamic effective block capacity per asset considering active control windows
+        block_capacities = {k: dict(v) for k, v in asset_capacities.items()}
+        for a_key, a_cfg in asset_capacities.items():
+            a_ac_cap = a_cfg["ac_cap"]
+            a_dc_cap = a_cfg.get("dc_cap", a_ac_cap)
+            a_clean = a_key.upper().strip()
+            a_clean_no_underscore = a_clean.replace("_", "")
+
+            a_windows = [
+                w for w in windows
+                if (
+                    str(w.get("asset_scope", "")).lower() == "asset"
+                    and (
+                        str(w.get("asset_id") or "").strip().upper() in (a_clean, a_clean_no_underscore)
+                        or str(w.get("asset_name") or "").strip().upper() in (a_clean, a_clean_no_underscore)
+                        or a_clean in str(w.get("asset_id") or "").strip().upper()
+                    )
+                )
+            ]
+            ctrl_match = cw_engine.match_block_control(block, target_date_str, a_windows, a_ac_cap, a_dc_cap)
+            block_capacities[a_key]["ac_cap"] = float(ctrl_match["effective_control_capacity_ac_mw"])
+
+        # 2. Site-level / combined curtailment windows
+        site_windows = [
+            w for w in windows
+            if (
+                str(w.get("asset_scope", "")).lower() == "combined"
+                or str(w.get("asset_id") or "").strip().upper() in ("COMBINED", "ALL")
+            )
+        ]
+        site_ctrl = cw_engine.match_block_control(block, target_date_str, site_windows, nom_ac, nom_dc)
+        site_eff_cap = float(site_ctrl["effective_control_capacity_ac_mw"])
+
+        asset_vals = disaggregate_shaha_block_mw(raw_mw, block_capacities)
+
+        # Scale down if site curtailment is lower than sum of assets
+        tot_unconstrained = asset_vals["total_ai_schedule_mw"]
+        if site_eff_cap < nom_ac and tot_unconstrained > site_eff_cap:
+            scale = site_eff_cap / max(0.001, tot_unconstrained)
+            for col in SHAHA_ASSET_COLUMNS:
+                asset_vals[col] = round(asset_vals[col] * scale, 3)
+            asset_vals["total_ai_schedule_mw"] = round(sum(asset_vals[c] for c in SHAHA_ASSET_COLUMNS), 3)
+
         total_generated_mw += asset_vals["total_ai_schedule_mw"]
 
         row = {
