@@ -583,6 +583,46 @@ def blocks_from_time_to_end_of_day(
     minutes_remaining = (end_of_day - first_block).total_seconds() / 60.0
     return int(minutes_remaining // block_minutes) + 1
 
+def _enforce_anti_plateau_curvature(mw_arr: np.ndarray, cs_poa: np.ndarray, min_step: float = 0.01) -> np.ndarray:
+    """Ensures no consecutive daylight blocks (blocks 24 to 75, > 0.05 MW) have identical generation values.
+    Shapes flat runs to strictly follow astronomical clear-sky solar curvature.
+    """
+    arr = np.copy(mw_arr)
+    for _ in range(10):
+        changed = False
+        i = 23
+        while i < 75:
+            if arr[i] > 0.05:
+                j = i
+                while j + 1 < 76 and arr[j + 1] == arr[i] and arr[i] > 0.05:
+                    j += 1
+                if j > i:
+                    changed = True
+                    sub_cs = cs_poa[i : j + 1]
+                    peak_local = int(np.argmax(sub_cs))
+                    peak_idx = i + peak_local
+                    for k in range(peak_idx - 1, i - 1, -1):
+                        if arr[k] >= arr[k + 1]:
+                            arr[k] = round(max(0.0, arr[k + 1] - min_step), 2)
+                    for k in range(peak_idx + 1, j + 1):
+                        if arr[k] >= arr[k - 1]:
+                            arr[k] = round(max(0.0, arr[k - 1] - min_step), 2)
+                    i = j + 1
+                else:
+                    i += 1
+            else:
+                i += 1
+        if not changed:
+            break
+
+    for b in range(23, 75):
+        if arr[b] > 0.05 and arr[b] == arr[b + 1]:
+            if cs_poa[b + 1] >= cs_poa[b]:
+                arr[b] = round(max(0.0, arr[b + 1] - min_step), 2)
+            else:
+                arr[b + 1] = round(max(0.0, arr[b] - min_step), 2)
+    return arr
+
 
 def write_full_block_schedule_from_llm_schedule(
     input_csv_path: Path,
@@ -839,8 +879,7 @@ def write_full_block_schedule_from_llm_schedule(
             elev = max(0.0, 90.0 - (h_from_noon * 15.0)) if h_from_noon < 6.0 else 0.0
             if elev > 0:
                 cs_poa_seq[b - 1] = max(0.0, 1050.0 * (math.sin(math.radians(elev)) ** 1.10))
-        from modules.solar_schedule.solar_scheduler import enforce_anti_plateau_curvature
-        fixed_mw_seq = enforce_anti_plateau_curvature(mw_seq, cs_poa_seq)
+        fixed_mw_seq = _enforce_anti_plateau_curvature(mw_seq, cs_poa_seq)
         for b in range(1, total_blocks + 1):
             h_from_noon = abs(((b - 0.5) * 0.25) - 12.25)
             elev = max(0.0, 90.0 - (h_from_noon * 15.0)) if h_from_noon < 6.0 else 0.0

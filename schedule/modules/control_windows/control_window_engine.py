@@ -371,7 +371,15 @@ class PlantControlWindowEngine:
         # Find overlapping windows
         overlapping: List[Dict[str, Any]] = []
         for w in windows:
-            if w["start_time_dt"] < block_end and w["end_time_dt"] > block_start:
+            w_start = w.get("start_time_dt")
+            w_end = w.get("end_time_dt")
+            if w_start is None:
+                w_start = parse_iso_ist(str(w.get("start_time", "")))
+            if w_end is None and not w.get("is_open_ended", False):
+                w_end = parse_iso_ist(str(w.get("end_time", "")))
+            if w.get("is_open_ended", False) or w_end is None:
+                w_end = dt.datetime.combine(d_target, dt.time.max).replace(tzinfo=IST)
+            if w_start and w_end and w_start < block_end and w_end > block_start:
                 overlapping.append(w)
 
         if not overlapping:
