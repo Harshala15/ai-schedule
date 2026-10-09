@@ -864,6 +864,34 @@ def write_full_block_schedule_from_llm_schedule(
         except Exception as zt_err:
             print(f"[WARN] Failed to write ZTRIC asset-wise penalty schedule: {zt_err}; falling back to standard format.")
 
+    # Specialized Multi-Generator Asset-Wise Output for ENRICH
+    if str(getattr(config, "PLANT_NAME", "")).strip().upper() == "ENRICH":
+        try:
+            from modules.multi_generator.enrich_asset_schedule import write_enrich_asset_penalty_csv
+            return write_enrich_asset_penalty_csv(
+                schedule_by_block=schedule_by_block,
+                input_csv_path=input_csv_path,
+                output_csv_path=output_csv_path,
+                target_date_str=target_date_str,
+                total_blocks=total_blocks,
+            )
+        except Exception as en_err:
+            print(f"[WARN] Failed to write ENRICH asset-wise penalty schedule: {en_err}; falling back to standard format.")
+
+    # Specialized Multi-Generator Asset-Wise Output for SHAHA
+    if str(getattr(config, "PLANT_NAME", "")).strip().upper() == "SHAHA":
+        try:
+            from modules.multi_generator.shaha_asset_schedule import write_shaha_asset_penalty_csv
+            return write_shaha_asset_penalty_csv(
+                schedule_by_block=schedule_by_block,
+                input_csv_path=input_csv_path,
+                output_csv_path=output_csv_path,
+                target_date_str=target_date_str,
+                total_blocks=total_blocks,
+            )
+        except Exception as sh_err:
+            print(f"[WARN] Failed to write SHAHA asset-wise penalty schedule: {sh_err}; falling back to standard format.")
+
     # Plant regulatory parameters
     cap_mw = float(getattr(config, "PLANT_CAPACITY_MW", 10.0))
     prof_dict = getattr(config, "PLANT_PROFILE", {}) or {}
@@ -962,8 +990,8 @@ def write_full_block_schedule_from_llm_schedule(
             "block": block,
             "time": t_str,
             "intellis_gti": round(gti_val, 1),
-            "intellis_mw": round(intellis_val, 2),
-            "schedule_mw": round(mw_val, 2),
+            "intellis_mw": round(intellis_val, 3),
+            "schedule_mw": round(mw_val, 3),
             "dev_mw": dev,
             "dsm_slab": slab,
             "block_penalty_inr": round(blk_pen, 2),

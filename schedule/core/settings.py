@@ -37,9 +37,9 @@ def resolve_s3_prefixes(site_id: str, raw_owner: str | None = None) -> tuple[str
     owner = raw_owner or DEFAULT_S3_RAW_OWNER
     site_clean = site_id.strip().upper()
 
-    if site_clean == "ZTRIC":
-        raw_prefix = f"raw/{owner}/multiple_generator/ZTRIC"
-        schedule_prefix = "generated/vedanjay_ai_intellis/multiple_generator/ZTRIC/outputs"
+    if site_clean in ("ZTRIC", "ENRICH", "SHAHA"):
+        raw_prefix = f"raw/{owner}/multiple_generator/{site_clean}"
+        schedule_prefix = f"generated/vedanjay_ai_intellis/multiple_generator/{site_clean}/outputs"
     else:
         raw_prefix = f"raw/{owner}/{site_clean}"
         schedule_prefix = f"generated/vedanjay_ai_intellis/{site_clean}/outputs"

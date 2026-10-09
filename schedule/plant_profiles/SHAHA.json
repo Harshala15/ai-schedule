@@ -1,0 +1,29 @@
+{
+  "plant_name": "SHAHA",
+  "latitude": 19.874222,
+  "longitude": 74.246737,
+  "dc_capacity_kw": 14080,
+  "maximum_feed_in_ac_kw": 10300,
+  "tilt_deg": 18,
+  "orientation_deg_from_south": 0,
+  "tracker_type": "None",
+  "performance_ratio": 0.65,
+  "ppa_rate_inr_per_kwh": 3.0,
+  "penalty_regulation": "Maharashtra",
+  "tolerance_band_mw": 1.030,
+  "band_percentage": 0.10,
+  "tolerance_band_percent": 0.10,
+  "meter_data": {
+    "is_non_meter_site": true,
+    "has_meter": false,
+    "is_virtual": true,
+    "meter_type": "SOLAR_VIRTUAL_METER",
+    "s3_prefix": "raw/vedanjay/multiple_generator/SHAHA/{date}/metered_data/",
+    "delimiter": ",",
+    "timestamp_column": "block_end",
+    "power_column": "metered_mw",
+    "power_unit": "mw",
+    "poa_column": "poa_wm2",
+    "ghi_column": "ghi_wm2"
+  }
+}
