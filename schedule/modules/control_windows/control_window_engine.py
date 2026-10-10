@@ -13,6 +13,7 @@ from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple
 
 import boto3
+import numpy as np
 from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
 
@@ -319,7 +320,7 @@ class PlantControlWindowEngine:
         dc_cap = max(0.001, float(site_dc_capacity_mw))
         dc_ac_ratio = dc_cap / ac_cap
 
-        status = window.get("plant_status", "NORMAL").upper()
+        status = str(window.get("plant_status") or window.get("control_type") or window.get("action") or "NORMAL").upper()
         mode = window.get("control_mode", "").upper()
 
         if status == "SHUTDOWN":

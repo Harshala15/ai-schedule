@@ -166,6 +166,16 @@ def generate_solar_day_ahead_schedule(
     Generates statutory 96-block Day-Ahead forecast for a solar plant using
     pure multi-agency NWP physics and 24h MOS consensus, then uploads to S3.
     """
+    clean_p = plant_name.upper().strip()
+    if clean_p in ("ZTRIC", "ENRICH", "SHAHA"):
+        from modules.multi_generator.multi_generator_engine import generate_multi_generator_day_ahead_schedule
+        return generate_multi_generator_day_ahead_schedule(
+            plant_name=clean_p,
+            target_date_str=target_date_str,
+            run_tag=run_tag,
+            s3_bucket=s3_bucket,
+        )
+
     from modules.solar_schedule.solar_scheduler import SolarScheduleEngine, load_plant_profile
     import boto3
 
