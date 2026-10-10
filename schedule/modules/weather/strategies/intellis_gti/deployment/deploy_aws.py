@@ -77,6 +77,12 @@ def main():
         raise RuntimeError("Docker push failed.")
     print("  [OK] Docker image pushed successfully to ECR.")
 
+    # Resolve exact pushed digest to guarantee Lambda pulls the fresh image without caching
+    img_meta = ecr.describe_images(repositoryName=REPO_NAME, imageIds=[{"imageTag": TAG}])
+    pushed_digest = img_meta["imageDetails"][0]["imageDigest"]
+    deploy_uri = f"{ECR_REGISTRY}/{REPO_NAME}@{pushed_digest}"
+    print(f"  [OK] Resolved freshly pushed ECR image digest: {pushed_digest}")
+
     # 4. Create or Update Lambda Function
     print("\n[Step 4/5] Deploying Lambda Function...")
     env_vars = {
@@ -87,8 +93,8 @@ def main():
     try:
         fn_meta = lam.get_function(FunctionName=FUNCTION_NAME)
         function_arn = fn_meta["Configuration"]["FunctionArn"]
-        print(f"  Function {FUNCTION_NAME} exists. Updating code to new image...")
-        lam.update_function_code(FunctionName=FUNCTION_NAME, ImageUri=IMAGE_URI)
+        print(f"  Function {FUNCTION_NAME} exists. Updating code to image digest {pushed_digest}...")
+        lam.update_function_code(FunctionName=FUNCTION_NAME, ImageUri=deploy_uri)
 
         # Wait for update to complete
         for _ in range(60):
