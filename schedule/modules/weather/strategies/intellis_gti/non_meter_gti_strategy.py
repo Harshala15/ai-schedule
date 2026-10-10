@@ -370,7 +370,7 @@ def fetch_satellite_96block_profile(
 
 
 class NonMeterGTIStrategy(BaseGTIStrategy):
-    """Satellite-Derived GTI calculation strategy for sites lacking physical meter telemetry."""
+    """Satellite-Derived & NWP Physics Ensemble GTI strategy for sites lacking physical meter telemetry."""
 
     def __init__(
         self,
@@ -381,14 +381,74 @@ class NonMeterGTIStrategy(BaseGTIStrategy):
     ):
         super().__init__(plant_profile, api_key=api_key, cache_dir=cache_dir, **kwargs)
         self.tz = ZoneInfo("Asia/Kolkata")
+        self._ensemble_delegate = None
+
+    def _get_ensemble_delegate(self) -> Any:
+        if self._ensemble_delegate is None:
+            from modules.weather.strategies.intellis_gti.meter_gti_strategy import MeterGTIStrategy
+            self._ensemble_delegate = MeterGTIStrategy(
+                plant_profile=self.profile,
+                api_key=self.api_key,
+                cache_dir=self.cache_dir,
+                **self.extra_kwargs,
+            )
+        return self._ensemble_delegate
+
+    def fetch_ensemble_weather(self, target_date_str: str) -> dict[str, Any]:
+        """Fetch 143-member NWP ensemble for non-meter sites."""
+        delegate = self._get_ensemble_delegate()
+        return delegate.fetch_ensemble_weather(target_date_str)
+
+    def calibrate_plant_pr(self, target_date_str: str, lookback_days: int = 5) -> float:
+        """Calibrate plant PR for non-meter sites."""
+        delegate = self._get_ensemble_delegate()
+        return delegate.calibrate_plant_pr(target_date_str, lookback_days=lookback_days)
+
+    def load_meter_actuals_with_poa(self, target_date_str: str) -> tuple[np.ndarray, np.ndarray]:
+        """Load virtual meter actuals derived from satellite solar radiation."""
+        delegate = self._get_ensemble_delegate()
+        return delegate.load_meter_actuals_with_poa(target_date_str)
+
+    def classify_weather_regime(self, *args: Any, **kwargs: Any) -> tuple[str, float]:
+        """Classify atmospheric weather regime."""
+        delegate = self._get_ensemble_delegate()
+        return delegate.classify_weather_regime(*args, **kwargs)
+
+    def get_slot_candidate_diagnostics(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        """Extract diurnal slot benchmarking diagnostics."""
+        delegate = self._get_ensemble_delegate()
+        return delegate.get_slot_candidate_diagnostics(*args, **kwargs)
 
     def compute_gti(
         self,
         target_date_str: str,
         cutoff_time: dt.datetime | None = None,
+        selected_keys: list[str] | None = None,
+        weights_map: dict[str, float] | None = None,
         **kwargs: Any,
     ) -> GTIForecastResult:
-        """Compute 96-block Satellite GTI (W/m²), clear-sky POA, ambient temperature, and wind speed."""
+        """Compute 96-block GTI (W/m²), clear-sky POA, ambient temperature, and wind speed.
+        
+        Leverages the 143-member NWP physics ensemble benchmarked against satellite virtual meter actuals,
+        with automatic graceful fallback to the direct satellite profile if NWP data is unreachable.
+        """
+        # 1. Attempt 143-member NWP Physics Ensemble execution (Production Architecture)
+        try:
+            delegate = self._get_ensemble_delegate()
+            res = delegate.compute_gti(
+                target_date_str=target_date_str,
+                selected_keys=selected_keys,
+                weights_map=weights_map,
+                **kwargs,
+            )
+            if res.gti_96 is not None and np.max(res.gti_96) > 50.0:
+                res.metadata["is_non_meter"] = True
+                res.strategy_name = "NON_METER_NWP_ENSEMBLE_GTI"
+                return res
+        except Exception as exc:
+            logger.warning("NWP Ensemble computation for non-meter site failed (%s); falling back to direct satellite profile.", exc)
+
+        # 2. Direct Satellite Fallback Profile
         target_date = dt.datetime.strptime(target_date_str, "%Y-%m-%d").date()
 
         lat = getattr(self.profile, "latitude", None)

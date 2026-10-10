@@ -189,6 +189,8 @@ def get_gti_forecast(
 
     gti_arr = gti_result.gti_96
     cs_poa_arr = gti_result.cs_poa_96
+    temp_arr = getattr(gti_result, "amb_temp_96", None)
+    wind_arr = getattr(gti_result, "wind_speed_96", None)
 
     # 4. Construct 96 blocks
     blocks_list: list[GTIBlock] = []
@@ -199,12 +201,17 @@ def get_gti_forecast(
         e_hr, e_m = divmod(end_min, 60)
         t_interval = f"{s_hr:02d}:{s_m:02d} - {'24:00' if e_hr == 24 else f'{e_hr:02d}:{e_m:02d}'}"
 
+        temp_val = round(float(temp_arr[b]), 2) if temp_arr is not None and len(temp_arr) > b else None
+        wind_val = round(float(wind_arr[b]), 2) if wind_arr is not None and len(wind_arr) > b else None
+
         blocks_list.append(
             GTIBlock(
                 block=b + 1,
                 time_interval=t_interval,
                 gti_wm2=round(float(gti_arr[b]), 2),
                 clearsky_poa_wm2=round(float(cs_poa_arr[b]), 2),
+                temperature_c=temp_val,
+                wind_speed_m_s=wind_val,
             )
         )
 

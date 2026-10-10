@@ -701,7 +701,9 @@ def write_full_block_schedule_from_llm_schedule(
                         "schedule_mw": schedule_mw,
                         "time_interval": row.get("Time Interval (15 minute interval)", ""),
                     }
-                    input_explicit_mw[b] = schedule_mw
+                    has_explicit = any(row.get(col) not in (None, "") for col in ("schedule_mw", "Schedule MW", "intellis_mw"))
+                    if has_explicit:
+                        input_explicit_mw[b] = schedule_mw
                     if 28 <= b <= 72 and schedule_mw > 0.02:
                         input_daylight_blocks.append(b)
                 except (ValueError, TypeError):
@@ -871,6 +873,12 @@ def write_full_block_schedule_from_llm_schedule(
                 schedule_by_block.setdefault(b, {})["schedule_mw"] = final_val if final_val > 0.02 else 0.0
             prev_mw = float(schedule_by_block.get(b, {}).get("intellis_mw", 0.0))
 
+        # Explicitly preserve authoritative blocks supplied in input_csv_path
+        for b, exp_mw in input_explicit_mw.items():
+            if b in schedule_by_block:
+                schedule_by_block[b]["intellis_mw"] = exp_mw
+                schedule_by_block[b]["schedule_mw"] = exp_mw
+
         # Anti-plateau solar curvature guardrail: Ensure no consecutive daylight blocks are identical
         mw_seq = np.array([float(schedule_by_block.get(b, {}).get("schedule_mw", schedule_by_block.get(b, {}).get("intellis_mw", 0.0))) for b in range(1, total_blocks + 1)])
         cs_poa_seq = np.zeros(total_blocks, dtype=float)
@@ -885,7 +893,7 @@ def write_full_block_schedule_from_llm_schedule(
             elev = max(0.0, 90.0 - (h_from_noon * 15.0)) if h_from_noon < 6.0 else 0.0
             if elev >= 45.0 and mw_seq[b - 1] >= round(ac_cap * 0.25, 3) - 0.05:
                 fixed_mw_seq[b - 1] = max(round(ac_cap * 0.25, 3), fixed_mw_seq[b - 1])
-            if b >= 50 and fixed_mw_seq[b - 1] > fixed_mw_seq[b - 2]:
+            if b >= 50 and cs_poa_seq[b - 1] <= cs_poa_seq[b - 2] and fixed_mw_seq[b - 1] > fixed_mw_seq[b - 2]:
                 fixed_mw_seq[b - 1] = fixed_mw_seq[b - 2]
             if b in schedule_by_block:
                 schedule_by_block[b]["intellis_mw"] = fixed_mw_seq[b - 1]
@@ -1031,8 +1039,8 @@ def write_full_block_schedule_from_llm_schedule(
             "block": block,
             "time": t_str,
             "intellis_gti": round(gti_val, 1),
-            "intellis_mw": round(intellis_val, 3),
-            "schedule_mw": round(mw_val, 3),
+            "intellis_mw": round(intellis_val, 2),
+            "schedule_mw": round(mw_val, 2),
             "dev_mw": dev,
             "dsm_slab": slab,
             "block_penalty_inr": round(blk_pen, 2),

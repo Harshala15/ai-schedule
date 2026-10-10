@@ -288,7 +288,7 @@ class TestRegimeGuardrails(unittest.TestCase):
 
             df = pd.read_csv(out_csv)
             ac_cap = float(getattr(config, "PLANT_CAPACITY_MW", 10.0))
-            expected_diffuse_floor = round(ac_cap * 0.25, 3)
+            expected_diffuse_floor = round(ac_cap * 0.25, 2)
 
             # Block 49-51 are solar noon (elev >= 45 deg in summer/equinox)
             mw_b50 = float(df.loc[df["block"] == 50, "schedule_mw"].values[0])

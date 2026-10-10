@@ -7,7 +7,7 @@
   "tilt_deg": 18,
   "orientation_deg_from_south": 0,
   "tracker_type": "None",
-  "performance_ratio": 0.65,
+  "performance_ratio": 0.83,
   "ppa_rate_inr_per_kwh": 3.0,
   "penalty_regulation": "Maharashtra",
   "tolerance_band_mw": 1.030,

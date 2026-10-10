@@ -17,10 +17,13 @@ from __future__ import annotations
 import datetime as dt
 from datetime import datetime, timedelta
 import json
+import logging
 import math
 import os
 from pathlib import Path
 import sys
+
+logger = logging.getLogger(__name__)
 from typing import Any
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -334,11 +337,25 @@ class MeterGTIStrategy(BaseGTIStrategy):
 
             try:
                 import boto3
-                try:
-                    session = boto3.Session(profile_name="intellis-608")
-                    s3 = session.client("s3")
-                except Exception:
+                is_lambda = bool(os.getenv("AWS_LAMBDA_FUNCTION_NAME") or os.getenv("AWS_EXECUTION_ENV"))
+                aws_profile = os.getenv("AWS_PROFILE")
+
+                # In Lambda or when ambient credentials exist, use ambient IAM execution role
+                if is_lambda:
                     s3 = boto3.client("s3")
+                elif aws_profile:
+                    try:
+                        s3 = boto3.Session(profile_name=aws_profile).client("s3")
+                    except Exception as prof_err:
+                        logger.warning("AWS_PROFILE '%s' failed (%s); falling back to default ambient credentials", aws_profile, prof_err)
+                        s3 = boto3.client("s3")
+                else:
+                    try:
+                        session = boto3.Session(profile_name="intellis-608")
+                        s3 = session.client("s3")
+                    except Exception:
+                        s3 = boto3.client("s3")
+
                 bucket = os.getenv("S3_BUCKET") or os.getenv("BUCKET") or "vedanjay-schedules-test-608744602858"
 
                 s3_custom_prefix = self.profile.meter_data.get("s3_prefix") if self.profile.meter_data else None
@@ -354,18 +371,24 @@ class MeterGTIStrategy(BaseGTIStrategy):
                     candidate_prefixes.append(f"raw/vedanjay/{a}/{target_date_str}/")
 
                 for prefix in candidate_prefixes:
-                    res = s3.list_objects_v2(Bucket=bucket, Prefix=prefix)
-                    contents = res.get("Contents", [])
-                    for obj in contents:
-                        if obj["Key"].endswith(".csv"):
-                            local_path = self.cache_dir / f"s3_meter_{self.profile.plant_name}_{target_date_str}.csv"
-                            s3.download_file(bucket, obj["Key"], str(local_path))
-                            found_file = local_path
+                    try:
+                        res = s3.list_objects_v2(Bucket=bucket, Prefix=prefix)
+                        contents = res.get("Contents", [])
+                        for obj in contents:
+                            if obj["Key"].endswith(".csv"):
+                                local_path = self.cache_dir / f"s3_meter_{self.profile.plant_name}_{target_date_str}.csv"
+                                s3.download_file(bucket, obj["Key"], str(local_path))
+                                found_file = local_path
+                                break
+                        if found_file:
                             break
-                    if found_file:
-                        break
-            except Exception:
-                pass
+                    except Exception as s3_obj_err:
+                        logger.debug("Failed checking S3 prefix '%s' in bucket '%s': %s", prefix, bucket, s3_obj_err)
+            except Exception as s3_err:
+                logger.warning(
+                    "Error querying historical telemetry from S3 for %s on %s (check Lambda IAM s3:ListBucket / s3:GetObject permissions on %s): %s",
+                    self.profile.plant_name, target_date_str, bucket, s3_err
+                )
 
         if not found_file:
             return np.zeros(96, dtype=float), np.zeros(96, dtype=float)

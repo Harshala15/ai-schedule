@@ -42,9 +42,11 @@ class RemoteAPIGTIStrategy(BaseGTIStrategy):
         self.timeout = timeout
 
     def _get_local_fallback(self) -> BaseGTIStrategy:
-        """Instantiate the appropriate local strategy (Meter vs Non-Meter)."""
+        """Instantiate or return cached appropriate local strategy (Meter vs Non-Meter)."""
         if self.fallback_strategy:
             return self.fallback_strategy
+        if hasattr(self, "_cached_fallback") and self._cached_fallback is not None:
+            return self._cached_fallback
 
         from modules.weather.strategies.intellis_gti.meter_gti_strategy import MeterGTIStrategy
         from modules.weather.strategies.intellis_gti.non_meter_gti_strategy import NonMeterGTIStrategy
@@ -64,12 +66,13 @@ class RemoteAPIGTIStrategy(BaseGTIStrategy):
         )
 
         strat_cls = NonMeterGTIStrategy if is_non_meter else MeterGTIStrategy
-        return strat_cls(
+        self._cached_fallback = strat_cls(
             plant_profile=self.profile,
             api_key=self.api_key,
             cache_dir=self.cache_dir,
             **self.extra_kwargs,
         )
+        return self._cached_fallback
 
     def compute_gti(
         self,
@@ -109,8 +112,17 @@ class RemoteAPIGTIStrategy(BaseGTIStrategy):
                     blended_kt[:23] = 0.0
                     blended_kt[76:] = 0.0
 
-                    amb_temp = 25.0 + 10.0 * np.sin(np.pi * np.maximum(0, np.arange(96) - 24) / 56.0)
-                    wind_speed = np.full(96, 2.5)
+                    temp_raw = [b.get("temperature_c") for b in blocks]
+                    wind_raw = [b.get("wind_speed_m_s") for b in blocks]
+                    if any(t is not None for t in temp_raw):
+                        amb_temp = np.array([float(t if t is not None else 25.0) for t in temp_raw], dtype=float)
+                    else:
+                        amb_temp = 25.0 + 10.0 * np.sin(np.pi * np.maximum(0, np.arange(96) - 24) / 56.0)
+
+                    if any(w is not None for w in wind_raw):
+                        wind_speed = np.array([float(w if w is not None else 2.5) for w in wind_raw], dtype=float)
+                    else:
+                        wind_speed = np.full(96, 2.5)
 
                     return GTIForecastResult(
                         target_date=target_date_str,
@@ -139,9 +151,44 @@ class RemoteAPIGTIStrategy(BaseGTIStrategy):
             **kwargs,
         )
 
+    def calibrate_plant_pr(
+        self,
+        target_date_str: str,
+        lookback_days: int = 5,
+    ) -> float:
+        """Delegate dynamic PR calibration to the local fallback strategy."""
+        fallback = self._get_local_fallback()
+        if hasattr(fallback, "calibrate_plant_pr"):
+            pr = fallback.calibrate_plant_pr(target_date_str, lookback_days=lookback_days)
+            self.profile.calibrated_pr = getattr(fallback.profile, "calibrated_pr", pr)
+            self.profile.transfer_ratio = getattr(fallback.profile, "transfer_ratio", self.profile.transfer_ratio)
+            return pr
+        return getattr(self.profile, "calibrated_pr", 0.78)
+
     def fetch_ensemble_weather(self, target_date_str: str) -> dict[str, Any]:
         """Delegate raw NWP weather retrieval to fallback strategy if needed."""
         fallback = self._get_local_fallback()
         if hasattr(fallback, "fetch_ensemble_weather"):
             return fallback.fetch_ensemble_weather(target_date_str)
         return {}
+
+    def classify_weather_regime(self, raw_weather: dict[str, Any]) -> tuple[str, float]:
+        """Delegate weather regime classification to fallback strategy."""
+        fallback = self._get_local_fallback()
+        if hasattr(fallback, "classify_weather_regime"):
+            return fallback.classify_weather_regime(raw_weather)
+        return "CLEAR_SKY", 0.85
+
+    def get_slot_candidate_diagnostics(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        """Delegate slot candidate diagnostics to fallback strategy."""
+        fallback = self._get_local_fallback()
+        if hasattr(fallback, "get_slot_candidate_diagnostics"):
+            return fallback.get_slot_candidate_diagnostics(*args, **kwargs)
+        return {}
+
+    def load_meter_actuals_with_poa(self, target_date_str: str) -> tuple[np.ndarray, np.ndarray]:
+        """Delegate meter actuals and POA loading to fallback strategy."""
+        fallback = self._get_local_fallback()
+        if hasattr(fallback, "load_meter_actuals_with_poa"):
+            return fallback.load_meter_actuals_with_poa(target_date_str)
+        return np.zeros(96, dtype=float), np.zeros(96, dtype=float)

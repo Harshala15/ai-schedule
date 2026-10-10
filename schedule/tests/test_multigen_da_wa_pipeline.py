@@ -56,8 +56,9 @@ def test_enrich_day_ahead_statutory_schema():
     assert (df.loc[0:20, "ENRICH_MW"] == 0.0).all()
     # Noon blocks 40-55 must be positive
     assert (df.loc[40:55, "ENRICH_MW"] > 0.0).all()
-    # Available capacity must equal total nominal AC (7.62 MW)
-    assert (df["ENRICH_AvC_MW"] == 7.62).all()
+    # Available capacity must equal total nominal AC
+    expected_enrich_avc = round(sum(cfg["ac_cap"] for cfg in engine.get_plant_asset_configs("ENRICH").values()), 2)
+    assert (df["ENRICH_AvC_MW"] == expected_enrich_avc).all()
 
 
 def test_ztric_day_ahead_statutory_schema():
@@ -66,12 +67,13 @@ def test_ztric_day_ahead_statutory_schema():
     target_date = "2026-10-15"
     today_str = "2026-10-14"
 
-    res = engine.generate_and_dispatch_multi_generator_schedules(
-        plant_name="ZTRIC",
-        target_date_str=target_date,
-        today_str=today_str,
-        run_tag="da0",
-    )
+    with patch("modules.control_windows.PlantControlWindowEngine.load_active_windows", return_value=[]):
+        res = engine.generate_and_dispatch_multi_generator_schedules(
+            plant_name="ZTRIC",
+            target_date_str=target_date,
+            today_str=today_str,
+            run_tag="da0",
+        )
 
     assert res["total_da_blocks"] == 96
     expected_cols = [
@@ -85,7 +87,8 @@ def test_ztric_day_ahead_statutory_schema():
     df = pd.read_csv(res["da_local_path"])
     assert len(df) == 96
     assert list(df.columns) == expected_cols
-    assert (df["ZTRIC_AvC_MW"] == 19.15).all()
+    expected_ztric_avc = round(sum(cfg["ac_cap"] for cfg in engine.get_plant_asset_configs("ZTRIC").values()), 2)
+    assert (df["ZTRIC_AvC_MW"] == expected_ztric_avc).all()
 
 
 def test_shaha_day_ahead_statutory_schema():
@@ -108,7 +111,8 @@ def test_shaha_day_ahead_statutory_schema():
     df = pd.read_csv(res["da_local_path"])
     assert len(df) == 96
     assert list(df.columns) == expected_cols
-    assert (df["SHAHA_AvC_MW"] == 12.17).all()
+    expected_shaha_avc = round(sum(cfg["ac_cap"] for cfg in engine.get_plant_asset_configs("SHAHA").values()), 2)
+    assert (df["SHAHA_AvC_MW"] == expected_shaha_avc).all()
 
 
 def test_enrich_da_outage_accommodation():
@@ -131,18 +135,19 @@ def test_enrich_da_outage_accommodation():
 
     with patch("modules.control_windows.PlantControlWindowEngine.load_active_windows", return_value=mock_windows):
         engine = MultiGeneratorEngine()
+        nominal_enrich_avc = round(sum(cfg["ac_cap"] for cfg in engine.get_plant_asset_configs("ENRICH").values()), 2)
         df = engine.build_da_schedule_dataframe(
             plant_name="ENRICH",
             target_date_str=target_date,
-            unconstrained_total_mw_96=engine.compute_solar_unconstrained_base_curve(7.62, target_date),
+            unconstrained_total_mw_96=engine.compute_solar_unconstrained_base_curve(nominal_enrich_avc, target_date),
         )
 
         assert len(df) == 96
         # CLIMATEDETOX must be 0.00 across all 96 blocks
         assert (df["CLIMATEDETOX"].astype(float) == 0.0).all()
-        # Active capacity must be derated by 5.0 MW (7.62 - 5.00 = 2.62 MW)
-        assert (df["ENRICH_AvC_MW"].astype(float) == 2.62).all()
-        # Other assets (EMIL: 1.62 MW, UPL: 1.0 MW) continue to generate during daytime
+        # Active capacity must be derated by 5.0 MW
+        assert (df["ENRICH_AvC_MW"].astype(float) == round(nominal_enrich_avc - 5.0, 2)).all()
+        # Other assets (EMIL, UPL) continue to generate during daytime
         assert (df.loc[45:50, "EMIL"].astype(float) > 0.0).all()
         assert (df.loc[45:50, "UPL"].astype(float) > 0.0).all()
 

@@ -12,6 +12,8 @@ class GTIBlock(BaseModel):
     time_interval: str = Field(..., description="15-minute boundary interval (e.g., '11:15 - 11:30')")
     gti_wm2: float = Field(..., description="Global Tilted Irradiance in W/m²")
     clearsky_poa_wm2: float = Field(..., description="Astronomical Plane-of-Array Clear-Sky benchmark in W/m²")
+    temperature_c: Optional[float] = Field(None, description="2m Ambient air temperature in °C")
+    wind_speed_m_s: Optional[float] = Field(None, description="10m Wind speed in m/s")
 
 
 class GTIMetadata(BaseModel):

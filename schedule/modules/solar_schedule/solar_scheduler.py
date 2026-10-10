@@ -22,11 +22,14 @@ import json
 import math
 import os
 from pathlib import Path
+import logging
 from typing import Any
 from zoneinfo import ZoneInfo
 
 import numpy as np
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 try:
     import config
@@ -632,11 +635,51 @@ class SolarScheduleEngine:
                     "gti_wm2": b["intellis_gti"],
                 })
 
+        mean_cloud = float(gti_res.metadata.get("cloud_cover_daily_avg", 15.0))
+        max_cape = 0.0
+        tot_precip = 0.0
+        mean_temp = float(np.mean(gti_res.amb_temp_96[24:76])) if len(gti_res.amb_temp_96) >= 76 else 28.0
+
+        try:
+            if hasattr(strategy, "fetch_ensemble_weather"):
+                raw_weather = strategy.fetch_ensemble_weather(target_date_str)
+                hourly = raw_weather.get("hourly", {}) if isinstance(raw_weather, dict) else {}
+                if hourly:
+                    cloud_vals = []
+                    for k, v_list in hourly.items():
+                        if k.startswith("cloud_cover") and isinstance(v_list, list):
+                            cloud_vals.extend([float(v) for v in v_list if v is not None and not np.isnan(v)])
+                    if cloud_vals:
+                        mean_cloud = round(float(np.mean(cloud_vals)), 1)
+
+                    cape_vals = []
+                    for k, v_list in hourly.items():
+                        if (k == "cape" or k.startswith("cape_")) and isinstance(v_list, list):
+                            cape_vals.extend([float(v) for v in v_list if v is not None and not np.isnan(v)])
+                    if cape_vals:
+                        max_cape = round(float(np.max(cape_vals)), 1)
+
+                    precip_vals = []
+                    for k, v_list in hourly.items():
+                        if (k == "precipitation" or k.startswith("precipitation_")) and isinstance(v_list, list):
+                            precip_vals.extend([float(v) for v in v_list if v is not None and not np.isnan(v)])
+                    if precip_vals:
+                        tot_precip = round(float(np.sum(precip_vals)), 2)
+
+                    temp_vals = []
+                    for k, v_list in hourly.items():
+                        if (k == "temperature_2m" or k.startswith("temperature_2m_")) and isinstance(v_list, list):
+                            temp_vals.extend([float(v) for v in v_list if v is not None and not np.isnan(v)])
+                    if temp_vals:
+                        mean_temp = round(float(np.mean(temp_vals)), 1)
+        except Exception as w_err:
+            logger.debug("Could not extract extended atmospheric indicators from NWP ensemble: %s", w_err)
+
         weather_ind = {
-            "cloud_cover_pct": float(gti_res.metadata.get("cloud_cover_daily_avg", 15.0)),
-            "cape_j_kg": 0.0,
-            "precip_mm": 0.0,
-            "temp_c": float(np.mean(gti_res.amb_temp_96[24:76])),
+            "cloud_cover_pct": mean_cloud,
+            "cape_j_kg": max_cape,
+            "precip_mm": tot_precip,
+            "temp_c": mean_temp,
         }
 
         if not solar_actionable_blocks:
