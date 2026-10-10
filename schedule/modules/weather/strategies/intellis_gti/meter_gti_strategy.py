@@ -368,6 +368,24 @@ class MeterGTIStrategy(BaseGTIStrategy):
                 pass
 
         if not found_file:
+            # Fallback to Spaceborne Satellite Virtual Meter Telemetry when physical meter files are absent
+            try:
+                from modules.weather.strategies.intellis_gti.non_meter_gti_strategy import fetch_satellite_96block_profile
+                mw_arr, poa_arr = fetch_satellite_96block_profile(
+                    target_date=target_date_str,
+                    latitude=self.profile.latitude,
+                    longitude=self.profile.longitude,
+                    tilt=self.profile.tilt_deg,
+                    azimuth=self.profile.azimuth_openmeteo,
+                    plant_capacity_mw=self.profile.ac_capacity_mw,
+                    dc_capacity_mw=getattr(self.profile, "dc_capacity_mw", self.profile.ac_capacity_mw * 1.3),
+                    performance_ratio=getattr(self.profile, "calibrated_pr", getattr(self.profile, "performance_ratio", 0.70)),
+                    is_non_meter=True,
+                )
+                if np.max(mw_arr) > 0.1 or np.max(poa_arr) > 50.0:
+                    return mw_arr, poa_arr
+            except Exception:
+                pass
             return np.zeros(96, dtype=float), np.zeros(96, dtype=float)
 
         try:
@@ -405,8 +423,9 @@ class MeterGTIStrategy(BaseGTIStrategy):
             or bool(self.profile.meter_data.get("is_non_meter_site", False))
             or bool(self.profile.meter_data.get("is_virtual", False))
         )
+        base_pr = getattr(self.profile, "performance_ratio", 0.78)
         if is_non_meter:
-            learned_pr = getattr(self.profile, "calibrated_pr", None) or 0.8300
+            learned_pr = getattr(self.profile, "calibrated_pr", None) or base_pr
             self.profile.calibrated_pr = round(learned_pr, 4)
             dc_cap = getattr(self.profile, "dc_capacity_mw", None) or self.profile.ac_capacity_mw
             self.profile.transfer_ratio = round((dc_cap * self.profile.calibrated_pr) / 1000.0, 6)
@@ -434,9 +453,9 @@ class MeterGTIStrategy(BaseGTIStrategy):
 
         if len(valid_prs) >= 6:
             learned_pr = float(np.percentile(valid_prs, 70))
-            learned_pr = max(0.78, min(0.95, learned_pr))
+            learned_pr = max(min(0.60, base_pr), min(0.95, learned_pr))
         else:
-            learned_pr = getattr(self.profile, "calibrated_pr", None) or 0.8800
+            learned_pr = getattr(self.profile, "calibrated_pr", None) or base_pr
 
         self.profile.calibrated_pr = round(learned_pr, 4)
         self.profile.transfer_ratio = round((self.profile.dc_capacity_mw * self.profile.calibrated_pr) / 1000.0, 6)

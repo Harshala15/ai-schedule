@@ -60,6 +60,45 @@ def fetch_satellite_day_profile(
     days_diff = (now.date() - target_date).days
     date_str = target_date.strftime("%Y-%m-%d")
 
+    # 1. Primary Attempt: High-Resolution Native Satellite Radiation Archive API (for past dates <= today)
+    if target_date <= now.date():
+        sat_url = "https://customer-satellite-api.open-meteo.com/v1/archive" if api_key else "https://satellite-api.open-meteo.com/v1/archive"
+        sat_params = {
+            "latitude": lat,
+            "longitude": lon,
+            "start_date": date_str,
+            "end_date": date_str,
+            "hourly": [
+                "global_tilted_irradiance",
+                "shortwave_radiation",
+                "direct_normal_irradiance",
+            ],
+            "models": "satellite_radiation_seamless",
+            "temporal_resolution": "native",
+            "tilt": t,
+            "azimuth": om_azimuth,
+            "timezone": "Asia/Kolkata",
+        }
+        if api_key:
+            sat_params["apikey"] = api_key
+        try:
+            resp_sat = requests.get(sat_url, params=sat_params, timeout=20)
+            if resp_sat.status_code == 200:
+                payload_sat = resp_sat.json()
+                hourly_sat = payload_sat.get("hourly", {})
+                times_sat = hourly_sat.get("time", [])
+                gtis_sat = hourly_sat.get("global_tilted_irradiance", [])
+                if times_sat and len(gtis_sat) == 96:
+                    # Provide default temp and wind arrays for native satellite dataset
+                    hourly_sat["temperature_2m"] = [28.0] * 96
+                    hourly_sat["wind_speed_10m"] = [10.0] * 96
+                    hourly_sat["cloud_cover"] = [0.0] * 96
+                    _DAY_CACHE[cache_key] = hourly_sat
+                    return hourly_sat
+        except Exception as exc:
+            pass
+
+    # 2. Secondary Fallback: Standard Open-Meteo Weather API
     params: dict[str, Any] = {
         "latitude": lat,
         "longitude": lon,
@@ -303,27 +342,44 @@ def fetch_satellite_96block_profile(
     winds = hourly.get("wind_speed_10m", [])
     clouds = hourly.get("cloud_cover", [])
 
-    target_str = target_date.strftime("%Y-%m-%d")
-    hour_data: dict[int, dict[str, float]] = {}
-    for t_str, g_val, tmp_val, w_val, cld_val in zip(times, gtis, temps, winds if winds else [10.0] * len(times), clouds):
-        if t_str.startswith(target_str):
-            try:
-                h = int(t_str.split("T")[1].split(":")[0])
-                hour_data[h] = {
-                    "gti": float(g_val if g_val is not None else 0.0),
-                    "temp": float(tmp_val if tmp_val is not None else 25.0),
-                    "wind": float(w_val if w_val is not None else 10.0),
-                    "cloud": float(cld_val if cld_val is not None else 0.0),
-                }
-            except Exception:
-                continue
-
     poa_96 = np.zeros(96, dtype=float)
     mw_96 = np.zeros(96, dtype=float)
 
     cap_mw = float(plant_capacity_mw if plant_capacity_mw is not None else getattr(config, "PLANT_CAPACITY_MW", 10.0))
     dc_mw = float(dc_capacity_mw if dc_capacity_mw is not None else getattr(config, "PLANT_DC_CAPACITY_MW", cap_mw * 1.074))
     pr = float(performance_ratio if performance_ratio is not None else getattr(config, "PERFORMANCE_RATIO", 0.78))
+
+    # Fast path: Native 96-block high-resolution satellite archive (00:00 to 23:45)
+    if len(gtis) == 96:
+        poa_96 = np.array([float(v) if v is not None else 0.0 for v in gtis], dtype=float)
+        poa_96[:22] = 0.0
+        poa_96[75:] = 0.0
+        for b in range(1, 97):
+            end_min = b * 15
+            end_hr, end_m = divmod(end_min, 60)
+            blk_end_dt = dt.datetime.combine(target_date + dt.timedelta(days=1), dt.time(0, 0)) if end_hr == 24 else dt.datetime.combine(target_date, dt.time(end_hr, end_m))
+            if cutoff_time is not None and blk_end_dt > cutoff_time:
+                poa_96[b - 1] = 0.0
+                mw_96[b - 1] = 0.0
+                continue
+            if b < 22 or b > 75:
+                continue
+            t_c = float(temps[b - 1]) if (b - 1 < len(temps) and temps[b - 1] is not None) else 28.0
+            w_c = float(winds[b - 1]) if (b - 1 < len(winds) and winds[b - 1] is not None) else 10.0
+            p_virt = calculate_virtual_generation_mw(
+                gti_w_per_m2=poa_96[b - 1],
+                temperature_c=t_c,
+                wind_speed_kmh=w_c,
+                plant_capacity_mw=cap_mw,
+                dc_capacity_mw=dc_mw,
+                performance_ratio=pr,
+                is_non_meter=is_non_meter,
+            )
+            mw_96[b - 1] = round(max(0.0, p_virt), 3)
+        return mw_96, np.round(poa_96, 2)
+
+    target_str = target_date.strftime("%Y-%m-%d")
+    hour_data: dict[int, dict[str, float]] = {}
 
     for b in range(1, 97):
         end_min = b * 15

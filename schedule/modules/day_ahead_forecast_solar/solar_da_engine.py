@@ -167,15 +167,6 @@ def generate_solar_day_ahead_schedule(
     pure multi-agency NWP physics and 24h MOS consensus, then uploads to S3.
     """
     clean_p = plant_name.upper().strip()
-    if clean_p in ("ZTRIC", "ENRICH", "SHAHA"):
-        from modules.multi_generator.multi_generator_engine import generate_multi_generator_day_ahead_schedule
-        return generate_multi_generator_day_ahead_schedule(
-            plant_name=clean_p,
-            target_date_str=target_date_str,
-            run_tag=run_tag,
-            s3_bucket=s3_bucket,
-        )
-
     from modules.solar_schedule.solar_scheduler import SolarScheduleEngine, load_plant_profile
     import boto3
 
@@ -186,6 +177,32 @@ def generate_solar_day_ahead_schedule(
     sched_result = ai_engine.predict_96block_schedule(target_date_str)
     cs_poa = ai_engine.compute_clearsky_poa_96block(target_date_str)
     p_mos = np.array([float(b.get("predicted_mw", b.get("schedule_mw", 0.0))) for b in sched_result["blocks"]])
+
+    # If NWP forecast returned 0.0 (e.g. historical date where forecast API has expired),
+    # first fallback to high-resolution spaceborne satellite radiation archive, then to clear-sky physics
+    if np.max(p_mos) <= 0.0:
+        try:
+            from modules.weather.strategies.intellis_gti.non_meter_gti_strategy import fetch_satellite_96block_profile
+            mw_sat, poa_sat = fetch_satellite_96block_profile(
+                target_date=target_date_str,
+                latitude=prof.latitude,
+                longitude=prof.longitude,
+                tilt=prof.tilt_deg,
+                azimuth=prof.azimuth_openmeteo,
+                plant_capacity_mw=prof.ac_capacity_mw,
+                dc_capacity_mw=getattr(prof, "dc_capacity_mw", prof.ac_capacity_mw * 1.3),
+                performance_ratio=getattr(prof, "calibrated_pr", None) or getattr(prof, "performance_ratio", None) or 0.70,
+                is_non_meter=True,
+            )
+            if np.max(mw_sat) > 0.1:
+                p_mos = mw_sat
+        except Exception:
+            pass
+
+    if np.max(p_mos) <= 0.0 and np.max(cs_poa) > 0.0:
+        dc_cap = getattr(prof, "dc_capacity_mw", prof.ac_capacity_mw * 1.3)
+        pr = getattr(prof, "calibrated_pr", None) or getattr(prof, "performance_ratio", None) or 0.70
+        p_mos = np.clip((cs_poa / 1000.0) * dc_cap * pr, 0.0, prof.ac_capacity_mw)
 
     # 2. Atmospheric Indicators & Synoptic Regime
     weather = ai_engine.fetch_ensemble_weather(target_date_str)
@@ -233,6 +250,20 @@ def generate_solar_day_ahead_schedule(
             p_final[b] = p_final[b - 1] + np.sign(diff) * max_ramp
 
     p_final = np.clip(np.round(p_final, 2), 0.0, prof.ac_capacity_mw)
+
+    # 3a. Multi-Generator Statutory Routing (ZTRIC, ENRICH, SHAHA)
+    # Routes genuine NWP/GTI forecast into MultiGeneratorEngine for sub-asset disaggregation
+    if clean_p in ("ZTRIC", "ENRICH", "SHAHA"):
+        from modules.multi_generator.multi_generator_engine import generate_multi_generator_day_ahead_schedule
+        res_mg = generate_multi_generator_day_ahead_schedule(
+            plant_name=clean_p,
+            target_date_str=target_date_str,
+            run_tag=run_tag,
+            s3_bucket=s3_bucket,
+            unconstrained_da_96=p_final,
+        )
+        res_mg["synoptic_regime"] = synoptic_regime
+        return res_mg
 
     # 3b. Active Plant Control Windows Guardrail (DynamoDB)
     control_summary: Dict[str, Any] = {}

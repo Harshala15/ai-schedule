@@ -46,6 +46,7 @@ class PlantProfile:
     tolerance_band_mw: float = 2.0  # 10% or 15% of AC capacity based on state regulations
     band_percentage: float = 0.10
     calibrated_pr: float | None = None
+    performance_ratio: float = 0.78
     meter_data: dict[str, Any] = field(default_factory=dict)
 
 
@@ -216,5 +217,6 @@ def load_plant_profile(plant_name: str = "GSNP") -> PlantProfile:
         tolerance_band_mw=tol_mw,
         band_percentage=band_pct,
         calibrated_pr=base_pr if is_non_meter else None,
+        performance_ratio=base_pr,
         meter_data=meter_data,
     )
