@@ -1,4 +1,4 @@
-"""
+﻿"""
 Solar Day-Ahead Generation Forecast Engine Master Orchestrator.
 
 Orchestrates pure physics and multi-agency MOS consensus for Day-Ahead (Day T+1) 96-block schedule generation
@@ -234,6 +234,19 @@ def generate_solar_day_ahead_schedule(
 
     p_final = np.clip(np.round(p_final, 2), 0.0, prof.ac_capacity_mw)
 
+    # 3a. Multi-Generator Statutory Routing (ZTRIC, ENRICH, SHAHA)
+    # Routes genuine NWP/GTI forecast into MultiGeneratorEngine for sub-asset disaggregation.
+    if clean_p in ("ZTRIC", "ENRICH", "SHAHA"):
+        from modules.multi_generator.multi_generator_engine import generate_multi_generator_day_ahead_schedule
+        res_mg = generate_multi_generator_day_ahead_schedule(
+            plant_name=clean_p,
+            target_date_str=target_date_str,
+            run_tag=run_tag,
+            s3_bucket=s3_bucket,
+            unconstrained_da_96=p_final,
+        )
+        res_mg["synoptic_regime"] = synoptic_regime
+        return res_mg
     # 3b. Active Plant Control Windows Guardrail (DynamoDB)
     control_summary: Dict[str, Any] = {}
     try:
@@ -362,4 +375,5 @@ def generate_solar_day_ahead_schedule(
         "total_daylight_mw": float(np.sum(p_final_controlled)),
         "control_windows": control_summary,
     }
+
 

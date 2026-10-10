@@ -152,10 +152,47 @@ class MultiGeneratorEngine:
         self,
         nominal_total_ac: float,
         target_date_str: str,
+        plant_name: str = "",
     ) -> np.ndarray:
         """
-        Computes synthetic 96-block solar generation curve for a target date.
+        Computes 96-block solar generation curve for a target date.
+        Uses genuine SolarScheduleEngine (143-member NWP ensemble + GTI physics) when plant_name is available,
+        falling back to clean solar geometry half-sine curve if weather or profile is unavailable.
         """
+        clean_name = plant_name.upper().strip() if plant_name else ""
+        if clean_name:
+            try:
+                from modules.solar_schedule.solar_scheduler import SolarScheduleEngine, load_plant_profile
+                prof = load_plant_profile(clean_name)
+                ai_engine = SolarScheduleEngine(plant_profile=prof)
+                sched_result = ai_engine.predict_96block_schedule(target_date_str)
+                blocks = sched_result.get("blocks", [])
+                if blocks and len(blocks) == 96:
+                    curve_96 = np.array([
+                        float(b.get("predicted_mw", b.get("schedule_mw", 0.0)))
+                        for b in blocks
+                    ])
+                    # If NWP forecast is 0.0 (e.g. historical date), fallback to clear-sky POA physics
+                    if np.max(curve_96) <= 0.0:
+                        cs_poa = ai_engine.compute_clearsky_poa_96block(target_date_str)
+                        if np.max(cs_poa) > 0.0:
+                            dc_cap = getattr(prof, "dc_capacity_mw", nominal_total_ac * 1.3)
+                            pr = getattr(prof, "performance_ratio", 0.70)
+                            curve_96 = np.clip((cs_poa / 1000.0) * dc_cap * pr, 0.0, nominal_total_ac)
+
+                    if np.max(curve_96) > 0.0:
+                        # Apply physical guardrails: night zeroing (Blocks 1-23 and 75-96)
+                        curve_96[0:23] = 0.0
+                        curve_96[74:96] = 0.0
+                        ac_limit = getattr(prof, "ac_capacity_mw", nominal_total_ac)
+                        curve_96 = np.clip(np.round(curve_96, 2), 0.0, ac_limit)
+                        return curve_96
+            except Exception as exc:
+                logger.warning(
+                    "Could not compute live SolarScheduleEngine forecast for %s: %s; using synthetic fallback.",
+                    clean_name, exc
+                )
+
         curve_96 = np.zeros(96)
         for b in range(23, 74):
             # Solar half-sine wave peaking near block 48
@@ -529,6 +566,8 @@ class MultiGeneratorEngine:
         target_date_str: str,
         today_str: str = "",
         run_tag: str = "da0",
+        unconstrained_da_96: Optional[np.ndarray] = None,
+        unconstrained_wa_672: Optional[np.ndarray] = None,
     ) -> Dict[str, Any]:
         """
         Generates statutory DA (96 blocks) and WA (672 blocks) schedules for a multi-generator plant
@@ -543,8 +582,11 @@ class MultiGeneratorEngine:
         asset_configs = self.get_plant_asset_configs(clean_name)
         nominal_total_ac = sum(cfg["ac_cap"] for cfg in asset_configs.values())
 
-        # 1. Base solar forecast curve
-        unconstrained_da_96 = self.compute_solar_unconstrained_base_curve(nominal_total_ac, target_date_str)
+        # 1. Base solar forecast curve (genuine SolarScheduleEngine NWP/GTI with synthetic fallback)
+        if unconstrained_da_96 is None:
+            unconstrained_da_96 = self.compute_solar_unconstrained_base_curve(
+                nominal_total_ac, target_date_str, plant_name=clean_name
+            )
 
         # 2. Build canonical Multi-Generator DA DataFrame
         df_da = self.build_da_schedule_dataframe(
@@ -554,12 +596,25 @@ class MultiGeneratorEngine:
         )
 
         # Repository Root: data/output/{date}/{plantname}/Dayahead/{filename}
+        # In AWS Lambda (/var/task is read-only), automatically use /tmp/data/output
+        is_lambda = bool(os.getenv("AWS_LAMBDA_FUNCTION_NAME") or os.getenv("LAMBDA_TASK_ROOT"))
         repo_root = Path(__file__).parent.parent.parent.parent
-        da_dir = repo_root / "data" / "output" / today_str / clean_name / "Dayahead"
-        da_dir.mkdir(parents=True, exist_ok=True)
+        base_output_dir = Path("/tmp/data/output") if is_lambda else (repo_root / "data" / "output")
+        da_dir = base_output_dir / today_str / clean_name / "Dayahead"
+        try:
+            da_dir.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            da_dir = Path("/tmp/data/output") / today_str / clean_name / "Dayahead"
+            da_dir.mkdir(parents=True, exist_ok=True)
+
         da_filename = f"{clean_name.lower()}_{target_date_str}_{run_tag}.csv"
         da_local_path = da_dir / da_filename
-        df_da.to_csv(da_local_path, index=False)
+        try:
+            df_da.to_csv(da_local_path, index=False)
+        except PermissionError:
+            da_local_path = da_dir / f"{da_filename.replace('.csv', '')}_updated.csv"
+            df_da.to_csv(da_local_path, index=False)
+            print(f"  [WARN] File open in another program; saved DA copy -> {da_local_path}")
 
         print(f"  [SAVED LOCAL] {clean_name} Multi-Generator DA Schedule ({run_tag.upper()}) -> {da_local_path}")
 
@@ -574,27 +629,52 @@ class MultiGeneratorEngine:
         except Exception as exc:
             logger.warning("S3 upload failed for %s Day-Ahead CSV: %s", clean_name, exc)
 
-        # Also upload uppercase filename replica for compatibility
+        # Also upload uppercase filename replica and multiple_generator directory for compatibility
         da_upper_filename = f"{clean_name}_{target_date_str}_{run_tag}.csv"
         da_upper_s3_key = f"intellis Dayhead solar/{clean_name}/{target_date_str}/{da_upper_filename}"
-        try:
-            self.s3_client.upload_file(str(da_local_path), self.s3_bucket, da_upper_s3_key, ExtraArgs={"ContentType": "text/csv"})
-        except Exception:
-            pass
+        mg_gen_s3_key = f"generated/vedanjay/multiple_generator/{clean_name}/{target_date_str}/{da_filename}"
+        for sec_key in (da_upper_s3_key, mg_gen_s3_key):
+            try:
+                self.s3_client.upload_file(str(da_local_path), self.s3_bucket, sec_key, ExtraArgs={"ContentType": "text/csv"})
+            except Exception:
+                pass
 
-        # 3. Build 672-block WA DataFrame
-        unconstrained_wa_672 = np.tile(unconstrained_da_96, 7)
+        # 3. Build 672-block WA DataFrame (using WASolarEngine or 7-day tiled forecast)
+        if unconstrained_wa_672 is None:
+            try:
+                from modules.week_ahead_forecast_solar.wa_solar_engine import WASolarEngine
+                wa_engine = WASolarEngine(s3_bucket=self.s3_bucket)
+                wa_res = wa_engine.run_pipeline(plant_name=clean_name, start_date_str=target_date_str, today_str=today_str)
+                wa_mw = wa_res.get("schedule_mw_672")
+                if wa_mw is not None and len(wa_mw) == 672:
+                    unconstrained_wa_672 = np.array(wa_mw)
+            except Exception as wa_exc:
+                logger.warning("Could not run WASolarEngine for %s: %s; tiling DA forecast across 7 days.", clean_name, wa_exc)
+                unconstrained_wa_672 = np.tile(unconstrained_da_96, 7)
+        if unconstrained_wa_672 is None:
+            unconstrained_wa_672 = np.tile(unconstrained_da_96, 7)
+
         df_wa = self.build_wa_schedule_dataframe(
             plant_name=clean_name,
             start_date_str=target_date_str,
             unconstrained_7day_mw_672=unconstrained_wa_672,
         )
 
-        wa_dir = repo_root / "data" / "output" / today_str / clean_name / "Weekahead"
-        wa_dir.mkdir(parents=True, exist_ok=True)
+        wa_dir = base_output_dir / today_str / clean_name / "Weekahead"
+        try:
+            wa_dir.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            wa_dir = Path("/tmp/data/output") / today_str / clean_name / "Weekahead"
+            wa_dir.mkdir(parents=True, exist_ok=True)
+
         wa_filename = f"{clean_name.lower()}_{today_str}_weekahead_WA.csv"
         wa_local_path = wa_dir / wa_filename
-        df_wa.to_csv(wa_local_path, index=False)
+        try:
+            df_wa.to_csv(wa_local_path, index=False)
+        except PermissionError:
+            wa_local_path = wa_dir / f"{wa_filename.replace('.csv', '')}_updated.csv"
+            df_wa.to_csv(wa_local_path, index=False)
+            print(f"  [WARN] File open in another program; saved WA copy -> {wa_local_path}")
 
         print(f"  [SAVED LOCAL] {clean_name} Multi-Generator WA Schedule -> {wa_local_path}")
 
@@ -608,6 +688,12 @@ class MultiGeneratorEngine:
             print(f"  [S3 UPLOAD] {clean_name} Week-Ahead -> {wa_s3_uri}")
         except Exception as exc:
             logger.warning("S3 upload failed for %s Week-Ahead CSV: %s", clean_name, exc)
+
+        wa_mg_gen_key = f"generated/vedanjay/multiple_generator/{clean_name}/weekahead/{wa_filename}"
+        try:
+            self.s3_client.upload_file(str(wa_local_path), self.s3_bucket, wa_mg_gen_key, ExtraArgs={"ContentType": "text/csv"})
+        except Exception:
+            pass
 
         return {
             "plant_name": clean_name,
@@ -633,6 +719,7 @@ def generate_multi_generator_day_ahead_schedule(
     run_tag: str = "da0",
     s3_bucket: Optional[str] = None,
     today_str: str = "",
+    unconstrained_da_96: Optional[np.ndarray] = None,
 ) -> Dict[str, Any]:
     """
     Top-level API for generating statutory Multi-Generator Day-Ahead schedules.
@@ -644,6 +731,7 @@ def generate_multi_generator_day_ahead_schedule(
         target_date_str=target_date_str,
         today_str=today_str,
         run_tag=run_tag,
+        unconstrained_da_96=unconstrained_da_96,
     )
     return {
         "plant_name": plant_name,
