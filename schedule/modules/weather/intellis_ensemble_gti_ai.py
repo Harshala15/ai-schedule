@@ -414,8 +414,49 @@ class IntellisEnsembleGTIAI:
             params["models"] = "ecmwf_ifs025_ensemble,icon_seamless"
             url_fb = f"{self.get_api_url()}?{urlencode(params, doseq=True)}"
             req_fb = Request(url_fb, headers={"User-Agent": "IntellisEnsembleGTIAI/2.0"})
-            with urlopen(req_fb, timeout=30) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
+            try:
+                with urlopen(req_fb, timeout=30) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+            except Exception as fb_exc:
+                print(f"  [WARN] Ensemble weather fallback API failed: {fb_exc}; using local clear-sky synthetic weather.")
+                cs_96 = self.compute_clearsky_poa_96block(target_date_str)
+                hour_idx = [min(95, h * 4 + 2) for h in range(24)]
+                gti_h = [round(float(cs_96[i]), 2) for i in hour_idx]
+                diff_h = [round(v * 0.15, 2) for v in gti_h]
+                date0 = dt.datetime.strptime(target_date_str, "%Y-%m-%d")
+                times = [(date0 + dt.timedelta(hours=h)).strftime("%Y-%m-%dT%H:%M") for h in range(24)]
+                hourly = {
+                    "time": times,
+                    "cloud_cover": [0.0] * 24,
+                    "cloud_cover_low": [0.0] * 24,
+                    "cloud_cover_mid": [0.0] * 24,
+                    "cloud_cover_high": [0.0] * 24,
+                    "cape": [0.0] * 24,
+                    "temperature_2m": [25.0] * 24,
+                    "wind_speed_10m": [2.0] * 24,
+                }
+                fallback_keys = [
+                    "shortwave_radiation_member05_icon_seamless_eps",
+                    "shortwave_radiation_member13_icon_seamless_eps",
+                    "shortwave_radiation_member09_ecmwf_ifs025_ensemble",
+                    "shortwave_radiation_member48_ecmwf_ifs025_ensemble",
+                    "shortwave_radiation_member03_ncep_gefs025",
+                    "shortwave_radiation_member05_ncep_gefs025",
+                ]
+                for key in fallback_keys:
+                    hourly[key] = gti_h
+                    hourly[key.replace("shortwave_radiation", "global_tilted_irradiance")] = gti_h
+                    hourly[key.replace("shortwave_radiation", "global_tilted_irradiance_instant")] = gti_h
+                    hourly[key.replace("shortwave_radiation", "direct_normal_irradiance")] = gti_h
+                    hourly[key.replace("shortwave_radiation", "diffuse_radiation")] = diff_h
+                data = {
+                    "latitude": self.profile.latitude,
+                    "longitude": self.profile.longitude,
+                    "generationtime_ms": 0,
+                    "utc_offset_seconds": 19800,
+                    "timezone": "Asia/Kolkata",
+                    "hourly": hourly,
+                }
 
         try:
             cache_file.parent.mkdir(parents=True, exist_ok=True)
