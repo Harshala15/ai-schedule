@@ -9,6 +9,10 @@ real observed cloud attenuation and atmospheric conditions.
 """
 
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 import datetime as dt
 import math
@@ -427,7 +431,7 @@ class NonMeterGTIStrategy(BaseGTIStrategy):
         weights_map: dict[str, float] | None = None,
         **kwargs: Any,
     ) -> GTIForecastResult:
-        """Compute 96-block GTI (W/m²), clear-sky POA, ambient temperature, and wind speed.
+        """Compute 96-block GTI (W/m2), clear-sky POA, ambient temperature, and wind speed.
         
         Leverages the 143-member NWP physics ensemble benchmarked against satellite virtual meter actuals,
         with automatic graceful fallback to the direct satellite profile if NWP data is unreachable.

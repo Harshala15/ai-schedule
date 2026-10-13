@@ -3,7 +3,7 @@
   "latitude": 15.120426,
   "longitude": 79.729956,
   "dc_capacity_kw": 4200,
-  "maximum_feed_in_ac_kw": 3000,
+  "maximum_feed_in_ac_kw": 2465,
   "tracker_type": "None",
   "orientation_deg_from_south": 0,
   "tilt_deg": 16,
