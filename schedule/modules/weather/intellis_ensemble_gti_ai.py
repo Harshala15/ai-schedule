@@ -282,13 +282,14 @@ def load_plant_profile(plant_name: str = "GSNP") -> PlantProfile:
         meter_data=meter_data,
     )
 
-def enforce_anti_plateau_curvature(mw_arr: np.ndarray, cs_poa: np.ndarray, min_step: float = 0.01) -> np.ndarray:
+def enforce_anti_plateau_curvature(mw_arr: np.ndarray, cs_poa: np.ndarray, min_step: float = 0.01, plant_name: str = "") -> np.ndarray:
     """
     Ensures no consecutive daylight blocks (blocks 24 to 75, > 0.05 MW) have identical generation values.
     Shapes any flat plateau runs (from low-capacity 2-decimal rounding or inverter clipping) to strictly
     follow the astronomical clear-sky solar curvature (Clear-Sky POA).
     """
     arr = np.copy(mw_arr)
+
     for _ in range(10):
         changed = False
         i = 23
@@ -1329,7 +1330,7 @@ class IntellisEnsembleGTIAI:
         pred_mw[76:] = 0.0
 
         # Anti-plateau solar curvature guardrail: Enforce non-identical consecutive blocks during daylight hours
-        pred_mw = enforce_anti_plateau_curvature(pred_mw, cs_poa)
+        pred_mw = enforce_anti_plateau_curvature(pred_mw, cs_poa, plant_name=self.profile.plant_name)
 
         # Calculate DSM Penalties against meter actuals if available
         blocks_data = []
@@ -2001,7 +2002,7 @@ class IntellisEnsembleGTIAI:
 
         # Anti-plateau solar curvature guardrail: Ensure no consecutive daylight blocks are identical
         mw_vals = np.array([float(b.get("schedule_mw", 0.0)) for b in sched["blocks"]])
-        fixed_vals = enforce_anti_plateau_curvature(mw_vals, cs_poa)
+        fixed_vals = enforce_anti_plateau_curvature(mw_vals, cs_poa, plant_name=self.profile.plant_name)
         for idx, b in enumerate(sched["blocks"]):
             b["schedule_mw"] = fixed_vals[idx]
             b["intellis_mw"] = fixed_vals[idx]

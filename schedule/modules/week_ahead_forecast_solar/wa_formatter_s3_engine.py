@@ -20,7 +20,7 @@ class WAFormatterS3Engine:
     Builds the statutory 7-day (672-row) Week-Ahead schedule CSV and uploads to S3.
     """
 
-    def __init__(self, s3_bucket: str = "vedanjay-schedules-test-608744602858"):
+    def __init__(self, s3_bucket: str = "vedanjay-schedules-test-552496640388"):
         self.s3_bucket = s3_bucket
         self.s3_client = boto3.client("s3")
 

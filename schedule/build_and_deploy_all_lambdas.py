@@ -5,10 +5,9 @@ import base64
 import sys
 
 REGION = "ap-south-1"
-PROFILE = "intellis-608"
-ACCOUNT_ID = "608744602858"
+ACCOUNT_ID = "552496640388"
 REPO = "intellis-ai-scheduler"
-TAG = "intellis-ai-20261005-v1"
+TAG = "intellis-test-nonmeter-7day-ensemble-20261013-v3"
 ECR_REGISTRY = f"{ACCOUNT_ID}.dkr.ecr.{REGION}.amazonaws.com"
 IMAGE_URI = f"{ECR_REGISTRY}/{REPO}:{TAG}"
 
@@ -19,29 +18,29 @@ ALL_LAMBDAS = [
     "BAMKHAL-ai-intellis-scheduler",
     "BHUPALPALLY-ai-intellis-scheduler",
     "CHANDAWASA-ai-intellis-scheduler",
+    "CLIMATEDETOX-ai-intellis-scheduler",
     "CME-ai-intellis-scheduler",
+    "EMIL-ai-intellis-scheduler",
+    "ENRICH-ai-intellis-scheduler",
     "GSNP-ai-intellis-scheduler",
     "GUGARIYAKHEDI-ai-intellis-scheduler",
     "JEWLI-ai-intellis-scheduler",
     "JGBPL-ai-intellis-scheduler",
     "KASIPET-ai-intellis-scheduler",
     "KOTHAGUDEM-ai-intellis-scheduler",
+    "LGEPL-ai-intellis-scheduler",
+    "LOKGREENB2-ai-intellis-scheduler",
     "NANDGAON-ai-intellis-scheduler",
     "OSEPL-ai-intellis-scheduler",
-    "SAWDA-ai-intellis-scheduler",
-    "SIRMOUR-ai-intellis-scheduler",
-    "ZTRIC-ai-intellis-scheduler",
-    "REWASPRNG-ai-intellis-scheduler",
-    "REWASEIT-ai-intellis-scheduler",
-    "CLIMATEDETOX-ai-intellis-scheduler",
-    "EMIL-ai-intellis-scheduler",
-    "UPL-ai-intellis-scheduler",
-    "LOKGREENB2-ai-intellis-scheduler",
     "PRANAV-ai-intellis-scheduler",
+    "REWASEIT-ai-intellis-scheduler",
+    "REWASPRNG-ai-intellis-scheduler",
+    "SAWDA-ai-intellis-scheduler",
+    "SHAHA-ai-intellis-scheduler",
     "SIDDEHESH-ai-intellis-scheduler",
-    "LGEPL-ai-intellis-scheduler",
-    "intellis-dayhead-forcast-solar",
-    "intellis-weekhead-forcast-solar",
+    "SIRMOUR-ai-intellis-scheduler",
+    "UPL-ai-intellis-scheduler",
+    "ZTRIC-ai-intellis-scheduler",
 ]
 
 print("==================================================================")
@@ -50,7 +49,7 @@ print(f"Target Image:  {IMAGE_URI}")
 print(f"Total Lambdas: {len(ALL_LAMBDAS)}")
 print("==================================================================")
 
-session = boto3.Session(profile_name=PROFILE, region_name=REGION)
+session = boto3.Session(region_name=REGION)
 ecr_client = session.client("ecr")
 lambda_client = session.client("lambda")
 

@@ -32,7 +32,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
-S3_BUCKET = os.getenv("SCHEDULE_BUCKET", "vedanjay-schedules-test-608744602858")
+S3_BUCKET = os.getenv("SCHEDULE_BUCKET", "vedanjay-schedules-test-552496640388")
 
 # Regulatory Solar Sites active for Week-Ahead:
 WA_SOLAR_SITES: List[str] = [
@@ -144,14 +144,40 @@ def lambda_handler(event: Dict[str, Any] | None, context: Any = None) -> Dict[st
                 results.append(res)
             except Exception as exc:
                 import traceback
-                print(f"  [FAIL] Error generating Week-Ahead forecast for plant {p_name}: {exc}")
-                traceback.print_exc()
-                fail_count += 1
-                results.append({
-                    "plant_name": p_name,
-                    "error": str(exc),
-                    "upload_success": False,
-                })
+                print(f"  [FAIL] Error generating Week-Ahead forecast for plant {p_name}: {exc}. Triggering emergency 7-day Clear-Sky Fallback.")
+                try:
+                    from modules.week_ahead_forecast_solar.wa_sun_trajectory_engine import WASunTrajectoryEngine
+                    from modules.week_ahead_forecast_solar.wa_formatter_s3_engine import WAFormatterS3Engine
+                    from modules.solar_schedule.solar_scheduler import load_plant_profile
+                    prof = load_plant_profile(p_name)
+                    tilt = getattr(prof, "tilt_deg", 15.0)
+                    az = getattr(prof, "azimuth_openmeteo", 0.0)
+                    sun_eng = WASunTrajectoryEngine(lat=prof.latitude, lon=prof.longitude, surface_tilt=tilt, surface_azimuth=az)
+                    _, poa_cs_672, _, _ = sun_eng.compute_7day_clearsky_trajectory(start_date_str)
+                    dc_cap = getattr(prof, "dc_capacity_mw", prof.ac_capacity_mw)
+                    tr = (dc_cap * 0.78 / 0.905) / 1000.0
+                    fb_power = np.round(np.clip(poa_cs_672 * tr * 0.95, 0.0, prof.ac_capacity_mw), 2)
+                    for b in range(672):
+                        if (b % 96) < 23 or (b % 96) >= 74:
+                            fb_power[b] = 0.0
+                    fmt = WAFormatterS3Engine(s3_bucket=bucket)
+                    df_fb = fmt.build_schedule_dataframe(fb_power, start_date_str, prof.ac_capacity_mw)
+                    export_meta = fmt.export_and_upload(df_fb, p_name, start_date_str, today_str)
+                    success_count += 1
+                    print(f"  [SUCCESS_FALLBACK] {p_name} Week-Ahead emergency fallback uploaded -> {export_meta['s3_uri']}")
+                    results.append({
+                        **export_meta,
+                        "status": "SUCCESS_FALLBACK",
+                        "regime": "EMERGENCY_CLEAR_SKY_FALLBACK"
+                    })
+                except Exception as fb_exc:
+                    print(f"  [FATAL] Both primary and emergency Week-Ahead fallback failed for {p_name}: {fb_exc}")
+                    fail_count += 1
+                    results.append({
+                        "plant_name": p_name,
+                        "error": str(exc),
+                        "upload_success": False,
+                    })
 
     summary = {
         "status": "COMPLETED" if fail_count == 0 else "PARTIAL_SUCCESS",

@@ -91,7 +91,7 @@ class MultiGeneratorEngine:
         aws_profile: Optional[str] = None,
         region_name: str = "ap-south-1",
     ):
-        self.s3_bucket = s3_bucket or os.getenv("SCHEDULE_BUCKET", "vedanjay-schedules-test-608744602858")
+        self.s3_bucket = s3_bucket or os.getenv("SCHEDULE_BUCKET", "vedanjay-schedules-test-552496640388")
         self.region_name = region_name
         self.aws_profile = aws_profile or os.getenv("AWS_PROFILE")
 

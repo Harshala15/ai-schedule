@@ -22,7 +22,7 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 # Default S3 Bucket
-S3_BUCKET = os.getenv("SCHEDULE_BUCKET", "vedanjay-schedules-test-608744602858")
+S3_BUCKET = os.getenv("SCHEDULE_BUCKET", "vedanjay-schedules-test-552496640388")
 
 # Regulatory Solar Plant Matrix: (Run Morning da0?, Run Afternoon da1?, Run Night da2?)
 SITE_DISPATCH_RULES: Dict[str, tuple[bool, bool, bool]] = {
@@ -213,14 +213,53 @@ def lambda_handler(event: Dict[str, Any] | None, context: Any = None) -> Dict[st
                     "regime": res.get("synoptic_regime", "WIND_PHYSICS"),
                 })
             except Exception as exc:
-                print(f"  [ERROR] Failed to generate Day-Ahead forecast for {p_name}: {exc}")
-                fail_count += 1
-                results.append({
-                    "plant_name": p_name,
-                    "site_group": site,
-                    "status": "FAILED",
-                    "error": str(exc),
-                })
+                print(f"  [ERROR] Primary Day-Ahead failed for {p_name}: {exc}. Triggering emergency Clear-Sky Dispatch.")
+                try:
+                    import pandas as pd
+                    from modules.solar_schedule.solar_scheduler import load_plant_profile, SolarScheduleEngine
+                    prof = load_plant_profile(p_name)
+                    ai_engine = SolarScheduleEngine(plant_profile=prof)
+                    cs_poa = ai_engine.compute_clearsky_poa_96block(target_date_str)
+                    dc_cap = getattr(prof, "dc_capacity_mw", prof.ac_capacity_mw)
+                    tr = (dc_cap * 0.83 / 0.905) / 1000.0
+                    p_fallback = np.round(np.clip(cs_poa * tr * 0.95, 0.0, prof.ac_capacity_mw), 2)
+                    p_fallback[:23] = 0.0
+                    p_fallback[74:] = 0.0
+
+                    local_dir = Path("/tmp") / "day_ahead_solar"
+                    local_dir.mkdir(parents=True, exist_ok=True)
+                    filename = f"{p_name}_{target_date_str}_{plant_run_tag}.csv"
+                    local_path = local_dir / filename
+                    df_fb = pd.DataFrame({
+                        "Block": range(1, 97),
+                        "Time Interval": [f"{(b-1)*15//60:02d}:{((b-1)*15)%60:02d}" for b in range(1, 97)],
+                        "clearsky_poa_w_m2": np.round(cs_poa, 2),
+                        "mos_consensus_mw": p_fallback,
+                        "da_schedule_mw": p_fallback,
+                        "active_capacity_mw": np.full(96, prof.ac_capacity_mw)
+                    })
+                    df_fb.to_csv(local_path, index=False)
+                    s3_key = f"intellis Dayhead solar/{p_name}/{target_date_str}/{filename}"
+                    boto3.client("s3").upload_file(str(local_path), bucket, s3_key, ExtraArgs={"ContentType": "text/csv"})
+                    s3_uri = f"s3://{bucket}/{s3_key}"
+                    success_count += 1
+                    print(f"  [SUCCESS_FALLBACK] {p_name} Day-Ahead emergency fallback uploaded -> {s3_uri}")
+                    results.append({
+                        "plant_name": p_name,
+                        "site_group": site,
+                        "status": "SUCCESS_FALLBACK",
+                        "s3_uri": s3_uri,
+                        "regime": "EMERGENCY_CLEAR_SKY_FALLBACK",
+                    })
+                except Exception as fb_exc:
+                    print(f"  [FATAL] Both primary and emergency fallback failed for {p_name}: {fb_exc}")
+                    fail_count += 1
+                    results.append({
+                        "plant_name": p_name,
+                        "site_group": site,
+                        "status": "FAILED",
+                        "error": str(exc),
+                    })
 
     summary = {
         "status": "OK" if fail_count == 0 else "PARTIAL_FAILURE",

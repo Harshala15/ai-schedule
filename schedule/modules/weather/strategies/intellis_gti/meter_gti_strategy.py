@@ -157,7 +157,7 @@ class MeterGTIStrategy(BaseGTIStrategy):
             with urlopen(req, timeout=30) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
         except Exception:
-            params["models"] = "ecmwf_ifs025_ensemble,icon_seamless"
+            params["models"] = "ecmwf_ifs025,gfs_seamless,gem_seamless"
             url_fb = f"{self.get_api_url()}?{urlencode(params, doseq=True)}"
             req_fb = Request(url_fb, headers={"User-Agent": "IntellisEnsembleGTIAI/2.0"})
             try:
@@ -793,8 +793,17 @@ class MeterGTIStrategy(BaseGTIStrategy):
                 selected_df = pd.concat([selected_df, pd.DataFrame([row])])
                 fam_counts[fam] = fam_counts.get(fam, 0) + 1
 
+        # Fallback pass: ensure exactly target_total (6) models are selected if any family was offline
+        if len(selected_df) < target_total:
+            used_now = set(selected_df["key"].tolist())
+            extras = df_rank[~df_rank["key"].isin(used_now)].sort_values("composite_loss")
+            for _, row in extras.iterrows():
+                if len(selected_df) >= target_total:
+                    break
+                selected_df = pd.concat([selected_df, pd.DataFrame([row])])
+
         selected_df = selected_df.sort_values("composite_loss")
-        selected_keys = selected_df["key"].tolist()
+        selected_keys = selected_df["key"].tolist()[:target_total]
 
         score_col = "composite_loss" if "composite_loss" in selected_df.columns else "rmse_mw"
         raw_w = [1.0 / max(1e-4, row[score_col]) for _, row in selected_df.iterrows()]
@@ -817,9 +826,9 @@ class MeterGTIStrategy(BaseGTIStrategy):
     def benchmark_and_select_slot_models(
         self,
         target_date_str: str,
-        lookback_days: int = 5,
+        lookback_days: int = 7,
     ) -> dict[str, tuple[list[str], dict[str, float], dict[str, float]]]:
-        """Benchmark and select top models independently for each diurnal time slot."""
+        """Benchmark and select top 6 models independently for each diurnal time slot over 7 days lookback."""
         slot_results = {}
         for slot_name, slot_range in self.DIURNAL_SLOTS.items():
             keys, weights, _, gains = self.benchmark_and_select_models(
@@ -828,7 +837,7 @@ class MeterGTIStrategy(BaseGTIStrategy):
                 block_range=slot_range,
                 return_calibration_gains=True,
             )
-            slot_results[slot_name] = (keys, weights, gains)
+            slot_results[slot_name] = (keys[:6], weights, gains)
         return slot_results
 
     def get_slot_candidate_diagnostics(
@@ -908,8 +917,9 @@ class MeterGTIStrategy(BaseGTIStrategy):
         weather = self.fetch_ensemble_weather(target_date_str)
         cs_poa = self.compute_clearsky_poa_96block(target_date_str)
 
+        lookback_days = int(kwargs.get("lookback_days", 7))
         if not selected_keys or not weights_map:
-            slot_selections = self.benchmark_and_select_slot_models(target_date_str)
+            slot_selections = self.benchmark_and_select_slot_models(target_date_str, lookback_days=lookback_days)
             all_selected = []
             all_weights = {}
             for s_name, slot_data in slot_selections.items():
@@ -993,6 +1003,13 @@ class MeterGTIStrategy(BaseGTIStrategy):
         else:
             wind_speed = np.full(96, 2.5)
 
+        p_name = self.profile.plant_name
+        is_non_meter = (
+            p_name.upper() in NON_METER_SITES
+            or bool(self.profile.meter_data.get("is_non_meter_site", False))
+            or bool(self.profile.meter_data.get("is_virtual", False))
+        )
+
         return GTIForecastResult(
             target_date=target_date_str,
             gti_96=fused_gti,
@@ -1000,10 +1017,12 @@ class MeterGTIStrategy(BaseGTIStrategy):
             blended_kt_96=blended_kt,
             amb_temp_96=amb_temp,
             wind_speed_96=wind_speed,
-            strategy_name="METER_NWP_ENSEMBLE_GTI",
-            telemetry_source="PHYSICAL_SCADA",
+            strategy_name="NON_METER_NWP_ENSEMBLE_GTI" if is_non_meter else "METER_NWP_ENSEMBLE_GTI",
+            telemetry_source="SATELLITE_GTI_7DAY_LOOKBACK" if is_non_meter else "PHYSICAL_SCADA",
             metadata={
-                "is_non_meter": False,
+                "is_non_meter": is_non_meter,
+                "comparison_basis": "SATELLITE_GTI" if is_non_meter else "SCADA_METER",
+                "lookback_days": lookback_days,
                 "selected_keys": selected_keys,
                 "weights_map": weights_map,
                 "slot_selections": slot_selections,

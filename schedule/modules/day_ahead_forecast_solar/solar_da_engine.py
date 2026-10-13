@@ -1,4 +1,4 @@
-﻿"""
+"""
 Solar Day-Ahead Generation Forecast Engine Master Orchestrator.
 
 Orchestrates pure physics and multi-agency MOS consensus for Day-Ahead (Day T+1) 96-block schedule generation
@@ -158,7 +158,7 @@ def generate_solar_day_ahead_schedule(
     plant_name: str,
     target_date_str: str,
     run_tag: str = "da0",
-    s3_bucket: str = "vedanjay-schedules-test-608744602858",
+    s3_bucket: str = "vedanjay-schedules-test-552496640388",
     block_no: int | None = None,
 ) -> Dict[str, Any]:
 
@@ -182,31 +182,50 @@ def generate_solar_day_ahead_schedule(
     prof = load_plant_profile(plant_name)
     ai_engine = SolarScheduleEngine(plant_profile=prof)
 
-    # 1. 143-Member NWP Multi-Model Physics Forecast
-    sched_result = ai_engine.predict_96block_schedule(target_date_str)
+    # 1. 143-Member NWP Multi-Model Physics Forecast with Cascading Fallback
     cs_poa = ai_engine.compute_clearsky_poa_96block(target_date_str)
-    p_mos = np.array([float(b.get("predicted_mw", b.get("schedule_mw", 0.0))) for b in sched_result["blocks"]])
+    synoptic_regime = None
+    try:
+        sched_result = ai_engine.predict_96block_schedule(target_date_str)
+        p_mos = np.array([float(b.get("predicted_mw", b.get("schedule_mw", 0.0))) for b in sched_result["blocks"]])
+    except Exception as nwp_err:
+        print(f"  [WARN] Primary NWP schedule failed for {plant_name} ({nwp_err}). Activating Day-Ahead Physical Clear-Sky Fallback.")
+        # Local astronomical clear-sky physical generation
+        from modules.plant.plant_profile import NON_METER_SITES
+        is_non_meter = plant_name.upper() in NON_METER_SITES or getattr(prof, "is_non_meter_site", False)
+        dc_cap = getattr(prof, "dc_capacity_mw", prof.ac_capacity_mw)
+        pr = getattr(prof, "calibrated_pr", 0.83 if is_non_meter else 0.78) or (0.83 if is_non_meter else 0.78)
+        tr = (dc_cap * (pr / 0.905)) / 1000.0
+        p_mos = np.round(np.clip(cs_poa * tr * 0.95, 0.0, prof.ac_capacity_mw), 2)
+        p_mos[0:23] = 0.0
+        p_mos[74:96] = 0.0
+        synoptic_regime = "FALLBACK_CLEARSKY"
 
     # 2. Atmospheric Indicators & Synoptic Regime
-    weather = ai_engine.fetch_ensemble_weather(target_date_str)
-    hourly = weather.get("hourly", {})
-    cloud_vals = [float(v) for v in hourly.get("cloud_cover", []) if v is not None and not np.isnan(v)]
-    mean_cloud = float(np.mean(cloud_vals[6:19])) if len(cloud_vals) >= 19 else (float(np.mean(cloud_vals)) if cloud_vals else 25.0)
+    if synoptic_regime is None:
+        try:
+            weather = ai_engine.fetch_ensemble_weather(target_date_str)
+            hourly = weather.get("hourly", {}) if isinstance(weather, dict) else {}
+            cloud_vals = [float(v) for v in hourly.get("cloud_cover", []) if v is not None and not np.isnan(v)]
+            mean_cloud = float(np.mean(cloud_vals[6:19])) if len(cloud_vals) >= 19 else (float(np.mean(cloud_vals)) if cloud_vals else 25.0)
 
-    cape_vals = [float(v) for v in hourly.get("cape", []) if v is not None and not np.isnan(v)]
-    max_cape = float(np.max(cape_vals)) if cape_vals else 0.0
+            cape_vals = [float(v) for v in hourly.get("cape", []) if v is not None and not np.isnan(v)]
+            max_cape = float(np.max(cape_vals)) if cape_vals else 0.0
 
-    precip_vals = [float(v) for v in hourly.get("precipitation", []) if v is not None and not np.isnan(v)]
-    tot_precip = float(np.sum(precip_vals)) if precip_vals else 0.0
+            precip_vals = [float(v) for v in hourly.get("precipitation", []) if v is not None and not np.isnan(v)]
+            tot_precip = float(np.sum(precip_vals)) if precip_vals else 0.0
 
-    if tot_precip > 1.0 or mean_cloud >= 80.0:
-        synoptic_regime = "MONSOON_OVERCAST"
-    elif mean_cloud <= 25.0:
-        synoptic_regime = "CLEAR_SKY"
-    elif max_cape > 1000.0 or mean_cloud >= 60.0:
-        synoptic_regime = "LOCAL_CONVECTIVE"
-    else:
-        synoptic_regime = "PARTLY_CLOUDY"
+            if tot_precip > 1.0 or mean_cloud >= 80.0:
+                synoptic_regime = "MONSOON_OVERCAST"
+            elif mean_cloud <= 25.0:
+                synoptic_regime = "CLEAR_SKY"
+            elif max_cape > 1000.0 or mean_cloud >= 60.0:
+                synoptic_regime = "LOCAL_CONVECTIVE"
+            else:
+                synoptic_regime = "PARTLY_CLOUDY"
+        except Exception as w_err:
+            print(f"  [WARN] Atmospheric indicators fetch failed ({w_err}); defaulting synoptic regime to CLEAR_SKY_FALLBACK.")
+            synoptic_regime = "CLEAR_SKY"
 
     # 3. Physical Guardrails Enforcement
     p_final = np.copy(p_mos)
@@ -215,7 +234,7 @@ def generate_solar_day_ahead_schedule(
     p_final[74:96] = 0.0
 
     # Guardrail 2: Clear-sky floor lock
-    if synoptic_regime == "CLEAR_SKY":
+    if synoptic_regime in ("CLEAR_SKY", "FALLBACK_CLEARSKY"):
         for b in range(23, 74):
             p_final[b] = max(p_final[b], p_mos[b])
 

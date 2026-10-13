@@ -65,11 +65,12 @@ except ImportError:
     )
 
 
-def enforce_anti_plateau_curvature(mw_arr: np.ndarray, cs_poa: np.ndarray, min_step: float = 0.01) -> np.ndarray:
+def enforce_anti_plateau_curvature(mw_arr: np.ndarray, cs_poa: np.ndarray, min_step: float = 0.01, plant_name: str = "") -> np.ndarray:
     """Ensures no consecutive daylight blocks (blocks 24 to 75, > 0.05 MW) have identical generation values.
     Shapes flat runs to strictly follow astronomical clear-sky solar curvature.
     """
     arr = np.copy(mw_arr)
+
     for _ in range(10):
         changed = False
         i = 23
@@ -280,7 +281,7 @@ class SolarScheduleEngine:
 
         pred_mw[:23] = 0.0
         pred_mw[76:] = 0.0
-        pred_mw = enforce_anti_plateau_curvature(pred_mw, cs_poa)
+        pred_mw = enforce_anti_plateau_curvature(pred_mw, cs_poa, plant_name=self.profile.plant_name)
 
         blocks_data = []
         tot_pen = 0.0
@@ -802,7 +803,7 @@ class SolarScheduleEngine:
         }
 
         mw_vals = np.array([float(b.get("schedule_mw", 0.0)) for b in sched["blocks"]])
-        fixed_vals = enforce_anti_plateau_curvature(mw_vals, cs_poa)
+        fixed_vals = enforce_anti_plateau_curvature(mw_vals, cs_poa, plant_name=self.profile.plant_name)
         for idx, b in enumerate(sched["blocks"]):
             b["schedule_mw"] = fixed_vals[idx]
             b["intellis_mw"] = fixed_vals[idx]

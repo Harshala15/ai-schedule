@@ -439,6 +439,7 @@ class NonMeterGTIStrategy(BaseGTIStrategy):
         # 1. Attempt 143-member NWP Physics Ensemble execution (Production Architecture)
         try:
             delegate = self._get_ensemble_delegate()
+            kwargs.setdefault("lookback_days", 7)
             res = delegate.compute_gti(
                 target_date_str=target_date_str,
                 selected_keys=selected_keys,
@@ -447,6 +448,9 @@ class NonMeterGTIStrategy(BaseGTIStrategy):
             )
             if res.gti_96 is not None and np.max(res.gti_96) > 50.0:
                 res.metadata["is_non_meter"] = True
+                res.metadata["telemetry_source"] = "SATELLITE_GTI_7DAY_LOOKBACK"
+                res.metadata["comparison_basis"] = "SATELLITE_GTI"
+                res.metadata["lookback_days"] = 7
                 res.strategy_name = "NON_METER_NWP_ENSEMBLE_GTI"
                 return res
         except Exception as exc:

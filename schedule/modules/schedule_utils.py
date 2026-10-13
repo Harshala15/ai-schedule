@@ -583,11 +583,12 @@ def blocks_from_time_to_end_of_day(
     minutes_remaining = (end_of_day - first_block).total_seconds() / 60.0
     return int(minutes_remaining // block_minutes) + 1
 
-def _enforce_anti_plateau_curvature(mw_arr: np.ndarray, cs_poa: np.ndarray, min_step: float = 0.01) -> np.ndarray:
+def _enforce_anti_plateau_curvature(mw_arr: np.ndarray, cs_poa: np.ndarray, min_step: float = 0.01, plant_name: str = "") -> np.ndarray:
     """Ensures no consecutive daylight blocks (blocks 24 to 75, > 0.05 MW) have identical generation values.
     Shapes flat runs to strictly follow astronomical clear-sky solar curvature.
     """
     arr = np.copy(mw_arr)
+
     for _ in range(10):
         changed = False
         i = 23
@@ -887,7 +888,7 @@ def write_full_block_schedule_from_llm_schedule(
             elev = max(0.0, 90.0 - (h_from_noon * 15.0)) if h_from_noon < 6.0 else 0.0
             if elev > 0:
                 cs_poa_seq[b - 1] = max(0.0, 1050.0 * (math.sin(math.radians(elev)) ** 1.10))
-        fixed_mw_seq = _enforce_anti_plateau_curvature(mw_seq, cs_poa_seq)
+        fixed_mw_seq = _enforce_anti_plateau_curvature(mw_seq, cs_poa_seq, plant_name=getattr(config, "PLANT_NAME", ""))
         for b in range(1, total_blocks + 1):
             h_from_noon = abs(((b - 0.5) * 0.25) - 12.25)
             elev = max(0.0, 90.0 - (h_from_noon * 15.0)) if h_from_noon < 6.0 else 0.0
