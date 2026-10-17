@@ -759,9 +759,7 @@ class SolarScheduleEngine:
                         b["predicted_mw"] = pred_mw
                         b["intellis_mw"] = pred_mw
                         b["schedule_mw"] = pred_mw
-                        if self.profile.transfer_ratio > 0:
-                            b["intellis_gti"] = round(pred_mw / self.profile.transfer_ratio, 1)
-                            b["predicted_gti_wm2"] = b["intellis_gti"]
+                        # Preserve true physical solar irradiance in intellis_gti from physics ensemble
                     elif b["block"] > max_llm_block and b["block"] <= 76:
                         raw_gti_mw = float(b.get("predicted_mw", b.get("intellis_mw", 0.0)))
                         raw_gti_mw = max(0.0, min(self.profile.ac_capacity_mw, raw_gti_mw))
@@ -789,9 +787,7 @@ class SolarScheduleEngine:
                     b["predicted_mw"] = adj_mw
                     b["intellis_mw"] = adj_mw
                     b["schedule_mw"] = adj_mw
-                    if self.profile.transfer_ratio > 0:
-                        b["intellis_gti"] = round(adj_mw / self.profile.transfer_ratio, 1)
-                        b["predicted_gti_wm2"] = b["intellis_gti"]
+                    # Preserve true physical solar irradiance in intellis_gti from physics ensemble
 
         sched["llm_strategy"] = {
             "regime": advice.regime,

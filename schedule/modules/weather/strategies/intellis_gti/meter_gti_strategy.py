@@ -775,7 +775,7 @@ class MeterGTIStrategy(BaseGTIStrategy):
             if not sub.empty:
                 fam_cands = sub.head(q)
                 for _, r in fam_cands.iterrows():
-                    if r["composite_loss"] <= (best_global_loss * 2.5):
+                    if r["composite_loss"] <= (best_global_loss * 5.0):
                         floor_models.append(r)
 
         selected_df = pd.DataFrame(floor_models) if floor_models else pd.DataFrame([df_rank.iloc[0]])
@@ -806,9 +806,37 @@ class MeterGTIStrategy(BaseGTIStrategy):
         selected_keys = selected_df["key"].tolist()[:target_total]
 
         score_col = "composite_loss" if "composite_loss" in selected_df.columns else "rmse_mw"
-        raw_w = [1.0 / max(1e-4, row[score_col]) for _, row in selected_df.iterrows()]
-        norm_w = [round(w / sum(raw_w), 4) for w in raw_w]
-        weights_map = {k: w for k, w in zip(selected_keys, norm_w)}
+        raw_w = {row["key"]: 1.0 / max(1e-4, row[score_col]) for _, row in selected_df.iterrows()}
+        family_map = {row["key"]: row["family"] for _, row in selected_df.iterrows()}
+
+        # Enforce maximum 40% weight cap per weather family to guarantee multi-agency diversity
+        max_fam_weight = 0.40
+        fam_raw = {}
+        for k, w in raw_w.items():
+            fam = family_map.get(k, "OTHER")
+            fam_raw[fam] = fam_raw.get(fam, 0.0) + w
+        total_raw = sum(raw_w.values())
+
+        exceeded = {fam: fam_w / total_raw for fam, fam_w in fam_raw.items() if (fam_w / total_raw) > max_fam_weight}
+        if exceeded and len(fam_raw) > 1:
+            target_weights = {}
+            exceeded_total_target = max_fam_weight * len(exceeded)
+            remaining_target = max(0.0, 1.0 - exceeded_total_target)
+            other_fam_total = sum(fam_raw[fam] for fam in fam_raw if fam not in exceeded)
+
+            for k, w in raw_w.items():
+                fam = family_map.get(k, "OTHER")
+                if fam in exceeded:
+                    fam_share = max_fam_weight * (w / fam_raw[fam])
+                    target_weights[k] = fam_share
+                else:
+                    fam_share = remaining_target * (w / other_fam_total) if other_fam_total > 0 else (w / total_raw)
+                    target_weights[k] = fam_share
+            total_norm = sum(target_weights.values())
+            weights_map = {k: round(w / total_norm, 4) for k, w in target_weights.items()}
+        else:
+            norm_w = [round(w / total_raw, 4) for w in raw_w.values()]
+            weights_map = {k: w for k, w in zip(selected_keys, norm_w)}
 
         calibration_gains = {}
         for k in selected_keys:
