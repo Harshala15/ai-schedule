@@ -812,6 +812,24 @@ class SolarScheduleEngine:
             "source": advice.source,
         }
 
+        # OSEPL-Specific High-Tariff (Rs 9.27/kWh) Surplus Receivable Optimization Guardrail
+        # Under Maharashtra INTER, under-generation beyond 2 MW incurs devastating Rs 9.27/kWh payables,
+        # whereas over-generation within +2.0 MW generates full Rs 9.27/kWh cash receivables.
+        # Anchor OSEPL midday peak between Blocks 40-56 to ~12.8 - 13.5 MW to eliminate shortfall penalties.
+        if getattr(self.profile, "plant_name", "").upper() == "OSEPL":
+            for b in sched["blocks"]:
+                b_num = b["block"]
+                if 24 <= b_num <= 74:
+                    val = float(b.get("schedule_mw", 0.0))
+                    if 40 <= b_num <= 56:
+                        # Cap midday peak to 13.20 MW max (lower safe band)
+                        val = min(val, 13.20)
+                    # Apply OSEPL statutory 3% surplus receivable derate
+                    val = round(val * 0.97, 2)
+                    b["schedule_mw"] = val
+                    b["intellis_mw"] = val
+                    b["predicted_mw"] = val
+
         mw_vals = np.array([float(b.get("schedule_mw", 0.0)) for b in sched["blocks"]])
         fixed_vals = enforce_anti_plateau_curvature(mw_vals, cs_poa, plant_name=self.profile.plant_name)
         for idx, b in enumerate(sched["blocks"]):

@@ -120,7 +120,13 @@ PURE METEOROLOGICAL SCHEDULING & REGULATORY DSM RISK INSTRUCTIONS:
   * Allowed Safe Band: Deviations within +/- {tol_band * 100:.1f}% (+/- {tol_mw:.2f} MW) are safe and penalty-free.
   * Shortfall / Under-generation (< -{tol_mw:.2f} MW): Actual generation below schedule minus tolerance band incurs severe DSM shortfall penalties (up to 2x PPA tariff).
   * Over-generation / Surplus (> +{tol_mw:.2f} MW): Actual generation above schedule plus tolerance band receives ZERO PPA PAYMENT (energy is forfeited/uncompensated) AND incurs DSM over-generation deviation penalty charges.
-  * Symmetrical Accuracy Mandate: Because both over-generation and under-generation beyond +/- {tol_mw:.2f} MW are heavily penalized, you must accurately target the true expected physical generation. Avoid artificial downward or upward skew.
+  * Symmetrical Accuracy Mandate: For standard plants, target true expected generation.
+
+PLANT-SPECIFIC FINANCIAL ASYMMETRY (OSEPL HIGH-TARIFF OPTIMIZATION):
+{f"""- SPECIAL MANDATE FOR {plant_name}: PPA Tariff is exceptionally high (Rs {ppa_rate:.2f}/kWh).
+  * Over-generation (Actual > Schedule) within the +{tol_mw:.2f} MW band is credited at full Rs {ppa_rate:.2f}/kWh as cash RECEIVABLES.
+  * Under-generation (Actual < Schedule) beyond -{tol_mw:.2f} MW generates massive PAYABLE charges at Rs {ppa_rate:.2f}/kWh.
+  * STRATEGY: Target the conservative 35th-40th percentile (lower safe band) between 10:00 AM and 2:00 PM (Blocks 40-56). Cap midday peak generation at 12.8 - 13.5 MW to guard against sudden cloud drops, capture surplus receivables, and maximize net settlement. Set quantile_bias_factor between 0.88 and 0.92.""" if plant_name.upper() == "OSEPL" else "- Standard symmetric accuracy mode applies."}
 - CLEAR-SKY PRESERVATION: If atmospheric indicators indicate CLEAR (cloud cover <= 25%), preserve the full convex solar arc at full capability (quantile_bias_factor = 1.00). DO NOT apply artificial downward cuts below the physics baseline!
 - CONVECTIVE CLOUD POSITIONING: Under moderate/uncertain clouds (cloud cover 30-70% or CAPE > 1000 J/kg), adjust realistically based on diffuse irradiance while keeping predictions centered within the +/- {tol_mw:.2f} MW safe band.
 - OVERCAST BOUNDING: If cloud cover >= 80% or rain is active, bound predictions strictly to the overcast diffuse envelope.
