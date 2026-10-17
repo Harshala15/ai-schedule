@@ -721,6 +721,20 @@ class SolarScheduleEngine:
                 )
 
         advice.is_trip_or_curtailment = False
+
+        # Solution 3: Neutralize downward LLM risk arbiter discounting for non-meter / unmetered sites
+        if is_non_meter_site or not has_live_scada:
+            if not advice.is_trip_or_curtailment:
+                advice.quantile_bias_factor = max(1.0, advice.quantile_bias_factor)
+                # Ensure direct block predictions do not depress below physics baseline for non-meter sites
+                if advice.block_predictions:
+                    for b_k, b_val in list(advice.block_predictions.items()):
+                        matching_b = next((b for b in sched["blocks"] if str(b["block"]) == str(b_k)), None)
+                        if matching_b:
+                            base_mw = float(matching_b.get("schedule_mw", 0.0))
+                            if float(b_val) < base_mw:
+                                advice.block_predictions[b_k] = base_mw
+
         is_clear_sky = real_clearness_ratio >= 0.85 or advice.regime in ("CLEAR", "CLEAR_SKY")
         is_overcast = advice.regime in ("OVERCAST", "RAIN", "STORMY") or real_clearness_ratio < 0.50
 
