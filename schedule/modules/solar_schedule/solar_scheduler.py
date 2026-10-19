@@ -217,8 +217,8 @@ class SolarScheduleEngine:
             return strat.load_meter_actuals_with_poa(target_date_str)
         return np.zeros(96, dtype=float), np.zeros(96, dtype=float)
 
-    def calibrate_plant_pr(self, target_date_str: str, lookback_days: int = 5) -> float:
-        """Dynamically learn plant-specific Performance Ratio (PR) from historical telemetry."""
+    def calibrate_plant_pr(self, target_date_str: str, lookback_days: int = 3) -> float:
+        """Dynamically learn plant-specific Performance Ratio (PR) from the last 3 days of historical telemetry."""
         strat = self.get_strategy()
         if hasattr(strat, "calibrate_plant_pr"):
             pr = strat.calibrate_plant_pr(target_date_str, lookback_days=lookback_days)
@@ -281,6 +281,38 @@ class SolarScheduleEngine:
 
         pred_mw[:23] = 0.0
         pred_mw[76:] = 0.0
+
+        if site_upper == "REWASPRNG":
+            cs_day_sum = float(np.sum(cs_poa[23:75])) if len(cs_poa) >= 75 else 1.0
+            fused_day_sum = float(np.sum(fused_gti[23:75])) if len(fused_gti) >= 75 else 0.0
+            clearness = fused_day_sum / max(1.0, cs_day_sum)
+            if clearness >= 0.85:
+                target_peak = 222.0
+                max_cs = max(cs_poa) if len(cs_poa) > 0 and max(cs_poa) > 0 else 950.0
+                for b_idx in range(23, 75):
+                    b_num = b_idx + 1
+                    cs_norm = cs_poa[b_idx] / max_cs
+                    cur_val = float(pred_mw[b_idx])
+                    if 43 <= b_num <= 51:
+                        val = max(cur_val, target_peak)
+                    elif b_num == 42:
+                        val = max(cur_val, 215.0)
+                    elif b_num == 41:
+                        val = max(cur_val, 208.0)
+                    elif b_num == 40:
+                        val = max(cur_val, 198.0)
+                    elif b_num == 52:
+                        val = max(cur_val, 216.0)
+                    elif b_num == 53:
+                        val = max(cur_val, 208.0)
+                    elif b_num == 54:
+                        val = max(cur_val, 198.0)
+                    elif 55 <= b_num <= 68:
+                        val = max(cur_val, (cs_norm * target_peak) * 1.05)
+                    else:
+                        val = max(cur_val, (cs_norm * target_peak) * 0.98)
+                    pred_mw[b_idx] = round(min(self.profile.ac_capacity_mw, max(0.0, val)), 2)
+
         pred_mw = enforce_anti_plateau_curvature(pred_mw, cs_poa, plant_name=self.profile.plant_name)
 
         blocks_data = []
@@ -753,7 +785,8 @@ class SolarScheduleEngine:
                         if b["block"] > 74 or b["block"] < 24:
                             pred_mw = 0.0
                         if is_clear_sky and pred_mw < physics_base_mw:
-                            pred_mw = physics_base_mw
+                            if getattr(self.profile, "plant_name", "").upper() != "OSEPL":
+                                pred_mw = physics_base_mw
                         if is_overcast:
                             overcast_max = max(physics_base_mw * 1.10, self.profile.ac_capacity_mw * 0.25)
                             if pred_mw > overcast_max:
@@ -791,7 +824,8 @@ class SolarScheduleEngine:
         elif abs(advice.quantile_bias_factor - 1.0) > 0.005:
             q_factor = advice.quantile_bias_factor
             if is_clear_sky and not advice.is_trip_or_curtailment:
-                q_factor = max(1.0, q_factor)
+                if getattr(self.profile, "plant_name", "").upper() != "OSEPL":
+                    q_factor = max(1.0, q_factor)
             elif is_overcast and not advice.is_trip_or_curtailment:
                 q_factor = min(1.02, q_factor)
 
@@ -812,23 +846,105 @@ class SolarScheduleEngine:
             "source": advice.source,
         }
 
-        # OSEPL-Specific High-Tariff (Rs 9.27/kWh) Surplus Receivable Optimization Guardrail
-        # Under Maharashtra INTER, under-generation beyond 2 MW incurs devastating Rs 9.27/kWh payables,
-        # whereas over-generation within +2.0 MW generates full Rs 9.27/kWh cash receivables.
-        # Anchor OSEPL midday peak between Blocks 40-56 to ~12.8 - 13.5 MW to eliminate shortfall penalties.
+        # OSEPL-Specific Dynamic Sweet-Spot (+4% to +8% Surplus) Optimization Engine
+        # Under Maharashtra INTER regulations for OSEPL (20 MW AC, tariff Rs 9.27/kWh):
+        # 1. Over-generation within +2.0 MW (0% to +10%) generates full Rs 9.27/kWh cash receivables with 0 DSM penalty.
+        # 2. Over-generation +10% to +15% receives Rs 8.34 - Rs 7.42/kWh with small haircut.
+        # 3. Over-generation beyond +3.0 MW (>+15%) receives Rs 0.00 credit and incurs Rs 9.27/kWh penalty.
+        # 4. Under-generation pays devastating surcharges up to Rs 13.91/kWh (+150% penalty).
         if getattr(self.profile, "plant_name", "").upper() == "OSEPL":
+            is_cloudy_or_convective = (
+                weather_ind.get("cloud_cover_pct", 0) >= 20.0
+                or weather_ind.get("cape_j_kg", 0) >= 400.0
+                or weather_ind.get("precip_mm", 0) > 0.0
+                or real_clearness_ratio < 0.85
+                or advice.regime in ("PARTLY_CLOUDY", "CONVECTIVE_MONSOON", "OVERCAST", "RAIN")
+            )
+            if is_cloudy_or_convective:
+                # Under clouds / monsoon convective risk, protect against deep cloud drops (e.g. 7 MW).
+                # Target P25-P30 safe lower envelope (0.74 factor, midday peak ~9.5 - 10.5 MW).
+                target_factor = 0.74
+                midday_cap = 10.50
+            else:
+                # Under clear sky, plant can reach ~16.5 MW.
+                # Target 0.86 factor (peak ~13.5 - 14.2 MW), ensuring deviation stays < 2.8 MW (below +14% to avoid >+15% cliff).
+                target_factor = 0.86
+                midday_cap = 14.20
+
             for b in sched["blocks"]:
                 b_num = b["block"]
                 if 24 <= b_num <= 74:
-                    val = float(b.get("schedule_mw", 0.0))
-                    if 40 <= b_num <= 56:
-                        # Cap midday peak to 13.20 MW max (lower safe band)
-                        val = min(val, 13.20)
-                    # Apply OSEPL statutory 3% surplus receivable derate
-                    val = round(val * 0.97, 2)
+                    raw_val = float(b.get("schedule_mw", 0.0))
+                    val = round(raw_val * target_factor, 2)
+                    if 38 <= b_num <= 58:
+                        val = min(val, midday_cap)
+                    # Lower bound guardrail against >+15% cliff (Band 4):
+                    # Never schedule below (raw_val - 2.80 MW)
+                    val = max(val, round(max(0.0, raw_val - 2.80), 2))
                     b["schedule_mw"] = val
                     b["intellis_mw"] = val
                     b["predicted_mw"] = val
+
+        # REWASPRNG-Specific Weather-Gated Clear-Sky Optimization & Shoulder Protection
+        # Plant Capacity: 250 MW AC / 346 MW DC (ILR 1.384). Strict ±5% (±12.5 MW) tolerance band.
+        # Problem: Under clear sky, plant delivers 230-234 MW, but uncalibrated ensemble was predicting only ~196 MW,
+        # incurring severe under-forecasting penalties across Blocks 40-56.
+        # Guardrail: Weather-conditioned activation ensuring calibrated clear-sky solar arc (218-222 MW peak) on clear days,
+        # while strictly reverting to conservative bounds on cloudy/convective/rain days to avoid the 12.5 MW penalty trap.
+        if getattr(self.profile, "plant_name", "").upper() == "REWASPRNG":
+            is_clear_sky = (
+                weather_ind.get("cloud_cover_pct", 100.0) <= 20.0
+                and weather_ind.get("precip_mm", 0.0) == 0.0
+                and real_clearness_ratio >= 0.85
+                and advice.regime in ("CLEAR", "CLEAR_SKY")
+                and not (weather_ind.get("cape_j_kg", 0.0) >= 3000.0 and weather_ind.get("cloud_cover_pct", 0.0) > 15.0)
+            )
+            # Check if live SCADA in recent blocks shows a sudden cloud dip (trailing clear sky by >= 25 MW)
+            scada_cloud_drop = False
+            if has_live_scada and recent_list and len(recent_list) >= 2:
+                if cs_curr_mw > 20.0 and (cs_curr_mw - live_mw) >= 25.0:
+                    scada_cloud_drop = True
+
+            if is_clear_sky and not scada_cloud_drop:
+                # REWASPRNG High Inverter Loading Ratio (ILR = 1.384, 346 MW DC on 250 MW AC)
+                # On clear days, the massive 346 MW DC array saturates inverters to peak delivery (222 MW)
+                # as early as 10:30 AM (Block 43) and sustains peak production until 13:00 PM (Block 52).
+                max_cs = max(cs_poa) if len(cs_poa) > 0 and max(cs_poa) > 0 else 950.0
+                target_peak = 222.0
+
+                for b in sched["blocks"]:
+                    b_num = b["block"]
+                    if 24 <= b_num <= 74:
+                        b_idx = b_num - 1
+                        cs_norm = cs_poa[b_idx] / max_cs
+                        cur_val = float(b.get("schedule_mw", 0.0))
+
+                        # High-ILR DC saturation trapezoid curve
+                        if 43 <= b_num <= 51:
+                            # Saturated midday plateau (10:30 AM to 12:45 PM)
+                            val = max(cur_val, target_peak)
+                        elif b_num == 42:
+                            val = max(cur_val, 215.0)
+                        elif b_num == 41:
+                            val = max(cur_val, 208.0)
+                        elif b_num == 40:
+                            val = max(cur_val, 198.0)
+                        elif b_num == 52:
+                            val = max(cur_val, 216.0)
+                        elif b_num == 53:
+                            val = max(cur_val, 208.0)
+                        elif b_num == 54:
+                            val = max(cur_val, 198.0)
+                        elif 55 <= b_num <= 68:
+                            # High-ILR extended afternoon shoulder
+                            val = max(cur_val, (cs_norm * target_peak) * 1.05)
+                        else:
+                            val = max(cur_val, (cs_norm * target_peak) * 0.98)
+
+                        val = round(min(self.profile.ac_capacity_mw, max(0.0, val)), 2)
+                        b["schedule_mw"] = val
+                        b["intellis_mw"] = val
+                        b["predicted_mw"] = val
 
         mw_vals = np.array([float(b.get("schedule_mw", 0.0)) for b in sched["blocks"]])
         fixed_vals = enforce_anti_plateau_curvature(mw_vals, cs_poa, plant_name=self.profile.plant_name)

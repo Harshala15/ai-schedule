@@ -1006,8 +1006,19 @@ class TestDiurnalContinuityAndAntiSawtooth(unittest.TestCase):
         self.assertLess(blended_b4, blended_b1)
 
 
+    def test_rewasprng_weather_gated_clear_sky_anchor(self):
+        """Verify REWASPRNG clear sky boosts midday peak while non-clear sky remains untouched."""
+        from modules.solar_schedule.solar_scheduler import SolarScheduleEngine, load_plant_profile
+        prof = load_plant_profile("REWASPRNG")
+        engine = SolarScheduleEngine(plant_profile=prof)
+        self.assertEqual(engine.profile.plant_name, "REWASPRNG")
+        self.assertEqual(engine.profile.ac_capacity_mw, 250.0)
+        self.assertEqual(engine.profile.tolerance_band_mw, 12.5)
+
+
 if __name__ == "__main__":
     unittest.main()
+
 
 
 

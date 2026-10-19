@@ -381,23 +381,17 @@ class MeterGTIStrategy(BaseGTIStrategy):
                 is_lambda = bool(os.getenv("AWS_LAMBDA_FUNCTION_NAME") or os.getenv("AWS_EXECUTION_ENV"))
                 aws_profile = os.getenv("AWS_PROFILE")
 
-                # In Lambda or when ambient credentials exist, use ambient IAM execution role
-                if is_lambda:
-                    s3 = boto3.client("s3")
-                elif aws_profile:
+                # In Lambda or local execution, use ambient credentials
+                if aws_profile:
                     try:
                         s3 = boto3.Session(profile_name=aws_profile).client("s3")
                     except Exception as prof_err:
                         logger.warning("AWS_PROFILE '%s' failed (%s); falling back to default ambient credentials", aws_profile, prof_err)
                         s3 = boto3.client("s3")
                 else:
-                    try:
-                        session = boto3.Session(profile_name="intellis-608")
-                        s3 = session.client("s3")
-                    except Exception:
-                        s3 = boto3.client("s3")
+                    s3 = boto3.client("s3")
 
-                bucket = os.getenv("S3_BUCKET") or os.getenv("BUCKET") or "vedanjay-schedules-test-608744602858"
+                bucket = os.getenv("S3_BUCKET") or os.getenv("BUCKET") or "vedanjay-schedules-test-552496640388"
 
                 s3_custom_prefix = self.profile.meter_data.get("s3_prefix") if self.profile.meter_data else None
                 candidate_prefixes = []
@@ -461,8 +455,43 @@ class MeterGTIStrategy(BaseGTIStrategy):
     # -------------------------------------------------------------------------
     # 4. Calibrate Plant PR
     # -------------------------------------------------------------------------
-    def calibrate_plant_pr(self, target_date_str: str, lookback_days: int = 5) -> float:
-        """Dynamically learn plant-specific Performance Ratio (PR) from historical telemetry."""
+    def _calibrate_pr_from_seasonal_thermal_physics(self, target_dt: datetime, lookback_days: int = 3, base_pr: float = 0.8300) -> float:
+        """Dynamically modulate non-meter PR using Seasonal Thermal Physics (ambient temperature).
+        Avoids scaling PR down on cloudy days via Kt, preventing double-counting with the NWP weather ensemble.
+        """
+        try:
+            from modules.weather.strategies.intellis_gti.non_meter_gti_strategy import fetch_satellite_day_profile
+            temps = []
+            for offset in range(1, lookback_days + 1):
+                d_dt = (target_dt - timedelta(days=offset)).date()
+                h = fetch_satellite_day_profile(
+                    target_date=d_dt,
+                    latitude=self.profile.latitude,
+                    longitude=self.profile.longitude,
+                    tilt=self.profile.tilt_deg,
+                    azimuth=self.profile.azimuth_openmeteo,
+                )
+                t_arr = h.get("temperature_2m", [])
+                day_t = [float(v) for v in t_arr[8:18] if v is not None] if len(t_arr) >= 18 else []
+                if day_t:
+                    temps.append(np.mean(day_t))
+
+            mean_amb_temp = float(np.mean(temps)) if temps else 25.0
+            # Seasonal ambient thermal derate relative to 25°C STC (-0.38% / °C)
+            delta_t = mean_amb_temp - 25.0
+            seasonal_thermal_factor = float(np.clip(1.0 - 0.0038 * delta_t, 0.90, 1.08))
+            learned_pr = base_pr * seasonal_thermal_factor
+            min_allowed = min(0.50, base_pr * 0.80)
+            return round(float(np.clip(learned_pr, min_allowed, 0.95)), 4)
+        except Exception as th_err:
+            logger.warning("Seasonal thermal PR calibration fallback for %s: %s", self.profile.plant_name, th_err)
+            return base_pr
+
+    def calibrate_plant_pr(self, target_date_str: str, lookback_days: int = 3) -> float:
+        """Dynamically learn plant-specific Performance Ratio (PR) from the last 3 days of actual SCADA meter generation,
+        or seasonal thermal physics for non-meter sites and when actual generation is absent.
+        """
+        target_dt = datetime.strptime(target_date_str, "%Y-%m-%d")
         site_upper = self.profile.plant_name.upper()
         is_non_meter = (
             site_upper in NON_METER_SITES
@@ -470,13 +499,13 @@ class MeterGTIStrategy(BaseGTIStrategy):
             or bool(self.profile.meter_data.get("is_virtual", False))
         )
         if is_non_meter:
-            learned_pr = getattr(self.profile, "calibrated_pr", None) or 0.8300
+            base_pr = getattr(self.profile, "calibrated_pr", None) or getattr(self.profile, "performance_ratio", None) or 0.8300
+            learned_pr = self._calibrate_pr_from_seasonal_thermal_physics(target_dt, lookback_days=lookback_days, base_pr=base_pr)
             self.profile.calibrated_pr = round(learned_pr, 4)
             dc_cap = getattr(self.profile, "dc_capacity_mw", None) or self.profile.ac_capacity_mw
             self.profile.transfer_ratio = round((dc_cap * self.profile.calibrated_pr) / 1000.0, 6)
             return self.profile.calibrated_pr
 
-        target_dt = datetime.strptime(target_date_str, "%Y-%m-%d")
         valid_prs = []
 
         b_idx = np.arange(96)
@@ -485,22 +514,31 @@ class MeterGTIStrategy(BaseGTIStrategy):
         est_cell = 25.0 + 10.0 * (cos_elev ** 0.8) + (cos_elev * 900.0 * 0.031)
         temp_factor = np.clip(1.0 - 0.0038 * (est_cell - 25.0), 0.82, 1.05)
 
-        for offset in range(1, lookback_days + 1):
+        # 3-day rolling window of actual meter generation (expandable up to 5 days if S3 points are sparse)
+        max_lookback = max(lookback_days, 5)
+        for offset in range(1, max_lookback + 1):
+            if offset > lookback_days and len(valid_prs) >= 6:
+                break
             day_str = (target_dt - timedelta(days=offset)).strftime("%Y-%m-%d")
             d_mw, d_poa = self.load_meter_actuals_with_poa(day_str)
             if np.max(d_mw) < 0.10 * self.profile.ac_capacity_mw:
                 continue
 
+            # Filter daylight blocks with substantial solar generation (>= 350 W/m² and >= 15% AC capacity)
             mask = (d_poa >= 350.0) & (d_mw >= 0.15 * self.profile.ac_capacity_mw)
-            if np.sum(mask) >= 4:
+            if np.sum(mask) >= 3:
+                # STC temperature-corrected PR points
                 pr_stc_vals = (d_mw[mask] * 1000.0) / (d_poa[mask] * self.profile.dc_capacity_mw * temp_factor[mask])
                 valid_prs.extend(pr_stc_vals.tolist())
 
-        if len(valid_prs) >= 6:
-            learned_pr = float(np.percentile(valid_prs, 70))
-            learned_pr = max(0.78, min(0.95, learned_pr))
+        if len(valid_prs) >= 4:
+            # 75th percentile captures clear high-performance generation while filtering out cloud dips
+            learned_pr = float(np.percentile(valid_prs, 75))
+            learned_pr = max(0.75, min(0.93, learned_pr))
         else:
-            learned_pr = getattr(self.profile, "calibrated_pr", None) or 0.8800
+            # When actual generation is absent on S3, calibrate dynamically from seasonal thermal physics
+            base_pr = getattr(self.profile, "calibrated_pr", None) or getattr(self.profile, "performance_ratio", None) or 0.8800
+            learned_pr = self._calibrate_pr_from_seasonal_thermal_physics(target_dt, lookback_days=lookback_days, base_pr=base_pr)
 
         self.profile.calibrated_pr = round(learned_pr, 4)
         self.profile.transfer_ratio = round((self.profile.dc_capacity_mw * self.profile.calibrated_pr) / 1000.0, 6)

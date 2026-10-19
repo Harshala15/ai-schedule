@@ -7,7 +7,7 @@ import sys
 REGION = "ap-south-1"
 ACCOUNT_ID = "552496640388"
 REPO = "intellis-ai-scheduler"
-TAG = "intellis-prod-ensemble-gti-fixes-20261017-v1"
+TAG = "intellis-prod-ensemble-gti-fixes-20261019-v2"
 ECR_REGISTRY = f"{ACCOUNT_ID}.dkr.ecr.{REGION}.amazonaws.com"
 IMAGE_URI = f"{ECR_REGISTRY}/{REPO}:{TAG}"
 

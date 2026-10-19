@@ -122,12 +122,17 @@ PURE METEOROLOGICAL SCHEDULING & REGULATORY DSM RISK INSTRUCTIONS:
   * Over-generation / Surplus (> +{tol_mw:.2f} MW): Actual generation above schedule plus tolerance band receives ZERO PPA PAYMENT (energy is forfeited/uncompensated) AND incurs DSM over-generation deviation penalty charges.
   * Symmetrical Accuracy Mandate: For standard plants, target true expected generation.
 
-PLANT-SPECIFIC FINANCIAL ASYMMETRY (OSEPL HIGH-TARIFF OPTIMIZATION):
-{f"""- SPECIAL MANDATE FOR {plant_name}: PPA Tariff is exceptionally high (Rs {ppa_rate:.2f}/kWh).
-  * Over-generation (Actual > Schedule) within the +{tol_mw:.2f} MW band is credited at full Rs {ppa_rate:.2f}/kWh as cash RECEIVABLES.
-  * Under-generation (Actual < Schedule) beyond -{tol_mw:.2f} MW generates massive PAYABLE charges at Rs {ppa_rate:.2f}/kWh.
-  * STRATEGY: Target the conservative 35th-40th percentile (lower safe band) between 10:00 AM and 2:00 PM (Blocks 40-56). Cap midday peak generation at 12.8 - 13.5 MW to guard against sudden cloud drops, capture surplus receivables, and maximize net settlement. Set quantile_bias_factor between 0.88 and 0.92.""" if plant_name.upper() == "OSEPL" else "- Standard symmetric accuracy mode applies."}
-- CLEAR-SKY PRESERVATION: If atmospheric indicators indicate CLEAR (cloud cover <= 25%), preserve the full convex solar arc at full capability (quantile_bias_factor = 1.00). DO NOT apply artificial downward cuts below the physics baseline!
+PLANT-SPECIFIC FINANCIAL ASYMMETRY & SPECIAL MANDATES:
+{f"""- SPECIAL MANDATE FOR {plant_name}: PPA Tariff is exceptionally high (Rs {ppa_rate:.2f}/kWh) under Maharashtra INTER regulations.
+  * Over-generation (Actual > Schedule) within 0% to +10% (+{tol_mw:.2f} MW) is credited at full Rs {ppa_rate:.2f}/kWh as cash RECEIVABLES with ZERO DSM penalty.
+  * Over-generation between +10% and +15% receives Rs 8.34 - Rs 7.42/kWh. Beyond +15%, Receivable is Rs 0.00 and DSM penalty is Rs {ppa_rate:.2f}/kWh.
+  * Under-generation (Actual < Schedule) incurs devastating payables and surcharges up to Rs 13.91/kWh (+150% penalty).
+  * STRATEGY: Target the safe sweet-spot corridor (+4% to +8% actual over-injection):
+    - Under cloudy / monsoon / convective risk (cloud cover >= 20% or CAPE >= 400 J/kg), target quantile_bias_factor 0.72 - 0.76 with midday peak ~9.5 - 10.5 MW to eliminate cloud-drop payables.
+    - Under clear sky (cloud cover < 20%), target quantile_bias_factor 0.84 - 0.88 with midday peak ~13.5 - 14.0 MW to capture maximum Band 1 receivables without ever hitting the >+15% cliff.""" if plant_name.upper() == "OSEPL" else (f"""- SPECIAL MANDATE FOR {plant_name}: Large-scale plant with 250 MW AC / 346 MW DC (ILR = 1.384) under strict ±5% (±12.50 MW) tolerance band.
+  * Under CLEAR_SKY (cloud cover <= 20%): Actual generation reaches 230 - 234 MW. Schedule midday peak around 218 - 222 MW to remain within the ±12.5 MW tolerance band without under-forecasting.
+  * Under ABRUPT / CONVECTIVE / CLOUDY weather: Keep schedule conservative to avoid breaching the strict ±12.5 MW boundary.""" if plant_name.upper() == "REWASPRNG" else "- Standard symmetric accuracy mode applies.")}
+- CLEAR-SKY PRESERVATION: If atmospheric indicators indicate CLEAR (cloud cover <= 25%), preserve the full convex solar arc at full capability (quantile_bias_factor = 1.00). DO NOT apply artificial downward cuts below the physics baseline! (For OSEPL, follow the specific mandate above).
 - CONVECTIVE CLOUD POSITIONING: Under moderate/uncertain clouds (cloud cover 30-70% or CAPE > 1000 J/kg), adjust realistically based on diffuse irradiance while keeping predictions centered within the +/- {tol_mw:.2f} MW safe band.
 - OVERCAST BOUNDING: If cloud cover >= 80% or rain is active, bound predictions strictly to the overcast diffuse envelope.
 
