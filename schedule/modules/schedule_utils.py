@@ -445,7 +445,7 @@ def write_current_final_schedule(
         # Seam continuity clamping against last frozen block (solar plants)
         cap_mw = float(getattr(config, "PLANT_CAPACITY_MW", 10.0))
         band_pct = float(getattr(config, "PLANT_TOLERANCE_BAND_PCT", 10.0))
-        max_step = round(cap_mw * (band_pct / 100.0), 3)
+        max_step = float(getattr(config, "PLANT_TOLERANCE_BAND_MW", round(cap_mw * (band_pct / 100.0), 3)))
 
         for i in range(1, len(frozen_rows)):
             prev_row = frozen_rows[i - 1]
@@ -460,11 +460,11 @@ def write_current_final_schedule(
                     # Smooth seam transition across newly actionable blocks
                     if prev_dt < freeze_from <= curr_dt:
                         if abs(diff) > max_step:
-                            smoothed_mw = round(prev_mw + (max_step if diff > 0 else -max_step), 3)
+                            smoothed_mw = round(prev_mw + math.copysign(max_step, diff), 3)
                             curr_row["intellis_mw"] = str(smoothed_mw)
                             curr_row["schedule_mw"] = str(smoothed_mw)
-                    elif abs(diff) > (max_step * 1.5):
-                        smoothed_mw = round(prev_mw + (max_step * 1.5 if diff > 0 else -max_step * 1.5), 3)
+                    elif abs(diff) > max_step:
+                        smoothed_mw = round(prev_mw + math.copysign(max_step, diff), 3)
                         curr_row["intellis_mw"] = str(smoothed_mw)
                         curr_row["schedule_mw"] = str(smoothed_mw)
                 except (ValueError, TypeError):
@@ -819,7 +819,7 @@ def write_full_block_schedule_from_llm_schedule(
 
         # 4-Pass Diurnal Continuity & Anti-Sawtooth Filter
         band_pct = float(getattr(config, "PLANT_TOLERANCE_BAND_PCT", 10.0))
-        max_step = round(ac_cap * (band_pct / 100.0), 3)
+        max_step = float(getattr(config, "PLANT_TOLERANCE_BAND_MW", round(ac_cap * (band_pct / 100.0), 3)))
 
         # Pass 1: Multi-pass anti-jitter moving average across daylight blocks
         for _ in range(3):
@@ -868,7 +868,7 @@ def write_full_block_schedule_from_llm_schedule(
                 curr_mw = float(schedule_by_block.get(b, {}).get("intellis_mw", 0.0))
                 diff = curr_mw - prev_mw
                 if abs(diff) > max_step:
-                    curr_mw = prev_mw + max_step * (1.0 if diff > 0 else -1.0)
+                    curr_mw = prev_mw + math.copysign(max_step, diff)
                 final_val = round(max(0.0, min(ac_cap, curr_mw)), 3)
                 schedule_by_block.setdefault(b, {})["intellis_mw"] = final_val if final_val > 0.02 else 0.0
                 schedule_by_block.setdefault(b, {})["schedule_mw"] = final_val if final_val > 0.02 else 0.0
@@ -879,6 +879,21 @@ def write_full_block_schedule_from_llm_schedule(
             if b in schedule_by_block:
                 schedule_by_block[b]["intellis_mw"] = exp_mw
                 schedule_by_block[b]["schedule_mw"] = exp_mw
+
+        # Seam boundary anti-sawtooth clamp: Ensure the transition step from the last
+        # frozen/explicit block to the first actionable/generated block does not exceed max_step
+        if input_explicit_mw:
+            last_exp_b = max(input_explicit_mw.keys())
+            first_act_b = last_exp_b + 1
+            if first_act_b in schedule_by_block and 24 <= first_act_b <= 76:
+                frozen_mw = float(schedule_by_block[last_exp_b].get("intellis_mw", 0.0))
+                act_mw = float(schedule_by_block[first_act_b].get("intellis_mw", 0.0))
+                delta = act_mw - frozen_mw
+                if abs(delta) > max_step:
+                    clamped_mw = round(frozen_mw + math.copysign(max_step, delta), 3)
+                    clamped_mw = max(0.0, min(ac_cap, clamped_mw))
+                    schedule_by_block[first_act_b]["intellis_mw"] = clamped_mw
+                    schedule_by_block[first_act_b]["schedule_mw"] = clamped_mw
 
         # Anti-plateau solar curvature guardrail: Ensure no consecutive daylight blocks are identical
         mw_seq = np.array([float(schedule_by_block.get(b, {}).get("schedule_mw", schedule_by_block.get(b, {}).get("intellis_mw", 0.0))) for b in range(1, total_blocks + 1)])

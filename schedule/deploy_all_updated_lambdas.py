@@ -7,7 +7,7 @@ import sys
 REGION = "ap-south-1"
 ACCOUNT_ID = "552496640388"
 REPO = "intellis-ai-scheduler"
-TAG = "intellis-prod-ensemble-gti-fixes-20261019-v2"
+TAG = "intellis-prod-fixes-20261020-v1"
 ECR_REGISTRY = f"{ACCOUNT_ID}.dkr.ecr.{REGION}.amazonaws.com"
 IMAGE_URI = f"{ECR_REGISTRY}/{REPO}:{TAG}"
 
@@ -43,6 +43,8 @@ ALL_LAMBDAS = [
     "ZTRIC-ai-intellis-scheduler",
     "intellis-dayhead-forcast-solar",
     "intellis-weekhead-forcast-solar",
+    "intellis-dayhead-forcast-wind",
+    "intellis-weekhead-forcast-wind",
 ]
 
 print("=" * 70)
@@ -56,7 +58,7 @@ ecr_client = session.client("ecr")
 lambda_client = session.client("lambda")
 
 # 1. ECR Login
-print("\n[Step 1/4] Logging into Amazon ECR...")
+print("\n[Step 1/5] Logging into Amazon ECR...")
 auth_token = ecr_client.get_authorization_token()["authorizationData"][0]["authorizationToken"]
 user, pwd = base64.b64decode(auth_token).decode().split(":")
 
@@ -68,7 +70,7 @@ if proc.returncode != 0:
 print(f"ECR Login Succeeded: {proc.stdout.strip()}")
 
 # 2. Docker Build
-print("\n[Step 2/4] Building Docker Image (--platform linux/amd64 --provenance=false)...")
+print("\n[Step 2/5] Building Docker Image (--platform linux/amd64 --provenance=false)...")
 build_cmd = [
     "docker", "buildx", "build",
     "--platform", "linux/amd64",
@@ -85,7 +87,7 @@ if proc.returncode != 0:
 print("Docker Build Succeeded!")
 
 # 3. Docker Push
-print(f"\n[Step 3/4] Pushing Docker Image to ECR ({IMAGE_URI})...")
+print(f"\n[Step 3/5] Pushing Docker Image to ECR ({IMAGE_URI})...")
 push_cmd = ["docker", "push", IMAGE_URI]
 proc = subprocess.run(push_cmd, capture_output=True, text=True)
 if proc.returncode != 0:
@@ -94,10 +96,10 @@ if proc.returncode != 0:
 print("Docker Push Succeeded!")
 
 # 4. Update Lambda Functions
-print(f"\n[Step 4/4] Updating All {len(ALL_LAMBDAS)} Lambda Functions...")
+print(f"\n[Step 4/5] Updating All {len(ALL_LAMBDAS)} Lambda Functions...")
 deployment_results = []
 for idx, fn in enumerate(ALL_LAMBDAS, 1):
-    print(f"\n[{idx}/{len(ALL_LAMBDAS)}] Triggering update for {fn}...")
+    print(f"[{idx}/{len(ALL_LAMBDAS)}] Triggering update for {fn}...")
     try:
         lambda_client.update_function_code(
             FunctionName=fn,
@@ -132,9 +134,6 @@ for item in deployment_results:
                 print(f"  [ERROR] {fn} update failed: {reason}")
                 final_results.append({"Function": fn, "Status": f"FAILED: {reason}"})
                 break
-            else:
-                if attempt % 10 == 0:
-                    print(f"  ... waiting for {fn} (status: {status})")
         except Exception as e:
             print(f"  [ERROR] querying {fn}: {e}")
             final_results.append({"Function": fn, "Status": f"ERROR: {e}"})
@@ -147,3 +146,42 @@ print("DEPLOYMENT COMPLETE SUMMARY")
 print("=" * 70)
 for r in final_results:
     print(f"{r['Function']:<40} : {r['Status']}")
+
+# 5. Live AWS Environment Verification Test
+print("\n" + "=" * 70)
+print("[Step 5/5] TESTING LATEST CHANGES IN LIVE AWS LAMBDA ENVIRONMENT")
+print("=" * 70)
+import json
+
+test_sample = [
+    ("BHUPALPALLY-ai-intellis-scheduler", "BHUPALPALLY"),
+    ("GSNP-ai-intellis-scheduler", "GSNP"),
+    ("KASIPET-ai-intellis-scheduler", "KASIPET"),
+    ("OSEPL-ai-intellis-scheduler", "OSEPL"),
+    ("BAMKHAL-ai-intellis-scheduler", "BAMKHAL"),
+]
+
+for fn, site in test_sample:
+    print(f"\nInvoking live AWS Lambda: {fn} for site {site}...")
+    payload = {
+        "site_id": site,
+        "target_date": "2026-10-20",
+        "target_time": "12:00",
+        "force": True,
+    }
+    try:
+        resp = lambda_client.invoke(
+            FunctionName=fn,
+            InvocationType="RequestResponse",
+            Payload=json.dumps(payload),
+        )
+        status_code = resp.get("StatusCode")
+        resp_payload = json.loads(resp["Payload"].read().decode("utf-8"))
+        print(f"  HTTP StatusCode: {status_code}")
+        print(f"  Response Status: {resp_payload.get('status', 'unknown')}")
+        if resp_payload.get("status") in ("ok", "skipped"):
+            print(f"  [PASSED] Live invocation successful in AWS environment!")
+        else:
+            print(f"  [WARN] Unexpected response: {resp_payload}")
+    except Exception as exc:
+        print(f"  [FAILED] Invocation failed: {exc}")

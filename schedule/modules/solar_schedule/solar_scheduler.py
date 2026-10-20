@@ -277,7 +277,36 @@ class SolarScheduleEngine:
             tr_dynamic = (dc_cap * base_bop) / 1000.0
             pred_mw = np.round(np.clip(fused_gti * tr_dynamic * temp_factor, 0.0, self.profile.ac_capacity_mw), 2)
         else:
-            pred_mw = np.round(np.clip(fused_gti * self.profile.transfer_ratio * temp_factor, 0.0, self.profile.ac_capacity_mw), 2)
+            base_tr = self.profile.transfer_ratio / 0.905
+            kt_arr = getattr(gti_result, "blended_kt_96", None)
+            if kt_arr is None or len(kt_arr) < 96:
+                kt_arr = np.clip(fused_gti / np.maximum(15.0, cs_poa), 0.0, 1.15)
+
+            pred_mw = np.zeros(96, dtype=float)
+            reg = (getattr(self.profile, "penalty_regulation", "") or "").upper()
+
+            for b in range(96):
+                if b < 24 or b >= 76 or cs_poa[b] < 20.0:
+                    continue
+
+                kt_val = float(kt_arr[b])
+                if kt_val >= 0.78:
+                    # Normal Steady Clear Regime: deliver full calibrated plant capacity (P55-P60)
+                    val = fused_gti[b] * base_tr * temp_factor[b]
+                else:
+                    # Abrupt / Cloud Volatile Regime: transition to defensive lower envelope (P30-P35)
+                    blend = float(np.clip((kt_val - 0.40) / (0.78 - 0.40), 0.0, 1.0))
+                    dyn_tr = base_tr * blend + self.profile.transfer_ratio * (1.0 - blend)
+                    val = fused_gti[b] * dyn_tr * temp_factor[b] * (0.88 + 0.12 * blend)
+
+                # State Regulatory Asymmetric Guardrails:
+                # Under state regulations with strict over-forecasting penalties (e.g. MP),
+                # prevent over-shooting the safe tolerance ceiling during volatile hours
+                if "MADHYA PRADESH" in reg and self.profile.ac_capacity_mw >= 15.0:
+                    safe_midday_cap = round(self.profile.ac_capacity_mw * 0.62, 2)
+                    val = min(val, safe_midday_cap)
+
+                pred_mw[b] = round(float(np.clip(val, 0.0, self.profile.ac_capacity_mw)), 2)
 
         pred_mw[:23] = 0.0
         pred_mw[76:] = 0.0
@@ -287,7 +316,7 @@ class SolarScheduleEngine:
             fused_day_sum = float(np.sum(fused_gti[23:75])) if len(fused_gti) >= 75 else 0.0
             clearness = fused_day_sum / max(1.0, cs_day_sum)
             if clearness >= 0.85:
-                target_peak = 222.0
+                target_peak = 238.5
                 max_cs = max(cs_poa) if len(cs_poa) > 0 and max(cs_poa) > 0 else 950.0
                 for b_idx in range(23, 75):
                     b_num = b_idx + 1
@@ -296,17 +325,17 @@ class SolarScheduleEngine:
                     if 43 <= b_num <= 51:
                         val = max(cur_val, target_peak)
                     elif b_num == 42:
-                        val = max(cur_val, 215.0)
+                        val = max(cur_val, 230.0)
                     elif b_num == 41:
-                        val = max(cur_val, 208.0)
+                        val = max(cur_val, 222.0)
                     elif b_num == 40:
-                        val = max(cur_val, 198.0)
+                        val = max(cur_val, 210.0)
                     elif b_num == 52:
-                        val = max(cur_val, 216.0)
+                        val = max(cur_val, 230.0)
                     elif b_num == 53:
-                        val = max(cur_val, 208.0)
+                        val = max(cur_val, 222.0)
                     elif b_num == 54:
-                        val = max(cur_val, 198.0)
+                        val = max(cur_val, 210.0)
                     elif 55 <= b_num <= 68:
                         val = max(cur_val, (cs_norm * target_peak) * 1.05)
                     else:
@@ -487,9 +516,10 @@ class SolarScheduleEngine:
 
                 if updated_blocks:
                     prev_adj = updated_blocks[-1]["intellis_mw"]
-                    max_delta = max(prev_adj - adj_mw, max(0.50, self.profile.ac_capacity_mw * 0.10)) if (b_idx == (actionable_block - 1) and adj_mw < prev_adj and kt_obs < 0.65) else max(0.50, self.profile.ac_capacity_mw * 0.10)
-                    if abs(adj_mw - prev_adj) > max_delta:
-                        adj_mw = round(prev_adj + (max_delta if adj_mw > prev_adj else -max_delta), 2)
+                    max_step = self.profile.tolerance_band_mw
+                    delta = adj_mw - prev_adj
+                    if abs(delta) > max_step:
+                        adj_mw = round(prev_adj + math.copysign(max_step, delta), 2)
                         adj_mw = min(self.profile.ac_capacity_mw, max(0.0, adj_mw))
 
                 if b_dict["block"] < 24 or b_dict["block"] > 76:
@@ -845,6 +875,8 @@ class SolarScheduleEngine:
             "reasoning": advice.reasoning,
             "source": advice.source,
         }
+        if getattr(advice, "dispatch_advisory", None):
+            sched["llm_strategy"]["dispatch_advisory"] = advice.dispatch_advisory
 
         # OSEPL-Specific Dynamic Sweet-Spot (+4% to +8% Surplus) Optimization Engine
         # Under Maharashtra INTER regulations for OSEPL (20 MW AC, tariff Rs 9.27/kWh):
@@ -853,23 +885,22 @@ class SolarScheduleEngine:
         # 3. Over-generation beyond +3.0 MW (>+15%) receives Rs 0.00 credit and incurs Rs 9.27/kWh penalty.
         # 4. Under-generation pays devastating surcharges up to Rs 13.91/kWh (+150% penalty).
         if getattr(self.profile, "plant_name", "").upper() == "OSEPL":
+            cloud_pct = weather_ind.get("cloud_cover_pct", 0)
             is_cloudy_or_convective = (
-                weather_ind.get("cloud_cover_pct", 0) >= 20.0
-                or weather_ind.get("cape_j_kg", 0) >= 400.0
+                cloud_pct >= 25.0
+                or (weather_ind.get("cape_j_kg", 0) >= 600.0 and cloud_pct >= 20.0)
                 or weather_ind.get("precip_mm", 0) > 0.0
-                or real_clearness_ratio < 0.85
-                or advice.regime in ("PARTLY_CLOUDY", "CONVECTIVE_MONSOON", "OVERCAST", "RAIN")
+                or real_clearness_ratio < 0.75
+                or advice.regime in ("OVERCAST", "RAIN")
             )
             if is_cloudy_or_convective:
-                # Under clouds / monsoon convective risk, protect against deep cloud drops (e.g. 7 MW).
-                # Target P25-P30 safe lower envelope (0.74 factor, midday peak ~9.5 - 10.5 MW).
-                target_factor = 0.74
-                midday_cap = 10.50
+                # Under heavy clouds / rain, protect against deep cloud drops
+                target_factor = 0.82
+                midday_cap = 14.50
             else:
-                # Under clear sky, plant can reach ~16.5 MW.
-                # Target 0.86 factor (peak ~13.5 - 14.2 MW), ensuring deviation stays < 2.8 MW (below +14% to avoid >+15% cliff).
-                target_factor = 0.86
-                midday_cap = 14.20
+                # Under clear sky, plant reaches 18.55 MW peak
+                target_factor = 0.95
+                midday_cap = 18.80
 
             for b in sched["blocks"]:
                 b_num = b["block"]
@@ -887,9 +918,9 @@ class SolarScheduleEngine:
 
         # REWASPRNG-Specific Weather-Gated Clear-Sky Optimization & Shoulder Protection
         # Plant Capacity: 250 MW AC / 346 MW DC (ILR 1.384). Strict ±5% (±12.5 MW) tolerance band.
-        # Problem: Under clear sky, plant delivers 230-234 MW, but uncalibrated ensemble was predicting only ~196 MW,
+        # Problem: Under clear sky, plant delivers 234-239 MW, but uncalibrated ensemble was predicting only ~196 MW,
         # incurring severe under-forecasting penalties across Blocks 40-56.
-        # Guardrail: Weather-conditioned activation ensuring calibrated clear-sky solar arc (218-222 MW peak) on clear days,
+        # Guardrail: Weather-conditioned activation ensuring calibrated clear-sky solar arc (234-238.5 MW peak) on clear days,
         # while strictly reverting to conservative bounds on cloudy/convective/rain days to avoid the 12.5 MW penalty trap.
         if getattr(self.profile, "plant_name", "").upper() == "REWASPRNG":
             is_clear_sky = (
@@ -907,10 +938,10 @@ class SolarScheduleEngine:
 
             if is_clear_sky and not scada_cloud_drop:
                 # REWASPRNG High Inverter Loading Ratio (ILR = 1.384, 346 MW DC on 250 MW AC)
-                # On clear days, the massive 346 MW DC array saturates inverters to peak delivery (222 MW)
+                # On clear days, the massive 346 MW DC array saturates inverters to peak delivery (238.5 MW)
                 # as early as 10:30 AM (Block 43) and sustains peak production until 13:00 PM (Block 52).
                 max_cs = max(cs_poa) if len(cs_poa) > 0 and max(cs_poa) > 0 else 950.0
-                target_peak = 222.0
+                target_peak = 238.5
 
                 for b in sched["blocks"]:
                     b_num = b["block"]
@@ -924,17 +955,17 @@ class SolarScheduleEngine:
                             # Saturated midday plateau (10:30 AM to 12:45 PM)
                             val = max(cur_val, target_peak)
                         elif b_num == 42:
-                            val = max(cur_val, 215.0)
+                            val = max(cur_val, 230.0)
                         elif b_num == 41:
-                            val = max(cur_val, 208.0)
+                            val = max(cur_val, 222.0)
                         elif b_num == 40:
-                            val = max(cur_val, 198.0)
+                            val = max(cur_val, 210.0)
                         elif b_num == 52:
-                            val = max(cur_val, 216.0)
+                            val = max(cur_val, 230.0)
                         elif b_num == 53:
-                            val = max(cur_val, 208.0)
+                            val = max(cur_val, 222.0)
                         elif b_num == 54:
-                            val = max(cur_val, 198.0)
+                            val = max(cur_val, 210.0)
                         elif 55 <= b_num <= 68:
                             # High-ILR extended afternoon shoulder
                             val = max(cur_val, (cs_norm * target_peak) * 1.05)

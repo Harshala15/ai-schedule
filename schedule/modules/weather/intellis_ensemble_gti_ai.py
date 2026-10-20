@@ -749,21 +749,30 @@ class IntellisEnsembleGTIAI:
             if np.max(d_mw) < 0.10 * self.profile.ac_capacity_mw:
                 continue
 
-            # Filter daylight blocks with substantial solar generation (>= 350 W/m² and >= 15% AC capacity)
-            mask = (d_poa >= 350.0) & (d_mw >= 0.15 * self.profile.ac_capacity_mw)
+            # Clear-Sky Clearness Stability Filter: Calibrate strictly on clean, unshaded midday blocks
+            # (>= 500 W/m² and >= 40% AC capacity) to capture true plant electrical performance
+            mask = (d_poa >= 500.0) & (d_mw >= 0.40 * self.profile.ac_capacity_mw)
+            if np.sum(mask) < 3:
+                # Fallback threshold if lookback weather was overcast
+                mask = (d_poa >= 400.0) & (d_mw >= 0.25 * self.profile.ac_capacity_mw)
+
             if np.sum(mask) >= 3:
                 # Normalize observed power by temperature factor to learn true STC PR
                 pr_stc_vals = (d_mw[mask] * 1000.0) / (d_poa[mask] * self.profile.dc_capacity_mw * temp_factor[mask])
                 valid_prs.extend(pr_stc_vals.tolist())
 
+        profile_pr = getattr(self.profile, "performance_ratio", None) or 0.7800
+        pr_floor = max(0.7800, float(profile_pr))
+
         if len(valid_prs) >= 4:
-            # 75th percentile captures clear high-performance generation while filtering out cloud dips
-            learned_pr = float(np.percentile(valid_prs, 75))
-            learned_pr = max(0.75, min(0.93, learned_pr))
+            # 85th percentile captures clear high-performance generation while filtering out cloud dips
+            learned_pr = float(np.percentile(valid_prs, 85))
+            learned_pr = max(pr_floor, min(0.93, learned_pr))
         else:
             # When actual generation is absent on S3, calibrate dynamically from seasonal thermal physics
-            base_pr = getattr(self.profile, "calibrated_pr", None) or getattr(self.profile, "performance_ratio", None) or 0.8800
+            base_pr = getattr(self.profile, "calibrated_pr", None) or profile_pr or 0.8300
             learned_pr = self._calibrate_pr_from_seasonal_thermal_physics(target_dt, lookback_days=lookback_days, base_pr=base_pr)
+            learned_pr = max(pr_floor, min(0.93, learned_pr))
 
         self.profile.calibrated_pr = round(learned_pr, 4)
         self.profile.transfer_ratio = round((self.profile.dc_capacity_mw * self.profile.calibrated_pr) / 1000.0, 6)
@@ -1130,7 +1139,8 @@ class IntellisEnsembleGTIAI:
         for k in selected_keys:
             if model_sim_sq.get(k, 0.0) > 1e-4:
                 alpha = float(model_cross[k] / model_sim_sq[k])
-                alpha = float(np.clip(alpha, 0.85, 1.15))
+                # Dynamic Alpha Clamping: Allow up to 1.30 gain to correct the 15% raw NWP deficit
+                alpha = float(np.clip(alpha, 0.80, 1.30))
             else:
                 alpha = 1.0
             calibration_gains[k] = round(alpha, 4)
@@ -1142,7 +1152,7 @@ class IntellisEnsembleGTIAI:
     def benchmark_and_select_slot_models(
         self,
         target_date_str: str,
-        lookback_days: int = 5,
+        lookback_days: int = 3,
     ) -> dict[str, tuple[list[str], dict[str, float], dict[str, float]]]:
         """Benchmark and select top models independently for each diurnal time slot (Capped Diversity per slot)."""
         slot_results = {}
@@ -1354,7 +1364,28 @@ class IntellisEnsembleGTIAI:
             pred_mw = np.round(np.clip(fused_gti * tr_dynamic * temp_factor, 0.0, self.profile.ac_capacity_mw), 2)
         else:
             # Metered sites: DC capacity basis with SCADA dynamic PR calibration
-            pred_mw = np.round(np.clip(fused_gti * self.profile.transfer_ratio * temp_factor, 0.0, self.profile.ac_capacity_mw), 2)
+            base_tr = self.profile.transfer_ratio / 0.905
+            kt_arr = np.clip(fused_gti / np.maximum(15.0, cs_poa), 0.0, 1.15)
+            pred_mw = np.zeros(96, dtype=float)
+            reg = (getattr(self.profile, "penalty_regulation", "") or "").upper()
+
+            for b in range(96):
+                if b < 24 or b >= 76 or cs_poa[b] < 20.0:
+                    continue
+
+                kt_val = float(kt_arr[b])
+                if kt_val >= 0.78:
+                    val = fused_gti[b] * base_tr * temp_factor[b]
+                else:
+                    blend = float(np.clip((kt_val - 0.40) / (0.78 - 0.40), 0.0, 1.0))
+                    dyn_tr = base_tr * blend + self.profile.transfer_ratio * (1.0 - blend)
+                    val = fused_gti[b] * dyn_tr * temp_factor[b] * (0.88 + 0.12 * blend)
+
+                if "MADHYA PRADESH" in reg and self.profile.ac_capacity_mw >= 15.0:
+                    safe_midday_cap = round(self.profile.ac_capacity_mw * 0.62, 2)
+                    val = min(val, safe_midday_cap)
+
+                pred_mw[b] = round(float(np.clip(val, 0.0, self.profile.ac_capacity_mw)), 2)
 
         pred_mw[:23] = 0.0
         pred_mw[76:] = 0.0
@@ -1610,14 +1641,10 @@ class IntellisEnsembleGTIAI:
                 # Ramp continuity against previous block
                 if updated_blocks:
                     prev_adj = updated_blocks[-1]["intellis_mw"]
-                    # At the gate-closure boundary (first actionable block after freeze lag),
-                    # allow stepping down to actual collapsed generation if plant dropped
-                    if b_idx == (actionable_block - 1) and adj_mw < prev_adj and kt_obs < 0.65:
-                        max_delta = max(prev_adj - adj_mw, max(0.50, self.profile.ac_capacity_mw * 0.10))
-                    else:
-                        max_delta = max(0.50, self.profile.ac_capacity_mw * 0.10)
-                    if abs(adj_mw - prev_adj) > max_delta:
-                        adj_mw = round(prev_adj + (max_delta if adj_mw > prev_adj else -max_delta), 2)
+                    max_step = self.profile.tolerance_band_mw
+                    delta = adj_mw - prev_adj
+                    if abs(delta) > max_step:
+                        adj_mw = round(prev_adj + math.copysign(max_step, delta), 2)
                         adj_mw = min(self.profile.ac_capacity_mw, max(0.0, adj_mw))
                 if b_dict["block"] < 24 or b_dict["block"] > 76:
                     adj_mw = 0.0
@@ -2029,6 +2056,8 @@ class IntellisEnsembleGTIAI:
             "reasoning": advice.reasoning,
             "source": advice.source,
         }
+        if getattr(advice, "dispatch_advisory", None):
+            sched["llm_strategy"]["dispatch_advisory"] = advice.dispatch_advisory
 
         # Anti-plateau solar curvature guardrail: Ensure no consecutive daylight blocks are identical
         mw_vals = np.array([float(b.get("schedule_mw", 0.0)) for b in sched["blocks"]])

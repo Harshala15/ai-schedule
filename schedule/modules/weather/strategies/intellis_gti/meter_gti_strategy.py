@@ -524,21 +524,30 @@ class MeterGTIStrategy(BaseGTIStrategy):
             if np.max(d_mw) < 0.10 * self.profile.ac_capacity_mw:
                 continue
 
-            # Filter daylight blocks with substantial solar generation (>= 350 W/m² and >= 15% AC capacity)
-            mask = (d_poa >= 350.0) & (d_mw >= 0.15 * self.profile.ac_capacity_mw)
+            # Clear-Sky Clearness Stability Filter: Calibrate strictly on clean, unshaded midday blocks
+            # (>= 500 W/m² and >= 40% AC capacity) to capture true plant electrical performance
+            mask = (d_poa >= 500.0) & (d_mw >= 0.40 * self.profile.ac_capacity_mw)
+            if np.sum(mask) < 3:
+                # Fallback threshold if lookback weather was overcast
+                mask = (d_poa >= 400.0) & (d_mw >= 0.25 * self.profile.ac_capacity_mw)
+
             if np.sum(mask) >= 3:
                 # STC temperature-corrected PR points
                 pr_stc_vals = (d_mw[mask] * 1000.0) / (d_poa[mask] * self.profile.dc_capacity_mw * temp_factor[mask])
                 valid_prs.extend(pr_stc_vals.tolist())
 
+        profile_pr = getattr(self.profile, "performance_ratio", None) or 0.7800
+        pr_floor = max(0.7800, float(profile_pr))
+
         if len(valid_prs) >= 4:
-            # 75th percentile captures clear high-performance generation while filtering out cloud dips
-            learned_pr = float(np.percentile(valid_prs, 75))
-            learned_pr = max(0.75, min(0.93, learned_pr))
+            # 85th percentile captures clear high-performance generation while filtering out cloud dips
+            learned_pr = float(np.percentile(valid_prs, 85))
+            learned_pr = max(pr_floor, min(0.93, learned_pr))
         else:
             # When actual generation is absent on S3, calibrate dynamically from seasonal thermal physics
-            base_pr = getattr(self.profile, "calibrated_pr", None) or getattr(self.profile, "performance_ratio", None) or 0.8800
+            base_pr = getattr(self.profile, "calibrated_pr", None) or profile_pr or 0.8300
             learned_pr = self._calibrate_pr_from_seasonal_thermal_physics(target_dt, lookback_days=lookback_days, base_pr=base_pr)
+            learned_pr = max(pr_floor, min(0.93, learned_pr))
 
         self.profile.calibrated_pr = round(learned_pr, 4)
         self.profile.transfer_ratio = round((self.profile.dc_capacity_mw * self.profile.calibrated_pr) / 1000.0, 6)
@@ -880,7 +889,8 @@ class MeterGTIStrategy(BaseGTIStrategy):
         for k in selected_keys:
             if model_sim_sq.get(k, 0.0) > 1e-4:
                 alpha = float(model_cross[k] / model_sim_sq[k])
-                alpha = float(np.clip(alpha, 0.85, 1.15))
+                # Dynamic Alpha Clamping: Allow up to 1.30 gain to correct the 15% raw NWP deficit
+                alpha = float(np.clip(alpha, 0.80, 1.30))
             else:
                 alpha = 1.0
             calibration_gains[k] = round(alpha, 4)
@@ -983,7 +993,7 @@ class MeterGTIStrategy(BaseGTIStrategy):
         weather = self.fetch_ensemble_weather(target_date_str)
         cs_poa = self.compute_clearsky_poa_96block(target_date_str)
 
-        lookback_days = int(kwargs.get("lookback_days", 7))
+        lookback_days = int(kwargs.get("lookback_days", 3))
         if not selected_keys or not weights_map:
             slot_selections = self.benchmark_and_select_slot_models(target_date_str, lookback_days=lookback_days)
             all_selected = []

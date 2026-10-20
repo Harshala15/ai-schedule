@@ -646,6 +646,29 @@ def run_schedule_job(
         except Exception as lgepl_err:
             print(f"  [WARN] Failed to write LGEPL revision penalty replica: {lgepl_err}")
 
+    # Specialized Dispatch Weather Advisory for scheduling operators (KASIPET only)
+    if str(getattr(config, "PLANT_NAME", "")).strip().upper() == "KASIPET":
+        try:
+            dispatch_advisory = (metadata.get("llm_strategy") or {}).get("dispatch_advisory")
+            if dispatch_advisory:
+                advisory_payload = {
+                    "plant_name": "KASIPET",
+                    "target_date": target_date,
+                    "target_time": target_time,
+                    "regime": (metadata.get("llm_strategy") or {}).get("regime"),
+                    "preferred_agency": (metadata.get("llm_strategy") or {}).get("preferred_agency"),
+                    "dispatch_advisory": dispatch_advisory,
+                    "generated_at": dt.datetime.now().isoformat(),
+                }
+                advisory_key = f"{schedule_prefix.rstrip('/')}/{target_date}/KASIPET_latest_dispatch_advisory.json"
+                storage.upload_json(bucket, advisory_key, advisory_payload)
+                root_advisory_key = f"{schedule_prefix.rstrip('/')}/KASIPET_latest_dispatch_advisory.json"
+                storage.upload_json(bucket, root_advisory_key, advisory_payload)
+                metadata["kasipet_dispatch_advisory_key"] = advisory_key
+                print(f"  [KASIPET] Uploaded weather dispatch advisory to {advisory_key} and {root_advisory_key}")
+        except Exception as adv_err:
+            print(f"  [WARN] Failed to upload KASIPET dispatch advisory: {adv_err}")
+
     legacy_current_final_csv = generated_root / "current_final_schedule.csv"
     if legacy_current_final_csv != current_final_csv:
         shutil.copyfile(current_final_csv, legacy_current_final_csv)

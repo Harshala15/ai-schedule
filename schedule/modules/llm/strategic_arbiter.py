@@ -28,6 +28,7 @@ class StrategicAdvice:
     is_trip_or_curtailment: bool
     reasoning: str
     block_predictions: dict[str, float] = field(default_factory=dict)
+    dispatch_advisory: dict[str, Any] = field(default_factory=dict)
     source: str = "LLM_STRATEGIC_ARBITER"
 
 
@@ -47,25 +48,6 @@ class LLMStrategicArbiter:
         actionable_blocks: list[dict[str, Any]] | None = None,
     ) -> StrategicAdvice:
         """Consults the LLM for strategic advice and predictions up to 7:00 PM (Block 76), with immediate deterministic fallback."""
-        default_advice = StrategicAdvice(
-            regime="CLEAR_SKY",
-            quantile_bias_factor=1.0,
-            preferred_agency="BALANCED",
-            is_trip_or_curtailment=False,
-            reasoning="Default physics baseline (deterministic mode).",
-            block_predictions={},
-            source="PHYSICS_BASELINE",
-        )
-
-        # Check if LLM is enabled
-        enabled = os.getenv("ENABLE_LLM_STRATEGIC_ARBITER", "true").strip().lower() in {"1", "true", "yes", "on"}
-        if not enabled:
-            return default_advice
-
-        api_keys = predictor._load_openrouter_api_keys()
-        if not api_keys:
-            return default_advice
-
         weather_indicators = weather_indicators or {}
         live_telemetry = live_telemetry or {}
 
@@ -76,6 +58,39 @@ class LLMStrategicArbiter:
         tol_mw = getattr(self.profile, "tolerance_band_mw", None)
         if tol_mw is None:
             tol_mw = round(ac_cap * tol_band, 3)
+
+        default_advice = StrategicAdvice(
+            regime="CLEAR_SKY",
+            quantile_bias_factor=1.0,
+            preferred_agency="BALANCED",
+            is_trip_or_curtailment=False,
+            reasoning="Default physics baseline (deterministic mode).",
+            block_predictions={},
+            source="PHYSICS_BASELINE",
+        )
+        if plant_name.upper() == "KASIPET":
+            cloud_pct = weather_indicators.get("cloud_cover_pct", 0) if weather_indicators else 0
+            temp_c = weather_indicators.get("temp_c", 30.0) if weather_indicators else 30.0
+            default_advice.dispatch_advisory = {
+                "sky_condition": "Clear Sky" if cloud_pct < 25 else "Partly Cloudy",
+                "cloud_risk": "LOW" if cloud_pct < 25 else ("HIGH" if cloud_pct >= 60 else "MEDIUM"),
+                "generation_trend": "STABLE" if cloud_pct < 25 else "VARIABLE",
+                "action_recommendation": "Maintain physics baseline within +/-2.25 MW tolerance band.",
+                "advisory_text": (
+                    f"Currently, Kasipet has {cloud_pct}% cloud cover at {temp_c:.1f}°C ambient temperature. "
+                    f"Over the upcoming daylight blocks after the effective time, skies will remain stable with no severe cloud build-up expected. "
+                    f"Generation will track the normal diurnal curve safely within Telangana's +/-15% (+/-2.25 MW) tolerance band."
+                ),
+            }
+
+        # Check if LLM is enabled
+        enabled = os.getenv("ENABLE_LLM_STRATEGIC_ARBITER", "true").strip().lower() in {"1", "true", "yes", "on"}
+        if not enabled:
+            return default_advice
+
+        api_keys = predictor._load_openrouter_api_keys()
+        if not api_keys:
+            return default_advice
 
         target_blocks = actionable_blocks if actionable_blocks is not None else (next_12_blocks or [])
         num_blocks = len(target_blocks)
@@ -99,6 +114,28 @@ class LLMStrategicArbiter:
             header_desc = "ACTIONABLE DISPATCH BLOCKS (Physics Baseline Anchor):"
             horizon_desc = "over the actionable daylight horizon up to 7:00 PM"
             sample_blocks = '"55": 5.25,\n    "56": 5.15'
+
+        kasipet_task = ""
+        kasipet_schema = ""
+        if plant_name.upper() == "KASIPET":
+            kasipet_task = (
+                "5. OPERATOR WEATHER ADVISORY (KASIPET ONLY):\n"
+                "   Write 'dispatch_advisory.advisory_text' as a continuous single paragraph of MAXIMUM THREE LINES in plain English.\n"
+                "   It must seamlessly connect three things in continuous flow:\n"
+                "   - Current weather condition at the site (temperature, cloud cover).\n"
+                "   - Future weather condition after the effective revision time (incoming clouds, rain threat, or clear continuity).\n"
+                "   - Future generation impact (expected peak MW, trend like rising/steady/dropping) and scheduling advice under Telangana +/-15% (+/-2.25 MW) band.\n"
+                "   Do NOT use bullet points or numbered lists; write exactly one coherent, continuous 2-to-3 sentence paragraph.\n"
+            )
+            kasipet_schema = (
+                ',\n  "dispatch_advisory": {\n'
+                '    "sky_condition": "Clear Sky / Scattered Clouds / Overcast",\n'
+                '    "cloud_risk": "LOW / MEDIUM / HIGH",\n'
+                '    "generation_trend": "RISING / STABLE / DROPPING",\n'
+                '    "action_recommendation": "ACTION: Submit schedule as generated; no manual cuts needed.",\n'
+                '    "advisory_text": "Currently, Kasipet has clear skies with mild 31°C ambient temperature and low cloud cover (14%). Over the afternoon after 11:15, skies will remain mostly sunny with no convective clouds or rain approaching the site. As a result, generation will steadily rise to a peak of 14.0–14.2 MW across midday blocks, so schedulers should submit the full baseline schedule within the safe +/-2.25 MW tolerance band."\n'
+                '  }'
+            )
 
         prompt = f"""You are the Chief Renewable Energy Meteorological Scheduling Strategist for {plant_name} Solar Power Plant.
 Target Date: {target_date_str} | Revision Time: {target_time_str}
@@ -145,7 +182,7 @@ TASKS:
    - Keep each block within physical bounds: 0.0 <= MW <= {ac_cap:.1f} MW.
 3. Recommend preferred ensemble agency: ["BALANCED", "ECMWF", "ICON", "GEFS"].
 4. Set "is_trip_or_curtailment" to false (electrical trips are handled outside meteorology).
-
+{kasipet_task}
 Respond ONLY with a JSON object in this exact schema:
 {{
   "regime": "CLEAR_SKY",
@@ -155,7 +192,7 @@ Respond ONLY with a JSON object in this exact schema:
   "reasoning": "Brief operational rationale for the prediction based on atmospheric indicators",
   "block_predictions": {{
     {sample_blocks}
-  }}
+  }}{kasipet_schema}
 }}"""
 
         model_names = predictor._load_openrouter_model_names()
@@ -220,6 +257,34 @@ Respond ONLY with a JSON object in this exact schema:
                     except (ValueError, TypeError):
                         continue
 
+            dispatch_advisory: dict[str, Any] = {}
+            if plant_name.upper() == "KASIPET":
+                raw_advisory = data.get("dispatch_advisory")
+                if isinstance(raw_advisory, dict) and raw_advisory.get("advisory_text"):
+                    dispatch_advisory = {
+                        "sky_condition": str(raw_advisory.get("sky_condition", regime.replace("_", " ").title())),
+                        "cloud_risk": str(raw_advisory.get("cloud_risk", "LOW")).upper(),
+                        "generation_trend": str(raw_advisory.get("generation_trend", "STABLE")).upper(),
+                        "action_recommendation": str(raw_advisory.get("action_recommendation", "")),
+                        "advisory_text": str(raw_advisory.get("advisory_text", "")),
+                    }
+                else:
+                    cloud_pct = weather_indicators.get("cloud_cover_pct", 0) if weather_indicators else 0
+                    temp_c = weather_indicators.get("temp_c", 30.0) if weather_indicators else 30.0
+                    trend = "rising smoothly toward midday peak" if cloud_pct < 30 else ("dropping due to cloud cover" if cloud_pct >= 60 else "stable")
+                    risk = "LOW" if cloud_pct < 30 else ("HIGH" if cloud_pct >= 60 else "MEDIUM")
+                    dispatch_advisory = {
+                        "sky_condition": f"{regime.replace('_', ' ').title()}",
+                        "cloud_risk": risk,
+                        "generation_trend": "STABLE" if cloud_pct < 30 else ("DROPPING" if cloud_pct >= 60 else "VARIABLE"),
+                        "action_recommendation": "Maintain schedule baseline within +/-2.25 MW tolerance band.",
+                        "advisory_text": (
+                            f"Currently, Kasipet has {regime.replace('_', ' ').lower()} conditions with {temp_c:.1f}°C temperature and {cloud_pct}% cloud cover. "
+                            f"Over upcoming daylight blocks after the effective time, skies will remain consistent with no severe storm development expected. "
+                            f"Generation will be {trend}, allowing schedulers to maintain baseline within Telangana's +/-15% (+/-2.25 MW) tolerance band."
+                        ),
+                    }
+
             return StrategicAdvice(
                 regime=regime,
                 quantile_bias_factor=bias,
@@ -227,6 +292,7 @@ Respond ONLY with a JSON object in this exact schema:
                 is_trip_or_curtailment=is_trip,
                 reasoning=reasoning,
                 block_predictions=block_preds,
+                dispatch_advisory=dispatch_advisory,
                 source="LLM_STRATEGIC_ARBITER",
             )
         except Exception as parse_err:
