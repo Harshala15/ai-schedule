@@ -25,10 +25,15 @@ def _capture_times_for_site() -> list[str]:
     site = (getattr(config, "PLANT_NAME", "") or "").strip().upper()
     if site == "WIND325":
         return [
-            "12:30", "13:00", "13:30", "14:00", "14:30", "15:00",
-            "15:30", "16:00", "16:30", "17:00", "17:30", "18:00",
-            "18:30", "19:00", "19:30", "20:00", "20:30", "21:00",
-            "21:30", "22:00", "22:30", "23:00", "23:30"
+            "22:15", "23:00", "23:30",
+            "00:00", "00:30", "01:00", "01:30", "02:00", "02:30",
+            "03:00", "03:30", "04:00", "04:30", "05:00", "05:30",
+            "06:00", "06:30", "07:00", "07:30", "08:00", "08:30",
+            "09:00", "09:30", "10:00", "10:30", "11:00", "11:30",
+            "12:00", "12:30", "13:00", "13:30", "14:00", "14:30",
+            "15:00", "15:30", "16:00", "16:30", "17:00", "17:30",
+            "18:00", "18:30", "19:00", "19:30", "20:00", "20:30",
+            "21:00", "21:30", "22:00"
         ]
     if site in {"BHUPALPALLY", "KASIPET", "KOTHAGUDEM", "MANDAMARRI", "BALAKWADA", "ANDAD", "SAWDA", "CME", "ANJANGAON", "ANJANGOAN", "BAMKHAL", "GUGARIYAKHEDI", "NANDGAON", "OSEPL", "GSNP", "GSPPL", "REWASPRNG", "REWASEIT", "REWAATHENA", "CLIMATEDETOX", "EMIL", "UPL", "LOKGREENB2", "PRANAV", "SIDDEHESH"}:
         return ["06:00", "06:45", "08:15", "09:45", "11:15", "12:45", "14:15", "15:45"]
@@ -57,22 +62,36 @@ def parse_target_datetime(event: dict | None) -> tuple[str, str, dt.datetime]:
     now = dt.datetime.now(IST)
     event = event or {}
 
+    raw_date = event.get("target_date") or event.get("date")
+    if raw_date:
+        raw_str = str(raw_date).strip().lower()
+        if raw_str in ("tomorrow", "next_day", "+1", "+1day"):
+            resolved_date = (now + dt.timedelta(days=1)).strftime("%Y-%m-%d")
+        elif raw_str in ("today", "current_day", "0"):
+            resolved_date = now.strftime("%Y-%m-%d")
+        else:
+            resolved_date = str(raw_date).strip()
+    else:
+        # If running late at night (>= 22:10 IST), default to tomorrow's schedule
+        if now.hour > 22 or (now.hour == 22 and now.minute >= 10):
+            resolved_date = (now + dt.timedelta(days=1)).strftime("%Y-%m-%d")
+        else:
+            resolved_date = now.strftime("%Y-%m-%d")
+
     # Handle AWS EventBridge default scheduled events where event["time"] is an ISO timestamp (e.g. "2026-09-25T04:15:00Z")
     event_time = event.get("target_time") or event.get("time")
     if event_time and ("T" in str(event_time) or "Z" in str(event_time)):
         try:
             iso_dt = dt.datetime.fromisoformat(str(event_time).replace("Z", "+00:00")).astimezone(IST)
-            target_date = event.get("target_date") or event.get("date") or iso_dt.strftime("%Y-%m-%d")
             target_time = _nearest_configured_capture_time(iso_dt)
-            target_dt = dt.datetime.strptime(f"{target_date} {target_time}", "%Y-%m-%d %H:%M")
-            return target_date, target_time, target_dt
+            target_dt = dt.datetime.strptime(f"{resolved_date} {target_time}", "%Y-%m-%d %H:%M")
+            return resolved_date, target_time, target_dt
         except Exception:
             pass
 
-    target_date = event.get("target_date") or event.get("date") or now.strftime("%Y-%m-%d")
     target_time = event.get("target_time") or (event.get("time") if event.get("time") and ":" in event.get("time") and len(event.get("time")) <= 8 else None) or _nearest_configured_capture_time(now)
-    target_dt = dt.datetime.strptime(f"{target_date} {target_time}", "%Y-%m-%d %H:%M")
-    return target_date, target_time, target_dt
+    target_dt = dt.datetime.strptime(f"{resolved_date} {target_time}", "%Y-%m-%d %H:%M")
+    return resolved_date, target_time, target_dt
 
 
 def storage_subpath(*parts: str) -> Path:
