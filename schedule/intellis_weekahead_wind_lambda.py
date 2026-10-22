@@ -26,12 +26,13 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
-S3_BUCKET = os.getenv("SCHEDULE_BUCKET", "vedanjay-schedules-test-608744602858")
+S3_BUCKET = os.getenv("SCHEDULE_BUCKET", "vedanjay-schedules-test-552496640388")
 
 # Regulatory Wind Sites active for Week-Ahead:
 WA_WIND_SITES: List[str] = [
     "JEWLI",
     "JGBPL",
+    "WIND325",
 ]
 
 

@@ -90,7 +90,7 @@ BLOCK_CANDIDATES = [
 ]
 
 SENSOR_ALIASES = {
-    "poa_wm2": ["poa_wm2", "POA (W/m2)", "POA (W/m²)", "POA", "Irradiance (W/m2)", "GTI (W/m2)"],
+    "poa_wm2": ["poa_wm2", "POA (W/m2)", "POA (W/m²)", "POA", "Irradiance (W/m2)", "GTI (W/m2)", "Tilt Irradiance (W/m2)"],
     "ghi_wm2": ["ghi_wm2", "GHI_W (W/m2)", "GHI (W/m2)", "GHI (W/m²)", "GHI", "Radiation"],
     "amb_temp": ["amb_temp", "Ambient Temperature (C)", "AMB TEMP", "Ambient Temperature", "amb_temp_c"],
     "mod_temp": ["mod_temp", "Module Temperature (C)", "MOD TEMP", "Module Temperature", "mod_temp_c"],
@@ -335,6 +335,12 @@ _TIMESTAMP_FORMATS = (
     "%d-%m-%Y %H:%M",
     "%d/%m/%Y %H:%M:%S",
     "%d/%m/%Y %H:%M",
+    "%d/%m/%y-%H:%M:%S",
+    "%d/%m/%y-%H:%M",
+    "%d/%m/%y %H:%M:%S",
+    "%d/%m/%y %H:%M",
+    "%d-%m-%y %H:%M:%S",
+    "%d-%m-%y %H:%M",
     "%Y/%m/%d %H:%M:%S",
     "%Y/%m/%d %H:%M",
     "%m/%d/%Y %H:%M:%S",

@@ -40,6 +40,7 @@ SITE_DISPATCH_RULES: Dict[str, tuple[bool, bool, bool]] = {
     "LGEPL": (True, True, True),
     "NANDGAON": (True, False, False),
     "OSEPL": (True, False, False),
+    "REWAATHENA": (False, False, False),
     "REWASEIT": (False, False, False),
     "REWASPRNG": (False, False, False),
     "SAWDA": (True, False, False),

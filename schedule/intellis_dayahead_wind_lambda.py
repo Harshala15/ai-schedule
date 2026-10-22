@@ -23,13 +23,14 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
-S3_BUCKET = os.getenv("SCHEDULE_BUCKET", "vedanjay-schedules-test-608744602858")
+S3_BUCKET = os.getenv("SCHEDULE_BUCKET", "vedanjay-schedules-test-552496640388")
 
 # Regulatory Wind Plant Matrix: (Run Morning da0?, Run Night da1?)
 WIND_DISPATCH_RULES: Dict[str, tuple[bool, bool]] = {
     "CHANDAWASA": (True, False),  # Morning only
     "JEWLI": (True, True),        # Morning & Night
     "JGBPL": (True, True),        # Morning & Night
+    "WIND325": (True, True),      # Morning & Night
 }
 
 

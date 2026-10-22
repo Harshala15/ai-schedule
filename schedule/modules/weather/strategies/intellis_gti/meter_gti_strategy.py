@@ -397,7 +397,7 @@ class MeterGTIStrategy(BaseGTIStrategy):
                     except Exception:
                         s3 = boto3.client("s3")
 
-                bucket = os.getenv("S3_BUCKET") or os.getenv("BUCKET") or "vedanjay-schedules-test-608744602858"
+                bucket = os.getenv("S3_BUCKET") or os.getenv("BUCKET") or "vedanjay-schedules-test-552496640388"
 
                 s3_custom_prefix = self.profile.meter_data.get("s3_prefix") if self.profile.meter_data else None
                 candidate_prefixes = []
@@ -474,6 +474,16 @@ class MeterGTIStrategy(BaseGTIStrategy):
             self.profile.calibrated_pr = round(learned_pr, 4)
             dc_cap = getattr(self.profile, "dc_capacity_mw", None) or self.profile.ac_capacity_mw
             self.profile.transfer_ratio = round((dc_cap * self.profile.calibrated_pr) / 1000.0, 6)
+            return self.profile.calibrated_pr
+
+        if site_upper == "REWASPRNG":
+            learned_pr = float(getattr(self.profile, "performance_ratio", 0.96) or 0.96)
+            self.profile.calibrated_pr = round(learned_pr, 4)
+            explicit_tr = getattr(self.profile, "transfer_ratio", None)
+            if explicit_tr is not None:
+                self.profile.transfer_ratio = float(explicit_tr)
+            else:
+                self.profile.transfer_ratio = round((self.profile.dc_capacity_mw * self.profile.calibrated_pr) / 1000.0, 6)
             return self.profile.calibrated_pr
 
         target_dt = datetime.strptime(target_date_str, "%Y-%m-%d")

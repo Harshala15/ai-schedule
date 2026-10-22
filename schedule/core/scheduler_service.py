@@ -246,70 +246,31 @@ def _download_previous_current_final_schedule(
 
 def _snapshot_metadata(
     selection: CaptureSelection,
-    forecast_start: str,
-    forecast_end: str,
     snapshot_csv_key: str,
     latest_csv_key: str,
     current_final_csv_key: str,
     penalty_csv_key: str,
     snapshot_metadata_key: str,
     latest_metadata_key: str,
-    generated_rows: int,
-    preserved_rows: int,
-    current_final_rows: int,
-    penalty_rows: int,
 ) -> dict:
-    context_entries = []
-    context_summary = selection.context_summary
-    if isinstance(selection.context_payload, dict):
-        entries = selection.context_payload.get("entries", [])
-        if isinstance(entries, list):
-            for entry in entries:
-                if isinstance(entry, dict):
-                    context_entries.append({
-                        "date": entry.get("date"),
-                        "summary": entry.get("summary"),
-                        "bias": entry.get("bias"),
-                    })
     return {
         "status": "ok",
-        "date": selection.target_date,
-        "run_time": selection.target_time.replace(":", "-"),
-        "forecast_start": forecast_start,
-        "forecast_end": forecast_end,
-        "forecast_horizon_hours": settings.FORECAST_HORIZON_HOURS,
-        "capture_time": selection.capture_time.strftime("%Y-%m-%d %H:%M:%S"),
-        "video_key": selection.video_key,
-        "meter_key": selection.meter_key,
-        "meter_rows_available": selection.meter_rows_available,
-        "meter_rows_used": selection.meter_rows_used,
-        "weather_summary": selection.weather_summary,
-        "context_summary": context_summary,
-        "context_entries": context_entries,
         "plant_name": config.PLANT_NAME,
-        "plant_profile_path": str(getattr(config, "PLANT_PROFILE_PATH", "")),
-        "plant_lat": config.PLANT_LAT,
-        "plant_lon": config.PLANT_LON,
-        "plant_capacity_mw": config.PLANT_CAPACITY_MW,
-        "plant_dc_capacity_mw": getattr(config, "PLANT_DC_CAPACITY_MW", None),
-        "plant_max_feed_in_mw": getattr(config, "PLANT_MAX_FEED_IN_MW", None),
-        "plant_tilt_deg": getattr(config, "PLANT_TILT_DEG", None),
-        "plant_orientation_from_south_deg": getattr(config, "PLANT_ORIENTATION_FROM_SOUTH_DEG", None),
-        "plant_tracker_type": getattr(config, "PLANT_TRACKER_TYPE", None),
-        "plant_availability_planned_pct": getattr(config, "PLANT_AVAILABILITY_PLANNED_PCT", None),
-        "plant_ppa_rate_inr_per_kwh": getattr(config, "PLANT_PPA_RATE_INR_PER_KWH", None),
-        "plant_eeg_id": getattr(config, "PLANT_EEG_ID", ""),
-        "plant_key": getattr(config, "PLANT_KEY", ""),
+        "date": selection.target_date,
+        "run_time": selection.target_time,
+        "plant_capacity_mw": float(config.PLANT_CAPACITY_MW),
+        "s3_outputs": {
+            "current_final_schedule": current_final_csv_key,
+            "penalty_schedule": penalty_csv_key,
+            "latest_schedule": latest_csv_key,
+            "snapshot_schedule": snapshot_csv_key,
+        },
         "snapshot_csv_key": snapshot_csv_key,
-        "snapshot_metadata_key": snapshot_metadata_key,
         "latest_csv_key": latest_csv_key,
         "current_final_csv_key": current_final_csv_key,
         "penalty_csv_key": penalty_csv_key,
+        "snapshot_metadata_key": snapshot_metadata_key,
         "latest_metadata_key": latest_metadata_key,
-        "generated_rows": generated_rows,
-        "preserved_rows": preserved_rows,
-        "current_final_rows": current_final_rows,
-        "penalty_rows": penalty_rows,
     }
 
 
@@ -398,6 +359,7 @@ def run_schedule_job(
                 "quantile_bias_factor": advice.quantile_bias_factor,
                 "preferred_agency": advice.preferred_agency,
                 "reasoning": advice.reasoning,
+                "dispatch_advisory": advice.reasoning or "Operating under aerodynamic wind physics baseline.",
                 "source": advice.source,
             }
 
@@ -552,29 +514,16 @@ def run_schedule_job(
         target_date=target_date,
     )
 
-    forecast_start_label = forecast_start_dt.strftime("%Y-%m-%d %H:%M")
-    forecast_end_label = forecast_end_dt.strftime("%Y-%m-%d %H:%M")
     metadata = _snapshot_metadata(
         selection=selection,
-        forecast_start=forecast_start_label,
-        forecast_end=forecast_end_label,
         snapshot_csv_key=f"{schedule_prefix.rstrip('/')}/{target_date}/{snapshot_csv.name}",
         latest_csv_key=f"{schedule_prefix.rstrip('/')}/{target_date}/{latest_csv.name}",
         current_final_csv_key=f"{schedule_prefix.rstrip('/')}/{target_date}/{current_final_csv.name}",
         penalty_csv_key=f"{schedule_prefix.rstrip('/')}/{target_date}/{penalty_csv.name}",
         snapshot_metadata_key=f"{schedule_prefix.rstrip('/')}/{target_date}/{snapshot_metadata.name}",
         latest_metadata_key=f"{schedule_prefix.rstrip('/')}/{target_date}/{latest_metadata.name}",
-        generated_rows=merged_rows,
-        preserved_rows=preserved_rows,
-        current_final_rows=current_final_rows,
-        penalty_rows=penalty_summary["total_blocks"],
     )
-    metadata["snapshot_rows"] = snapshot_rows
-    metadata["plant_type"] = getattr(config, "PLANT_TYPE", "")
-    metadata["is_wind_plant"] = bool(is_wind_site)
-    metadata["control_windows"] = control_summary
     if is_wind_site:
-        metadata["weather_summary_type"] = "wind_ensemble"
         if isinstance(wind_sched_result, dict) and "llm_strategy" in wind_sched_result:
             metadata["llm_strategy"] = wind_sched_result["llm_strategy"]
     elif isinstance(solar_sched_result, dict) and "llm_strategy" in solar_sched_result:
@@ -646,14 +595,82 @@ def run_schedule_job(
         except Exception as lgepl_err:
             print(f"  [WARN] Failed to write LGEPL revision penalty replica: {lgepl_err}")
 
+    # Specialized Weather Intelligence JSON for UI and scheduling operators (All Plants)
+    p_name = str(getattr(config, "PLANT_NAME", "")).strip().upper()
+    if p_name:
+        try:
+            dispatch_advisory = (metadata.get("llm_strategy") or {}).get("dispatch_advisory")
+            if not dispatch_advisory:
+                dispatch_advisory = (metadata.get("llm_strategy") or {}).get("reasoning")
+            if dispatch_advisory:
+                if isinstance(dispatch_advisory, dict):
+                    adv_text = str(dispatch_advisory.get("advisory_text") or "").strip()
+                else:
+                    adv_text = str(dispatch_advisory).strip()
+
+                if adv_text:
+                    weather_intel_key = f"{schedule_prefix.rstrip('/')}/{target_date}/Weather_Intelligence.json"
+                    existing_intel = storage.read_json(bucket, weather_intel_key)
+                    if not isinstance(existing_intel, dict) or existing_intel.get("date") != target_date:
+                        existing_intel = {
+                            "plant_name": p_name,
+                            "date": target_date,
+                            "revisions": {},
+                        }
+
+                    revisions_map = existing_intel.get("revisions")
+                    if not isinstance(revisions_map, dict):
+                        revisions_map = {}
+
+                    revisions_map[target_time] = adv_text
+
+                    # Clean Weather Intelligence schema: only plant_name, date, latest advisory, and revision-wise text
+                    weather_intel_payload = {
+                        "plant_name": p_name,
+                        "date": target_date,
+                        "latest_advisory_text": adv_text,
+                        "revisions": revisions_map,
+                    }
+
+                    storage.upload_json(bucket, weather_intel_key, weather_intel_payload)
+                    metadata.setdefault("s3_outputs", {})["weather_intelligence"] = weather_intel_key
+                    print(f"  [{p_name}] Updated Weather_Intelligence.json (revision {target_time}) at {weather_intel_key}")
+        except Exception as adv_err:
+            print(f"  [WARN] Failed to update Weather_Intelligence.json for {p_name}: {adv_err}")
+
     legacy_current_final_csv = generated_root / "current_final_schedule.csv"
     if legacy_current_final_csv != current_final_csv:
         shutil.copyfile(current_final_csv, legacy_current_final_csv)
     legacy_penalty_csv = generated_root / f"{target_date}_penalty_schedule.csv"
     if legacy_penalty_csv != penalty_csv:
         shutil.copyfile(penalty_csv, legacy_penalty_csv)
-    storage.upload_json(bucket, metadata["snapshot_metadata_key"], metadata)
-    storage.upload_json(bucket, metadata["latest_metadata_key"], metadata)
 
-    return json.loads(json.dumps(metadata, default=str))
+    # Move snapshot_metadata into s3_outputs
+    s3_outputs = dict(metadata.get("s3_outputs", {}))
+    if metadata.get("snapshot_metadata_key"):
+        s3_outputs["snapshot_metadata"] = metadata["snapshot_metadata_key"]
+
+    clean_metadata = {
+        "status": metadata.get("status", "ok"),
+        "plant_name": metadata.get("plant_name"),
+        "date": metadata.get("date"),
+        "run_time": metadata.get("run_time"),
+        "plant_capacity_mw": metadata.get("plant_capacity_mw"),
+        "s3_outputs": s3_outputs,
+    }
+
+    # Advisory text is stored exclusively in Weather_Intelligence.json; remove from llm_strategy
+    if "llm_strategy" in metadata and isinstance(metadata["llm_strategy"], dict):
+        clean_llm = dict(metadata["llm_strategy"])
+        clean_llm.pop("dispatch_advisory", None)
+        clean_metadata["llm_strategy"] = clean_llm
+
+    # Sync clean metadata to local files and S3
+    clean_json_str = json.dumps(clean_metadata, indent=2, default=str)
+    snapshot_metadata.write_text(clean_json_str, encoding="utf-8")
+    latest_metadata.write_text(clean_json_str, encoding="utf-8")
+    storage.upload_json(bucket, metadata["snapshot_metadata_key"], clean_metadata)
+    storage.upload_json(bucket, metadata["latest_metadata_key"], clean_metadata)
+
+    return json.loads(json.dumps(clean_metadata, default=str))
 

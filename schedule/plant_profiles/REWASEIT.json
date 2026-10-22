@@ -10,6 +10,7 @@
   "eeg_id": "RewaSeit",
   "plant_key": "MSRPL_REWA_RUMS_S",
   "ppa_rate_inr_per_kwh": 3.2515,
+  "performance_ratio": 0.95,
   "penalty_regulation": "Madhya Pradesh",
   "tolerance_band_mw": 12.5,
   "band_percentage": 0.05,

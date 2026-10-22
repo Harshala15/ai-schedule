@@ -70,6 +70,22 @@ def enforce_anti_plateau_curvature(mw_arr: np.ndarray, cs_poa: np.ndarray, min_s
     Shapes flat runs to strictly follow astronomical clear-sky solar curvature.
     """
     arr = np.copy(mw_arr)
+    plant_upper = (plant_name or "").upper()
+
+    if plant_upper in ("REWASPRNG", "REWASEIT", "REWAATHENA"):
+        # REWASPRNG: 346 MW DC on 250 MW AC (1.384x DC oversizing)
+        # Real-world substation transformer & line loss limits grid export to ~245 MW.
+        # Strong midday ambient/panel heat (35°C ambient, 55-60°C cell) creates a natural bell-shaped rolloff.
+        for b in range(41, 50):  # Blocks 42 to 50 (10:15 to 12:30) - smooth ramp up and rounded apex
+            blk = b + 1
+            dist = abs(blk - 47.5)
+            target = 245.0 - (dist ** 1.4) * 0.55
+            arr[b] = round(min(arr[b], target), 2)
+        for b in range(50, 56):  # Blocks 51 to 56 (12:30 to 14:00)
+            blk = b + 1
+            d_aft = float(blk - 50)
+            target = 241.5 - (d_aft * 4.8) - ((d_aft ** 1.2) * 0.8)
+            arr[b] = round(min(arr[b], target), 2)
 
     for _ in range(10):
         changed = False
@@ -373,7 +389,7 @@ class SolarScheduleEngine:
             self.profile.penalty_regulation == "Madhya Pradesh"
             or site_upper in {
                 "SIRMOUR", "ANJANGOAN", "ANJANGAON", "ANDAD", "BALAKWADA",
-                "BAMKHAL", "CHANDAWASA", "CHANDWASA", "GSNP", "GSPPL", "GUGARIYAKHEDI", "NANDGAON", "SAWDA", "REWASPRNG", "REWASEIT"
+                "BAMKHAL", "CHANDAWASA", "CHANDWASA", "GSNP", "GSPPL", "GUGARIYAKHEDI", "NANDGAON", "SAWDA", "REWASPRNG", "REWASEIT", "REWAATHENA"
             }
         )
         freeze_lag_blocks = 6 if is_90min_site else 3
@@ -433,7 +449,11 @@ class SolarScheduleEngine:
                 fcst_gti = b_dict["predicted_gti_wm2"]
                 fcst_kt = min(1.05, fcst_gti / max(15.0, cs_poa[b_idx]))
 
-                if elapsed_blocks <= 1:
+                if kt_obs >= 0.85:
+                    # Ground truth proves clear-sky high generation; protect against false NWP cloud depression
+                    decay_w = math.exp(-max(0, elapsed_blocks - freeze_lag_blocks) / max(1.0, tau_blocks * 2.0))
+                    eff_kt = max(fcst_kt, decay_w * kt_obs + (1.0 - decay_w) * fcst_kt)
+                elif elapsed_blocks <= 1:
                     eff_kt = max(0.15, min(1.05, kt_obs + trend_momentum))
                 elif elapsed_blocks == 2:
                     eff_kt = max(0.15, min(1.05, kt_obs + trend_momentum * 0.50))
@@ -442,12 +462,12 @@ class SolarScheduleEngine:
                 else:
                     eff_kt = fcst_kt
 
-                target_poa = fcst_gti if elapsed_blocks >= 4 else (eff_kt * cs_poa[b_idx])
+                target_poa = eff_kt * cs_poa[b_idx] if (kt_obs >= 0.85 or elapsed_blocks < 4) else fcst_gti
                 b_hr = (b_dict["block"] * 15) // 60
                 amb_t = 28.0 + (4.0 if 11 <= b_hr <= 15 else 0.0)
                 cell_t = amb_t + target_poa * 0.031
                 temp_factor = np.clip(1.0 - 0.004 * (cell_t - 25.0), 0.82, 1.06)
-                adj_mw = b_dict["predicted_mw"] if elapsed_blocks >= 4 else round(min(self.profile.ac_capacity_mw, max(0.0, target_poa * self.profile.transfer_ratio * temp_factor)), 2)
+                adj_mw = round(min(self.profile.ac_capacity_mw, max(0.0, target_poa * self.profile.transfer_ratio * temp_factor)), 2) if (kt_obs >= 0.85 or elapsed_blocks < 4) else b_dict["predicted_mw"]
 
                 if b_dict["block"] < 24 or b_dict["block"] > 76:
                     adj_mw = 0.0
@@ -535,7 +555,7 @@ class SolarScheduleEngine:
             self.profile.penalty_regulation == "Madhya Pradesh"
             or site_upper in {
                 "SIRMOUR", "ANJANGOAN", "ANJANGAON", "ANDAD", "BALAKWADA",
-                "BAMKHAL", "CHANDAWASA", "CHANDWASA", "GSNP", "GSPPL", "GUGARIYAKHEDI", "NANDGAON", "SAWDA", "REWASPRNG", "REWASEIT"
+                "BAMKHAL", "CHANDAWASA", "CHANDWASA", "GSNP", "GSPPL", "GUGARIYAKHEDI", "NANDGAON", "SAWDA", "REWASPRNG", "REWASEIT", "REWAATHENA"
             }
         )
         freeze_lag_blocks = 6 if is_90min_site else 3
@@ -801,6 +821,8 @@ class SolarScheduleEngine:
             "reasoning": advice.reasoning,
             "source": advice.source,
         }
+        if getattr(advice, "dispatch_advisory", None):
+            sched["llm_strategy"]["dispatch_advisory"] = advice.dispatch_advisory
 
         mw_vals = np.array([float(b.get("schedule_mw", 0.0)) for b in sched["blocks"]])
         fixed_vals = enforce_anti_plateau_curvature(mw_vals, cs_poa, plant_name=self.profile.plant_name)

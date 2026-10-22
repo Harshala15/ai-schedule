@@ -13,6 +13,8 @@
   "tolerance_band_mw": 12.5,
   "band_percentage": 0.05,
   "freeze_lag_minutes": 90,
+  "performance_ratio": 0.96,
+  "transfer_ratio": 0.3320,
   "meter_data": {
     "s3_prefix": "raw/vedanjay/{site_id}/{date}/metered_data/",
     "file_name_regex": "^rewasprng_\\d{8}\\.csv$",

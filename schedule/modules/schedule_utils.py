@@ -23,7 +23,14 @@ IST = ZoneInfo("Asia/Kolkata")
 
 def _capture_times_for_site() -> list[str]:
     site = (getattr(config, "PLANT_NAME", "") or "").strip().upper()
-    if site in {"BHUPALPALLY", "KASIPET", "KOTHAGUDEM", "MANDAMARRI", "BALAKWADA", "ANDAD", "SAWDA", "CME", "ANJANGAON", "ANJANGOAN", "BAMKHAL", "GUGARIYAKHEDI", "NANDGAON", "OSEPL", "GSNP", "GSPPL", "REWASPRNG", "REWASEIT", "CLIMATEDETOX", "EMIL", "UPL", "LOKGREENB2", "PRANAV", "SIDDEHESH"}:
+    if site == "WIND325":
+        return [
+            "12:30", "13:00", "13:30", "14:00", "14:30", "15:00",
+            "15:30", "16:00", "16:30", "17:00", "17:30", "18:00",
+            "18:30", "19:00", "19:30", "20:00", "20:30", "21:00",
+            "21:30", "22:00", "22:30", "23:00", "23:30"
+        ]
+    if site in {"BHUPALPALLY", "KASIPET", "KOTHAGUDEM", "MANDAMARRI", "BALAKWADA", "ANDAD", "SAWDA", "CME", "ANJANGAON", "ANJANGOAN", "BAMKHAL", "GUGARIYAKHEDI", "NANDGAON", "OSEPL", "GSNP", "GSPPL", "REWASPRNG", "REWASEIT", "REWAATHENA", "CLIMATEDETOX", "EMIL", "UPL", "LOKGREENB2", "PRANAV", "SIDDEHESH"}:
         return ["06:00", "06:45", "08:15", "09:45", "11:15", "12:45", "14:15", "15:45"]
     return list(getattr(config, "CAPTURE_TIMES", []) or [])
 
@@ -134,12 +141,15 @@ def _meter_filename_hints(plant_name: str | None = None) -> list[str]:
         "GSPPL": ["gsnp", "gsppl"],
         "REWASPRNG": ["rewasprng", "rewa_sprng", "rewa"],
         "REWASEIT": ["rewaseit", "rewa_seit", "rewa", "msrpl"],
+        "REWAATHENA": ["rewaathena", "rewa_athena", "athena", "rewa"],
+        "WIND325": ["wind325", "wind_325", "wind", "ptngr", "awlmp1pl"],
         "CLIMATEDETOX": ["climatedetox", "climate_detox", "enrich"],
         "EMIL": ["emil", "enrich"],
         "UPL": ["upl", "enrich"],
         "LOKGREENB2": ["lokgreenb2", "lokgreen", "lok_green"],
         "PRANAV": ["pranav"],
         "SIDDEHESH": ["siddehesh"],
+        "LGEPL": ["lgepl", "meter", "csv", ""],
     }
     return hints.get(plant, [plant.lower()] if plant else [])
 
@@ -152,7 +162,7 @@ def _meter_object_sort_key(obj, plant_name: str | None = None) -> tuple[int, dt.
             score += 100
     if "solar_inv" in name or "solarinv" in name:
         score += 50
-    if re.search(r"(\d{4})[-_]?(\d{2})[-_]?(\d{2})", name):
+    if re.search(r"(\d{4})[-_]?(\d{2})[-_]?(\d{2})", name) or re.search(r"^\d{6}\.csv$", name):
         score += 10
     modified = getattr(obj, "last_modified", None) or dt.datetime.min.replace(tzinfo=dt.timezone.utc)
     return score, modified, getattr(obj, "key", "")
@@ -242,6 +252,8 @@ def freeze_from_datetime(target_date: str, target_time: str, block_minutes: int 
         "SAWDA": 90,
         "REWASPRNG": 90,
         "REWASEIT": 90,
+        "REWAATHENA": 90,
+        "WIND325": 90,
         "BHUPALPALLY": 45,
         "KASIPET": 45,
         "KOTHAGUDEM": 45,
@@ -316,6 +328,8 @@ def write_current_final_schedule(
         "SAWDA": 90,
         "REWASPRNG": 90,
         "REWASEIT": 90,
+        "REWAATHENA": 90,
+        "WIND325": 90,
         "BHUPALPALLY": 45,
         "KASIPET": 45,
         "KOTHAGUDEM": 45,

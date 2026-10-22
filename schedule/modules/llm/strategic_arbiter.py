@@ -28,6 +28,7 @@ class StrategicAdvice:
     is_trip_or_curtailment: bool
     reasoning: str
     block_predictions: dict[str, float] = field(default_factory=dict)
+    dispatch_advisory: dict[str, Any] = field(default_factory=dict)
     source: str = "LLM_STRATEGIC_ARBITER"
 
 
@@ -57,6 +58,34 @@ class LLMStrategicArbiter:
             source="PHYSICS_BASELINE",
         )
 
+        weather_indicators = weather_indicators or {}
+        live_telemetry = live_telemetry or {}
+
+        plant_name = str(getattr(self.profile, "plant_name", getattr(config, "PLANT_NAME", "SOLAR"))).strip().upper()
+        state = str(getattr(self.profile, "penalty_regulation", "State")).strip()
+        ac_cap = float(getattr(self.profile, "ac_capacity_mw", getattr(config, "PLANT_CAPACITY_MW", 10.0)))
+        ppa_rate = float(getattr(self.profile, "ppa_rate_inr_per_kwh", getattr(config, "PLANT_PPA_RATE_INR_PER_KWH", 5.0)))
+        tol_band = float(getattr(self.profile, "band_percentage", getattr(config, "PLANT_TOLERANCE_BAND_PCT", 15.0) / 100.0))
+        tol_mw = getattr(self.profile, "tolerance_band_mw", None)
+        if tol_mw is None:
+            tol_mw = round(ac_cap * tol_band, 3)
+        else:
+            tol_mw = float(tol_mw)
+
+        cloud_pct = weather_indicators.get("cloud_cover_pct", 0) if weather_indicators else 0
+        temp_c = weather_indicators.get("temp_c", 30.0) if weather_indicators else 30.0
+        default_advice.dispatch_advisory = {
+            "sky_condition": "Clear Sky" if cloud_pct < 25 else "Partly Cloudy",
+            "cloud_risk": "LOW" if cloud_pct < 25 else ("HIGH" if cloud_pct >= 60 else "MEDIUM"),
+            "generation_trend": "STABLE" if cloud_pct < 25 else "VARIABLE",
+            "action_recommendation": f"Maintain physics baseline within +/-{tol_mw:.2f} MW tolerance band.",
+            "advisory_text": (
+                f"Currently, {plant_name} has {cloud_pct}% cloud cover at {temp_c:.1f}°C ambient temperature. "
+                f"Over the upcoming daylight blocks after the effective time, skies will remain stable with no severe cloud build-up expected. "
+                f"Generation will track the normal diurnal curve safely within {state}'s +/-{tol_band * 100:.1f}% (+/-{tol_mw:.2f} MW) tolerance band."
+            ),
+        }
+
         # Check if LLM is enabled
         enabled = os.getenv("ENABLE_LLM_STRATEGIC_ARBITER", "true").strip().lower() in {"1", "true", "yes", "on"}
         if not enabled:
@@ -65,17 +94,6 @@ class LLMStrategicArbiter:
         api_keys = predictor._load_openrouter_api_keys()
         if not api_keys:
             return default_advice
-
-        weather_indicators = weather_indicators or {}
-        live_telemetry = live_telemetry or {}
-
-        plant_name = getattr(self.profile, "plant_name", "SOLAR") if self.profile else "SOLAR"
-        ac_cap = getattr(self.profile, "ac_capacity_mw", 10.0) if self.profile else 10.0
-        ppa_rate = getattr(self.profile, "ppa_rate_inr_per_kwh", 5.0) if self.profile else 5.0
-        tol_band = getattr(self.profile, "band_percentage", 0.15) if self.profile else 0.15
-        tol_mw = getattr(self.profile, "tolerance_band_mw", None)
-        if tol_mw is None:
-            tol_mw = round(ac_cap * tol_band, 3)
 
         target_blocks = actionable_blocks if actionable_blocks is not None else (next_12_blocks or [])
         num_blocks = len(target_blocks)
@@ -99,6 +117,25 @@ class LLMStrategicArbiter:
             header_desc = "ACTIONABLE DISPATCH BLOCKS (Physics Baseline Anchor):"
             horizon_desc = "over the actionable daylight horizon up to 7:00 PM"
             sample_blocks = '"55": 5.25,\n    "56": 5.15'
+
+        advisory_task = (
+            f"5. OPERATOR WEATHER ADVISORY ({plant_name}):\n"
+            "   Write 'dispatch_advisory.advisory_text' as a continuous single paragraph of MAXIMUM THREE LINES in plain English.\n"
+            "   It must seamlessly connect three things in continuous flow:\n"
+            "   - Current weather condition at the site (temperature, cloud cover).\n"
+            "   - Future weather condition after the effective revision time (incoming clouds, rain threat, or clear continuity).\n"
+            f"   - Future generation impact (expected peak MW, trend like rising/steady/dropping) and scheduling advice under {state}'s +/-{tol_band * 100:.1f}% (+/-{tol_mw:.2f} MW) band.\n"
+            "   Do NOT use bullet points or numbered lists; write exactly one coherent, continuous 2-to-3 sentence paragraph.\n"
+        )
+        advisory_schema = (
+            ',\n  "dispatch_advisory": {\n'
+            '    "sky_condition": "Clear Sky / Scattered Clouds / Overcast",\n'
+            '    "cloud_risk": "LOW / MEDIUM / HIGH",\n'
+            '    "generation_trend": "RISING / STABLE / DROPPING",\n'
+            '    "action_recommendation": "ACTION: Submit schedule as generated; no manual cuts needed.",\n'
+            f'    "advisory_text": "Currently, {plant_name} has clear skies with mild {temp_c:.1f}°C ambient temperature and low cloud cover ({cloud_pct}%). Over the afternoon after {target_time_str}, skies will remain mostly sunny with no convective clouds or rain approaching the site. As a result, generation will steadily rise to a peak across midday blocks, so schedulers should submit the full baseline schedule within the safe +/-{tol_mw:.2f} MW tolerance band."\n'
+            '  }'
+        )
 
         prompt = f"""You are the Chief Renewable Energy Meteorological Scheduling Strategist for {plant_name} Solar Power Plant.
 Target Date: {target_date_str} | Revision Time: {target_time_str}
@@ -134,7 +171,7 @@ TASKS:
    - Keep each block within physical bounds: 0.0 <= MW <= {ac_cap:.1f} MW.
 3. Recommend preferred ensemble agency: ["BALANCED", "ECMWF", "ICON", "GEFS"].
 4. Set "is_trip_or_curtailment" to false (electrical trips are handled outside meteorology).
-
+{advisory_task}
 Respond ONLY with a JSON object in this exact schema:
 {{
   "regime": "CLEAR_SKY",
@@ -144,7 +181,7 @@ Respond ONLY with a JSON object in this exact schema:
   "reasoning": "Brief operational rationale for the prediction based on atmospheric indicators",
   "block_predictions": {{
     {sample_blocks}
-  }}
+  }}{advisory_schema}
 }}"""
 
         model_names = predictor._load_openrouter_model_names()
@@ -209,6 +246,31 @@ Respond ONLY with a JSON object in this exact schema:
                     except (ValueError, TypeError):
                         continue
 
+            dispatch_advisory: dict[str, Any] = {}
+            raw_advisory = data.get("dispatch_advisory")
+            if isinstance(raw_advisory, dict) and raw_advisory.get("advisory_text"):
+                dispatch_advisory = {
+                    "sky_condition": str(raw_advisory.get("sky_condition", regime.replace("_", " ").title())),
+                    "cloud_risk": str(raw_advisory.get("cloud_risk", "LOW")).upper(),
+                    "generation_trend": str(raw_advisory.get("generation_trend", "STABLE")).upper(),
+                    "action_recommendation": str(raw_advisory.get("action_recommendation", "")),
+                    "advisory_text": str(raw_advisory.get("advisory_text", "")),
+                }
+            else:
+                trend = "rising smoothly toward midday peak" if cloud_pct < 30 else ("dropping due to cloud cover" if cloud_pct >= 60 else "stable")
+                risk = "LOW" if cloud_pct < 30 else ("HIGH" if cloud_pct >= 60 else "MEDIUM")
+                dispatch_advisory = {
+                    "sky_condition": f"{regime.replace('_', ' ').title()}",
+                    "cloud_risk": risk,
+                    "generation_trend": "STABLE" if cloud_pct < 30 else ("DROPPING" if cloud_pct >= 60 else "VARIABLE"),
+                    "action_recommendation": f"Maintain schedule baseline within +/-{tol_mw:.2f} MW tolerance band.",
+                    "advisory_text": (
+                        f"Currently, {plant_name} has {regime.replace('_', ' ').lower()} conditions with {temp_c:.1f}°C temperature and {cloud_pct}% cloud cover. "
+                        f"Over upcoming daylight blocks after the effective time, skies will remain consistent with no severe storm development expected. "
+                        f"Generation will be {trend}, allowing schedulers to maintain baseline within {state}'s +/-{tol_band * 100:.1f}% (+/-{tol_mw:.2f} MW) tolerance band."
+                    ),
+                }
+
             return StrategicAdvice(
                 regime=regime,
                 quantile_bias_factor=bias,
@@ -216,6 +278,7 @@ Respond ONLY with a JSON object in this exact schema:
                 is_trip_or_curtailment=is_trip,
                 reasoning=reasoning,
                 block_predictions=block_preds,
+                dispatch_advisory=dispatch_advisory,
                 source="LLM_STRATEGIC_ARBITER",
             )
         except Exception as parse_err:
@@ -275,6 +338,21 @@ Respond ONLY with a JSON object in this exact schema:
         turbine_model = str(getattr(self.profile, "turbine_model", "Standard Wind Turbine"))
         n_turb = int(getattr(self.profile, "num_turbines", 1))
 
+        wind_speed = wind_indicators.get("mean_wind_speed", 0.0)
+        turb_risk = str(wind_indicators.get("turbulence_risk", "LOW")).upper()
+        temp_c = float(wind_indicators.get("temp_c", 26.0))
+        default_advice.dispatch_advisory = {
+            "sky_condition": "Wind Aerodynamic",
+            "cloud_risk": turb_risk,
+            "generation_trend": "STABLE",
+            "action_recommendation": f"Maintain wind aerodynamic baseline within +/-{tol_band_mw:.2f} MW band.",
+            "advisory_text": (
+                f"Currently, {plant_name} has hub wind speeds averaging {wind_speed} m/s at {temp_c:.1f}°C ambient temperature. "
+                f"Over upcoming dispatch blocks after the effective time, winds will remain consistent with {turb_risk.lower()} turbulence risk. "
+                f"Generation will track aerodynamic curve safely within +/-{tol_band_mw:.2f} MW tolerance band."
+            ),
+        }
+
         blocks_formatted = ""
         if next_12_blocks:
             lines = []
@@ -288,6 +366,25 @@ Respond ONLY with a JSON object in this exact schema:
             blocks_formatted = "\n".join(lines)
         else:
             blocks_formatted = "  (No specific block list provided; recommend global bias factor)"
+
+        wind_advisory_task = (
+            f"5. OPERATOR WEATHER ADVISORY ({plant_name}):\n"
+            "   Write 'dispatch_advisory.advisory_text' as a continuous single paragraph of MAXIMUM THREE LINES in plain English.\n"
+            "   It must seamlessly connect three things in continuous flow:\n"
+            "   - Current wind and weather condition at the site (wind speed, temperature, turbulence).\n"
+            "   - Future wind trend after the effective revision time (increasing breeze, thermal drops, or gust risk).\n"
+            f"   - Future generation impact (expected MW trend like rising/steady/dropping) and scheduling advice under +/-{tol_band_mw:.2f} MW band.\n"
+            "   Do NOT use bullet points or numbered lists; write exactly one coherent, continuous 2-to-3 sentence paragraph.\n"
+        )
+        wind_advisory_schema = (
+            ',\n  "dispatch_advisory": {\n'
+            '    "sky_condition": "Wind Aerodynamic",\n'
+            '    "cloud_risk": "LOW / MEDIUM / HIGH",\n'
+            '    "generation_trend": "RISING / STABLE / DROPPING",\n'
+            f'    "action_recommendation": "ACTION: Maintain baseline within +/-{tol_band_mw:.2f} MW tolerance band.",\n'
+            f'    "advisory_text": "Currently, {plant_name} has steady hub wind speeds near {wind_speed} m/s at {temp_c:.1f}°C. Over upcoming dispatch blocks after {target_time_str}, wind velocities are projected to remain steady with low turbulence risk. Generation will follow the aerodynamic curve within the +/-{tol_band_mw:.2f} MW tolerance band."\n'
+            '  }'
+        )
 
         prompt = f"""You are the Chief Renewable Energy Meteorological Scheduling Strategist for {plant_name} Wind Power Plant.
 Target Date: {target_date_str} | Revision Time: {target_time_str}
@@ -320,7 +417,7 @@ TASKS:
 2. Predict the generation (in MW) for EACH of the next 12 blocks in "block_predictions".
 3. Recommend quantile_bias_factor (between 0.85 and 1.10).
 4. Provide operational reasoning.
-
+{wind_advisory_task}
 Respond ONLY with a JSON object in this exact schema:
 {{
   "regime": "STEADY_HIGH_WIND",
@@ -331,7 +428,7 @@ Respond ONLY with a JSON object in this exact schema:
   "block_predictions": {{
     "58": 24.50,
     "59": 25.10
-  }}
+  }}{wind_advisory_schema}
 }}"""
 
         model_names = predictor._load_openrouter_model_names()
@@ -382,6 +479,29 @@ Respond ONLY with a JSON object in this exact schema:
                     except (ValueError, TypeError):
                         continue
 
+            wind_dispatch_advisory: dict[str, Any] = {}
+            raw_advisory = data.get("dispatch_advisory")
+            if isinstance(raw_advisory, dict) and raw_advisory.get("advisory_text"):
+                wind_dispatch_advisory = {
+                    "sky_condition": str(raw_advisory.get("sky_condition", "Wind Aerodynamic")),
+                    "cloud_risk": str(raw_advisory.get("cloud_risk", turb_risk)).upper(),
+                    "generation_trend": str(raw_advisory.get("generation_trend", "STABLE")).upper(),
+                    "action_recommendation": str(raw_advisory.get("action_recommendation", "")),
+                    "advisory_text": str(raw_advisory.get("advisory_text", "")),
+                }
+            else:
+                wind_dispatch_advisory = {
+                    "sky_condition": "Wind Aerodynamic",
+                    "cloud_risk": turb_risk,
+                    "generation_trend": "STABLE",
+                    "action_recommendation": f"Maintain baseline within +/-{tol_band_mw:.2f} MW band.",
+                    "advisory_text": (
+                        f"Currently, {plant_name} has hub wind speeds averaging {wind_speed} m/s at {temp_c:.1f}°C. "
+                        f"Over upcoming dispatch blocks after the effective time, winds will remain consistent with {turb_risk.lower()} turbulence risk. "
+                        f"Generation will track aerodynamic curve safely within +/-{tol_band_mw:.2f} MW tolerance band."
+                    ),
+                }
+
             return StrategicAdvice(
                 regime=regime,
                 quantile_bias_factor=bias,
@@ -389,6 +509,7 @@ Respond ONLY with a JSON object in this exact schema:
                 is_trip_or_curtailment=False,
                 reasoning=reasoning,
                 block_predictions=block_preds,
+                dispatch_advisory=wind_dispatch_advisory,
                 source="WIND_LLM_STRATEGIC_ARBITER",
             )
         except Exception as parse_err:

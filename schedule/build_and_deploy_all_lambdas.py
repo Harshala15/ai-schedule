@@ -7,7 +7,7 @@ import sys
 REGION = "ap-south-1"
 ACCOUNT_ID = "552496640388"
 REPO = "intellis-ai-scheduler"
-TAG = "intellis-test-nonmeter-7day-ensemble-20261013-v3"
+TAG = "intellis-wind325-athena-onboard-20261022-v1"
 ECR_REGISTRY = f"{ACCOUNT_ID}.dkr.ecr.{REGION}.amazonaws.com"
 IMAGE_URI = f"{ECR_REGISTRY}/{REPO}:{TAG}"
 
@@ -33,6 +33,7 @@ ALL_LAMBDAS = [
     "NANDGAON-ai-intellis-scheduler",
     "OSEPL-ai-intellis-scheduler",
     "PRANAV-ai-intellis-scheduler",
+    "REWAATHENA-ai-intellis-scheduler",
     "REWASEIT-ai-intellis-scheduler",
     "REWASPRNG-ai-intellis-scheduler",
     "SAWDA-ai-intellis-scheduler",
@@ -40,6 +41,7 @@ ALL_LAMBDAS = [
     "SIDDEHESH-ai-intellis-scheduler",
     "SIRMOUR-ai-intellis-scheduler",
     "UPL-ai-intellis-scheduler",
+    "WIND325-ai-intellis-scheduler",
     "ZTRIC-ai-intellis-scheduler",
 ]
 

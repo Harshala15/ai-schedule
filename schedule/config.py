@@ -397,6 +397,23 @@ _PLANT_FALLBACKS = {
         "band_percentage": 0.05,
         "eeg_id": "RewaSeit",
     },
+    "REWAATHENA": {
+        "latitude": 24.48336,
+        "longitude": 81.574567,
+        "capacity_mw": 250.0,
+        "dc_capacity_mw": 340.0,
+        "max_feed_in_mw": 250.0,
+        "tilt_deg": 4.0,
+        "orientation_deg_from_south": 0.0,
+        "performance_ratio": 0.96,
+        "transfer_ratio": 0.3264,
+        "ppa_rate_inr_per_kwh": 3.2515,
+        "penalty_regulation": "Madhya Pradesh",
+        "tolerance_band_mw": 12.5,
+        "band_percentage": 0.05,
+        "freeze_lag_minutes": 90,
+        "eeg_id": "RewaAthena",
+    },
     "CLIMATEDETOX": {
         "latitude": 17.557881,
         "longitude": 76.201973,
@@ -492,18 +509,54 @@ _PLANT_FALLBACKS = {
     "LGEPL": {
         "latitude": 15.120426,
         "longitude": 79.729956,
-        "capacity_mw": 3.00,
+        "capacity_mw": 2.40,
         "dc_capacity_mw": 4.20,
-        "max_feed_in_mw": 3.00,
+        "max_feed_in_mw": 2.40,
         "tilt_deg": 16.0,
         "orientation_deg_from_south": 0.0,
-        "performance_ratio": 0.64,
         "ppa_rate_inr_per_kwh": 3.00,
         "penalty_regulation": "Andhra Pradesh",
-        "tolerance_band_mw": 0.450,
+        "tolerance_band_mw": 0.360,
         "band_percentage": 0.15,
         "freeze_lag_minutes": 45,
         "eeg_id": "LGEPL",
+    },
+    "REWASPRNG": {
+        "latitude": 24.46922,
+        "longitude": 81.57604,
+        "capacity_mw": 250.00,
+        "dc_capacity_mw": 346.00,
+        "max_feed_in_mw": 250.00,
+        "tilt_deg": 18.0,
+        "orientation_deg_from_south": 0.0,
+        "performance_ratio": 0.96,
+        "transfer_ratio": 0.3320,
+        "ppa_rate_inr_per_kwh": 3.2515,
+        "penalty_regulation": "Madhya Pradesh",
+        "tolerance_band_mw": 12.50,
+        "band_percentage": 0.05,
+        "freeze_lag_minutes": 90,
+        "eeg_id": "RewaSprng",
+    },
+    "WIND325": {
+        "plant_type": "WIND",
+        "latitude": 23.08423418,
+        "longitude": 75.24604565,
+        "capacity_mw": 324.40,
+        "dc_capacity_mw": 326.70,
+        "rated_power_mw": 326.70,
+        "max_feed_in_mw": 324.40,
+        "hub_height_m": 130.0,
+        "rotor_diameter_m": 132.0,
+        "num_turbines": 121,
+        "individual_turbine_capacity_kw": 2700.0,
+        "ppa_rate_inr_per_kwh": 2.83,
+        "penalty_regulation": "Madhya Pradesh",
+        "tolerance_band_mw": 32.44,
+        "band_percentage": 0.10,
+        "freeze_lag_minutes": 90,
+        "eeg_id": "Wind 325",
+        "plant_key": "AWLMP1PL_PTNGR_IDR_W",
     },
 }
 SITES = _PLANT_FALLBACKS
@@ -572,7 +625,7 @@ PLANT_TYPE = _read_profile_setting("PLANT_TYPE", "plant_type", _fallback.get("pl
 
 def is_wind_plant(plant_name: str | None = None) -> bool:
     name = (plant_name or PLANT_NAME or "").strip().upper()
-    if name in ("CHANDAWASA", "CHANDWASA", "JEWLI", "JGBPL"):
+    if name in ("CHANDAWASA", "CHANDWASA", "JEWLI", "JGBPL", "WIND325"):
         return True
     p_type = ""
     if isinstance(PLANT_PROFILE, dict):
@@ -644,7 +697,7 @@ def get_plant_tolerance_band_pct(penalty_regulation: str | None = None, plant_na
     name = (plant_name or PLANT_NAME or "").strip().upper()
 
     # Rewa Solar Park specific mandate (±5% tolerance band)
-    if name in {"REWASPRNG", "REWASEIT"}:
+    if name in {"REWASPRNG", "REWASEIT", "REWAATHENA"}:
         return 5.0
 
     if "madhya pradesh" in reg or "mperc" in reg:
@@ -660,7 +713,7 @@ def get_plant_tolerance_band_pct(penalty_regulation: str | None = None, plant_na
     mp_plants = {
         "SIRMOUR", "GSNP", "GSPPL", "BAMKHAL", "BALAKWADA", "ANDAD",
         "ANJANGAON", "ANJANGOAN", "SAWDA", "GUGARIYAKHEDI", "NANDGAON",
-        "CHANDAWASA", "CHANDWASA"
+        "CHANDAWASA", "CHANDWASA", "WIND325"
     }
     if name in mp_plants:
         return 10.0

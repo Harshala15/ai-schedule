@@ -25,8 +25,8 @@ from modules.weather.strategies.intellis_gti.remote_api_strategy import (
 
 NON_METER_SITES = {
     "ANDAD", "GUGARIYAKHEDI", "SAWDA", "BALAKWADA", "CME", "CLIMATEDETOX",
-    "EMIL", "UPL", "REWASEIT", "SIDDEHESH", "PRANAV", "LOKGREENB2", "LGEPL",
-    "CHANDWASA", "CHANDAWASA"
+    "EMIL", "UPL", "REWASEIT", "SIDDEHESH", "PRANAV", "LOKGREENB2",
+    "CHANDWASA", "CHANDAWASA", "REWAATHENA"
 }
 
 

@@ -1,5 +1,5 @@
 {
-  "plant_name": "GSPPL",
+  "plant_name": "GSNP",
   "latitude": 24.077752,
   "longitude": 75.337636,
   "dc_capacity_kw": 23601.6,
@@ -10,6 +10,7 @@
   "eeg_id": "GSPPL",
   "ppa_rate_inr_per_kwh": 6.97,
   "penalty_regulation": "Madhya Pradesh",
+  "tolerance_band_percent": 10,
   "meter_data": {
     "s3_prefix": "raw/vedanjay/{site_id}/{date}/metered_data/",
     "file_name_regex": "^(GSPPL_)?FORECAST_.*\\.csv$",

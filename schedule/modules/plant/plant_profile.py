@@ -23,8 +23,8 @@ except ImportError:
 # Explicit non-meter sites where physical SCADA telemetry is absent
 NON_METER_SITES = {
     "ANDAD", "GUGARIYAKHEDI", "SAWDA", "BALAKWADA", "CME", "CLIMATEDETOX",
-    "EMIL", "UPL", "REWASEIT", "SIDDEHESH", "PRANAV", "LOKGREENB2", "LGEPL",
-    "CHANDWASA", "CHANDAWASA"
+    "EMIL", "UPL", "REWASEIT", "SIDDEHESH", "PRANAV", "LOKGREENB2",
+    "CHANDWASA", "CHANDAWASA", "REWAATHENA", "WIND325"
 }
 
 
@@ -46,6 +46,7 @@ class PlantProfile:
     tolerance_band_mw: float = 2.0  # 10% or 15% of AC capacity based on state regulations
     band_percentage: float = 0.10
     calibrated_pr: float | None = None
+    performance_ratio: float | None = None
     meter_data: dict[str, Any] = field(default_factory=dict)
 
 
@@ -175,7 +176,11 @@ def load_plant_profile(plant_name: str = "GSNP") -> PlantProfile:
     else:
         explicit_pr = data.get("performance_ratio") or cfg_profile.get("performance_ratio")
         base_pr = float(explicit_pr) if explicit_pr is not None else float(getattr(config, "PERFORMANCE_RATIO", 0.78))
-        transfer_ratio = round((dc_mw * base_pr) / 1000.0, 6)
+        explicit_tr = data.get("transfer_ratio") or cfg_profile.get("transfer_ratio")
+        if explicit_tr is not None:
+            transfer_ratio = float(explicit_tr)
+        else:
+            transfer_ratio = round((dc_mw * base_pr) / 1000.0, 6)
 
     ppa = float(data.get("ppa_rate_inr_per_kwh") or cfg_profile.get("ppa_rate_inr_per_kwh") or getattr(config, "PPA_RATE_INR_PER_KWH", 6.97))
     reg = str(data.get("penalty_regulation") or cfg_profile.get("penalty_regulation") or "Madhya Pradesh")
@@ -215,6 +220,7 @@ def load_plant_profile(plant_name: str = "GSNP") -> PlantProfile:
         penalty_regulation=reg,
         tolerance_band_mw=tol_mw,
         band_percentage=band_pct,
-        calibrated_pr=base_pr if is_non_meter else None,
+        calibrated_pr=base_pr if (explicit_pr is not None or is_non_meter) else None,
+        performance_ratio=float(explicit_pr) if explicit_pr is not None else None,
         meter_data=meter_data,
     )

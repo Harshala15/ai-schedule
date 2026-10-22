@@ -58,3 +58,12 @@ def upload_json(bucket: str, key: str, payload: dict) -> str:
     body = json.dumps(payload, indent=2, default=str).encode("utf-8")
     s3_client().put_object(Bucket=bucket, Key=key, Body=body, ContentType="application/json")
     return key
+
+
+def read_json(bucket: str, key: str) -> dict | None:
+    """Download and decode JSON from S3, returning None if not found or invalid."""
+    try:
+        resp = s3_client().get_object(Bucket=bucket, Key=key)
+        return json.loads(resp["Body"].read().decode("utf-8"))
+    except Exception:
+        return None

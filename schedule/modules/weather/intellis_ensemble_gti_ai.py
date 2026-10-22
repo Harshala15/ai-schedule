@@ -77,8 +77,8 @@ PUBLIC_ENSEMBLE_URL = "https://ensemble-api.open-meteo.com/v1/ensemble"
 # and satellite solar radiation API (GTI) acts as the virtual meter input
 NON_METER_SITES = {
     "ANDAD", "GUGARIYAKHEDI", "SAWDA", "BALAKWADA", "CME", "CLIMATEDETOX",
-    "EMIL", "UPL", "REWASEIT", "SIDDEHESH", "PRANAV", "LOKGREENB2", "LGEPL",
-    "CHANDWASA", "CHANDAWASA"
+    "EMIL", "UPL", "REWASEIT", "SIDDEHESH", "PRANAV", "LOKGREENB2",
+    "CHANDWASA", "CHANDAWASA", "REWAATHENA", "WIND325"
 }
 
 
@@ -625,7 +625,7 @@ class IntellisEnsembleGTIAI:
                     s3 = session.client("s3")
                 except Exception:
                     s3 = boto3.client("s3")
-                bucket = os.getenv("S3_BUCKET") or os.getenv("BUCKET") or "vedanjay-schedules-test-608744602858"
+                bucket = os.getenv("S3_BUCKET") or os.getenv("BUCKET") or "vedanjay-schedules-test-552496640388"
 
                 # Check custom prefix from plant profile meter_data if configured
                 s3_custom_prefix = self.profile.meter_data.get("s3_prefix") if self.profile.meter_data else None
@@ -727,10 +727,13 @@ class IntellisEnsembleGTIAI:
                 pr_stc_vals = (d_mw[mask] * 1000.0) / (d_poa[mask] * self.profile.dc_capacity_mw * temp_factor[mask])
                 valid_prs.extend(pr_stc_vals.tolist())
 
-        if len(valid_prs) >= 6:
+        explicit_pr = getattr(self.profile, "performance_ratio", None) or (self.profile.meter_data.get("performance_ratio") if self.profile.meter_data else None)
+        if explicit_pr is not None and float(explicit_pr) > 0.0:
+            learned_pr = float(explicit_pr)
+        elif len(valid_prs) >= 6:
             # 70th percentile captures clear high-performance generation while filtering out cloud drops
             learned_pr = float(np.percentile(valid_prs, 70))
-            learned_pr = max(0.78, min(0.95, learned_pr))
+            learned_pr = max(0.78, min(0.98, learned_pr))
         else:
             # STC default (yields ~0.77-0.78 operating PR at noon under 0.88 temp_factor)
             learned_pr = getattr(self.profile, "calibrated_pr", None) or 0.8800
@@ -1436,7 +1439,7 @@ class IntellisEnsembleGTIAI:
             self.profile.penalty_regulation == "Madhya Pradesh"
             or site_upper in {
                 "SIRMOUR", "ANJANGOAN", "ANJANGAON", "ANDAD", "BALAKWADA",
-                "BAMKHAL", "CHANDAWASA", "CHANDWASA", "GSNP", "GSPPL", "GUGARIYAKHEDI", "NANDGAON", "SAWDA", "REWASPRNG", "REWASEIT"
+                "BAMKHAL", "CHANDAWASA", "CHANDWASA", "GSNP", "GSPPL", "GUGARIYAKHEDI", "NANDGAON", "SAWDA", "REWASPRNG", "REWASEIT", "REWAATHENA", "WIND325"
             }
         )
         freeze_lag_blocks = 6 if is_90min_site else 3
@@ -1532,7 +1535,19 @@ class IntellisEnsembleGTIAI:
                 fcst_gti = b_dict["predicted_gti_wm2"]
                 fcst_kt = min(1.05, fcst_gti / max(15.0, cs_poa[b_idx]))
 
-                if elapsed_blocks <= 1:
+                if kt_obs >= 0.85:
+                    # Ground truth proves clear-sky high generation; protect against false NWP cloud depression
+                    decay_w = math.exp(-max(0, elapsed_blocks - freeze_lag_blocks) / max(1.0, tau_blocks * 2.0))
+                    eff_kt = max(fcst_kt, decay_w * kt_obs + (1.0 - decay_w) * fcst_kt)
+                    target_poa = eff_kt * cs_poa[b_idx]
+                    b_hr = (b_dict["block"] * 15) // 60
+                    amb_t = 28.0 + (4.0 if 11 <= b_hr <= 15 else 0.0)
+                    cell_t = amb_t + target_poa * 0.031
+                    temp_factor = np.clip(1.0 - 0.004 * (cell_t - 25.0), 0.82, 1.06)
+                    raw_mw = target_poa * self.profile.transfer_ratio * temp_factor
+                    adj_mw = min(self.profile.ac_capacity_mw, max(0.0, raw_mw))
+                    adj_mw = round(adj_mw, 2)
+                elif elapsed_blocks <= 1:
                     # Immediate +00 to +15 min from SCADA observation: 100% Meter-Adjusted telemetry
                     eff_kt = max(0.15, min(1.05, kt_obs + trend_momentum))
                     target_poa = eff_kt * cs_poa[b_idx]
@@ -1568,8 +1583,6 @@ class IntellisEnsembleGTIAI:
                 else:
                     # Beyond 45 min from SCADA observation (elapsed_blocks >= 4):
                     # Cloud shadow autocorrelation has physically expired.
-                    # For 90-min statutory freeze sites (MP/CERC), all actionable blocks fall here
-                    # and are strictly anchored to the meteorological NWP weather ensemble.
                     target_poa = fcst_gti
                     adj_mw = b_dict["predicted_mw"]
 
@@ -1713,7 +1726,7 @@ class IntellisEnsembleGTIAI:
             self.profile.penalty_regulation == "Madhya Pradesh"
             or site_upper in {
                 "SIRMOUR", "ANJANGOAN", "ANJANGAON", "ANDAD", "BALAKWADA",
-                "BAMKHAL", "CHANDAWASA", "CHANDWASA", "GSNP", "GSPPL", "GUGARIYAKHEDI", "NANDGAON", "SAWDA", "REWASPRNG", "REWASEIT"
+                "BAMKHAL", "CHANDAWASA", "CHANDWASA", "GSNP", "GSPPL", "GUGARIYAKHEDI", "NANDGAON", "SAWDA", "REWASPRNG", "REWASEIT", "REWAATHENA", "WIND325"
             }
         )
         freeze_lag_blocks = 6 if is_90min_site else 3
@@ -1999,6 +2012,8 @@ class IntellisEnsembleGTIAI:
             "reasoning": advice.reasoning,
             "source": advice.source,
         }
+        if getattr(advice, "dispatch_advisory", None):
+            sched["llm_strategy"]["dispatch_advisory"] = advice.dispatch_advisory
 
         # Anti-plateau solar curvature guardrail: Ensure no consecutive daylight blocks are identical
         mw_vals = np.array([float(b.get("schedule_mw", 0.0)) for b in sched["blocks"]])

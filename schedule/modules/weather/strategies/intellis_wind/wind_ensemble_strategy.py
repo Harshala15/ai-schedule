@@ -583,7 +583,7 @@ def calculate_wind_schedule_96block(
 
     if not member_96_speeds:
         b_speeds_base = np.array([4.5 + 2.5 * math.sin(2.0 * math.pi * (b + 12) / 96.0) for b in range(96)])
-    elif enable_slot_selection and ("JEWLI" in prof.plant_name.upper() or "JGBPL" in prof.plant_name.upper()):
+    elif enable_slot_selection and ("JEWLI" in prof.plant_name.upper() or "JGBPL" in prof.plant_name.upper() or "WIND325" in prof.plant_name.upper()):
         b_speeds_base_list = []
         for b in range(1, 97):
             slot = get_wind_slot_for_block(b)
