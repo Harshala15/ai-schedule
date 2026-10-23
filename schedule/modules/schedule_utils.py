@@ -23,7 +23,7 @@ IST = ZoneInfo("Asia/Kolkata")
 
 def _capture_times_for_site() -> list[str]:
     site = (getattr(config, "PLANT_NAME", "") or "").strip().upper()
-    if site == "WIND325":
+    if site in ("WIND325", "SECI5"):
         return [
             "22:15", "23:00", "23:30",
             "00:00", "00:30", "01:00", "01:30", "02:00", "02:30",
@@ -162,6 +162,7 @@ def _meter_filename_hints(plant_name: str | None = None) -> list[str]:
         "REWASEIT": ["rewaseit", "rewa_seit", "rewa", "msrpl"],
         "REWAATHENA": ["rewaathena", "rewa_athena", "athena", "rewa"],
         "WIND325": ["wind325", "wind_325", "wind", "ptngr", "awlmp1pl"],
+        "SECI5": ["seci5", "seci_5", "seci", "gujarat"],
         "CLIMATEDETOX": ["climatedetox", "climate_detox", "enrich"],
         "EMIL": ["emil", "enrich"],
         "UPL": ["upl", "enrich"],
@@ -273,6 +274,7 @@ def freeze_from_datetime(target_date: str, target_time: str, block_minutes: int 
         "REWASEIT": 90,
         "REWAATHENA": 90,
         "WIND325": 90,
+        "SECI5": 90,
         "BHUPALPALLY": 45,
         "KASIPET": 45,
         "KOTHAGUDEM": 45,
@@ -349,6 +351,7 @@ def write_current_final_schedule(
         "REWASEIT": 90,
         "REWAATHENA": 90,
         "WIND325": 90,
+        "SECI5": 90,
         "BHUPALPALLY": 45,
         "KASIPET": 45,
         "KOTHAGUDEM": 45,

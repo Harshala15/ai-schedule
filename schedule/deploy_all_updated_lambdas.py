@@ -43,6 +43,7 @@ ALL_LAMBDAS = [
     "SIRMOUR-ai-intellis-scheduler",
     "UPL-ai-intellis-scheduler",
     "WIND325-ai-intellis-scheduler",
+    "SECI5-ai-intellis-scheduler",
     "ZTRIC-ai-intellis-scheduler",
     "intellis-dayhead-forcast-solar",
     "intellis-weekhead-forcast-solar",

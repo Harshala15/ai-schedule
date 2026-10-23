@@ -33,6 +33,7 @@ WA_WIND_SITES: List[str] = [
     "JEWLI",
     "JGBPL",
     "WIND325",
+    "SECI5",
 ]
 
 

@@ -31,6 +31,7 @@ WIND_DISPATCH_RULES: Dict[str, tuple[bool, bool]] = {
     "JEWLI": (True, True),        # Morning & Night
     "JGBPL": (True, True),        # Morning & Night
     "WIND325": (True, True),      # Morning & Night
+    "SECI5": (True, True),        # Morning & Night
 }
 
 

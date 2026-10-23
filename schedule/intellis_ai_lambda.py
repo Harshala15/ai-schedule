@@ -75,7 +75,7 @@ def lambda_handler(event, context):
     import config
     config.load_plant_profile(site_id)
 
-    if site_id in ("JEWLI", "JGBPL", "WIND325"):
+    if site_id in ("JEWLI", "JGBPL", "WIND325", "SECI5"):
         os.environ.setdefault("USE_LLM_FOR_WIND", "false")
         os.environ.setdefault("USE_LLM_JEWLI", "false")
 

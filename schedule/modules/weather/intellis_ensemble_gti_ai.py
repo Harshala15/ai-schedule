@@ -77,8 +77,8 @@ PUBLIC_ENSEMBLE_URL = "https://ensemble-api.open-meteo.com/v1/ensemble"
 # and satellite solar radiation API (GTI) acts as the virtual meter input
 NON_METER_SITES = {
     "ANDAD", "GUGARIYAKHEDI", "SAWDA", "BALAKWADA", "CME", "CLIMATEDETOX",
-    "EMIL", "UPL", "REWASEIT", "SIDDEHESH", "PRANAV", "LOKGREENB2",
-    "CHANDWASA", "CHANDAWASA", "REWAATHENA", "WIND325"
+    "EMIL", "UPL", "SIDDEHESH", "PRANAV", "LOKGREENB2",
+    "CHANDWASA", "CHANDAWASA", "WIND325", "SECI5"
 }
 
 
@@ -289,6 +289,8 @@ def enforce_anti_plateau_curvature(mw_arr: np.ndarray, cs_poa: np.ndarray, min_s
     follow the astronomical clear-sky solar curvature (Clear-Sky POA).
     """
     arr = np.copy(mw_arr)
+    plant_upper = (plant_name or "").upper()
+
 
     for _ in range(10):
         changed = False
@@ -1439,7 +1441,7 @@ class IntellisEnsembleGTIAI:
             self.profile.penalty_regulation == "Madhya Pradesh"
             or site_upper in {
                 "SIRMOUR", "ANJANGOAN", "ANJANGAON", "ANDAD", "BALAKWADA",
-                "BAMKHAL", "CHANDAWASA", "CHANDWASA", "GSNP", "GSPPL", "GUGARIYAKHEDI", "NANDGAON", "SAWDA", "REWASPRNG", "REWASEIT", "REWAATHENA", "WIND325"
+                "BAMKHAL", "CHANDAWASA", "CHANDWASA", "GSNP", "GSPPL", "GUGARIYAKHEDI", "NANDGAON", "SAWDA", "REWASPRNG", "REWASEIT", "REWAATHENA", "WIND325", "SECI5"
             }
         )
         freeze_lag_blocks = 6 if is_90min_site else 3
@@ -1726,7 +1728,7 @@ class IntellisEnsembleGTIAI:
             self.profile.penalty_regulation == "Madhya Pradesh"
             or site_upper in {
                 "SIRMOUR", "ANJANGOAN", "ANJANGAON", "ANDAD", "BALAKWADA",
-                "BAMKHAL", "CHANDAWASA", "CHANDWASA", "GSNP", "GSPPL", "GUGARIYAKHEDI", "NANDGAON", "SAWDA", "REWASPRNG", "REWASEIT", "REWAATHENA", "WIND325"
+                "BAMKHAL", "CHANDAWASA", "CHANDWASA", "GSNP", "GSPPL", "GUGARIYAKHEDI", "NANDGAON", "SAWDA", "REWASPRNG", "REWASEIT", "REWAATHENA", "WIND325", "SECI5"
             }
         )
         freeze_lag_blocks = 6 if is_90min_site else 3

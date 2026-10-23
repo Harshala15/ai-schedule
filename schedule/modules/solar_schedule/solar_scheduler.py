@@ -72,10 +72,8 @@ def enforce_anti_plateau_curvature(mw_arr: np.ndarray, cs_poa: np.ndarray, min_s
     arr = np.copy(mw_arr)
     plant_upper = (plant_name or "").upper()
 
-    if plant_upper in ("REWASPRNG", "REWASEIT", "REWAATHENA"):
+    if plant_upper in ("REWASPRNG",):
         # REWASPRNG: 346 MW DC on 250 MW AC (1.384x DC oversizing)
-        # Real-world substation transformer & line loss limits grid export to ~245 MW.
-        # Strong midday ambient/panel heat (35°C ambient, 55-60°C cell) creates a natural bell-shaped rolloff.
         for b in range(41, 50):  # Blocks 42 to 50 (10:15 to 12:30) - smooth ramp up and rounded apex
             blk = b + 1
             dist = abs(blk - 47.5)

@@ -23,8 +23,8 @@ except ImportError:
 # Explicit non-meter sites where physical SCADA telemetry is absent
 NON_METER_SITES = {
     "ANDAD", "GUGARIYAKHEDI", "SAWDA", "BALAKWADA", "CME", "CLIMATEDETOX",
-    "EMIL", "UPL", "REWASEIT", "SIDDEHESH", "PRANAV", "LOKGREENB2",
-    "CHANDWASA", "CHANDAWASA", "REWAATHENA", "WIND325"
+    "EMIL", "UPL", "SIDDEHESH", "PRANAV", "LOKGREENB2",
+    "CHANDWASA", "CHANDAWASA", "WIND325", "SECI5"
 }
 
 

@@ -55,8 +55,7 @@ class RemoteAPIGTIStrategy(BaseGTIStrategy):
         meter_data = getattr(self.profile, "meter_data", {}) or {}
         non_meter_sites = {
             "ANDAD", "GUGARIYAKHEDI", "SAWDA", "BALAKWADA", "CME", "CLIMATEDETOX",
-            "EMIL", "UPL", "REWASEIT", "SIDDEHESH", "PRANAV", "LOKGREENB2",
-            "CHANDWASA", "CHANDAWASA", "REWAATHENA"
+            "CHANDWASA", "CHANDAWASA"
         }
         is_non_meter = (
             plant_name in non_meter_sites

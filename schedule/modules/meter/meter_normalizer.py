@@ -41,6 +41,10 @@ CANONICAL_COLUMNS = [
 
 # Priority candidates for dynamic column detection
 TIMESTAMP_CANDIDATES = [
+    "End (Asia/Calcutta)",
+    "Start (Asia/Calcutta)",
+    "end_time",
+    "start_time",
     "block_end",
     "block_start",
     "timestamp",
@@ -55,6 +59,12 @@ TIMESTAMP_CANDIDATES = [
 ]
 
 KW_POWER_CANDIDATES = [
+    "RewaAthena  - Meter data (latest) (kW)",
+    "RewaAthena - Meter data (latest) (kW)",
+    "RewaSeit  - Meter data (latest) (kW)",
+    "RewaSeit - Meter data (latest) (kW)",
+    "RewaSprng  - Meter data (latest) (kW)",
+    "RewaSprng - Meter data (latest) (kW)",
     "active_power_kw",
     "Active Power (kW)",
     "Active Power-Avg MFM-OUT (KW)",
@@ -267,7 +277,8 @@ def normalize_meter_dataframe(
     else:
         out["block"] = op_blocks.fillna(1).clip(1, 96).astype(int)
 
-    clean_power = raw_vals.clip(lower=0.0)
+    clean_power = pd.to_numeric(df[pwr_col], errors="coerce").fillna(0.0).clip(lower=0.0)
+    clean_power.index = out.index
     if pwr_unit == "kw":
         out["active_power_kw"] = clean_power.round(3)
         out["metered_mw"] = (clean_power / 1000.0).round(4)

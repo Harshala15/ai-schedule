@@ -96,6 +96,38 @@ class WindTurbineProfile:
                 ramp_exponent=2.8,
                 park_derate_factor=0.89,
             )
+        elif "SECI5" in clean_name:
+            cap = max(cap, 300.0)
+            return cls(
+                plant_name="SECI5",
+                rated_capacity_mw=cap,
+                turbine_manufacturer="Suzlon",
+                turbine_model="S120/2100",
+                rotor_diameter_m=120.0,
+                num_turbines=144,
+                hub_height_m=140.0,
+                v_cut_in=3.0,
+                v_rated=11.5,
+                v_cut_out=25.0,
+                ramp_exponent=2.8,
+                park_derate_factor=0.90,
+            )
+        elif "WIND325" in clean_name:
+            cap = max(cap, 324.4)
+            return cls(
+                plant_name="WIND325",
+                rated_capacity_mw=cap,
+                turbine_manufacturer="GE Energy",
+                turbine_model="2.7-132",
+                rotor_diameter_m=132.0,
+                num_turbines=121,
+                hub_height_m=130.0,
+                v_cut_in=3.0,
+                v_rated=11.0,
+                v_cut_out=25.0,
+                ramp_exponent=2.8,
+                park_derate_factor=0.90,
+            )
 
         return cls(
             plant_name=clean_name,

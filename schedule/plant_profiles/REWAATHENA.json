@@ -9,20 +9,21 @@
   "tilt_deg": 4,
   "eeg_id": "RewaAthena",
   "ppa_rate_inr_per_kwh": 3.2515,
-  "performance_ratio": 0.96,
-  "transfer_ratio": 0.3264,
+  "performance_ratio": 0.92,
+  "transfer_ratio": 0.3128,
   "penalty_regulation": "Madhya Pradesh",
   "tolerance_band_mw": 12.5,
   "band_percentage": 0.05,
   "freeze_lag_minutes": 90,
   "meter_data": {
-    "is_non_meter_site": true,
+    "is_non_meter_site": false,
+    "has_poa_sensor": false,
     "s3_prefix": "raw/vedanjay/{site_id}/{date}/metered_data/",
     "file_name_regex": "^rewaathena_\\d{8}\\.csv$",
     "delimiter": ",",
-    "timestamp_column": "block_end",
-    "power_column": "metered_mw",
-    "power_unit": "mw",
-    "block_column": "block_no"
+    "timestamp_column": "End (Asia/Calcutta)",
+    "power_column": "RewaAthena  - Meter data (latest) (kW)",
+    "power_unit": "kw",
+    "block_column": null
   }
 }

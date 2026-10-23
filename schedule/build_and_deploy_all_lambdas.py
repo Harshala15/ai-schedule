@@ -7,7 +7,7 @@ import sys
 REGION = "ap-south-1"
 ACCOUNT_ID = "552496640388"
 REPO = "intellis-ai-scheduler"
-TAG = "intellis-wind325-athena-onboard-20261022-v1"
+TAG = "intellis-seci5-onboard-20261023-v1"
 ECR_REGISTRY = f"{ACCOUNT_ID}.dkr.ecr.{REGION}.amazonaws.com"
 IMAGE_URI = f"{ECR_REGISTRY}/{REPO}:{TAG}"
 
@@ -42,6 +42,7 @@ ALL_LAMBDAS = [
     "SIRMOUR-ai-intellis-scheduler",
     "UPL-ai-intellis-scheduler",
     "WIND325-ai-intellis-scheduler",
+    "SECI5-ai-intellis-scheduler",
     "ZTRIC-ai-intellis-scheduler",
 ]
 

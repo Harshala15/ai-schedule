@@ -391,6 +391,8 @@ _PLANT_FALLBACKS = {
         "max_feed_in_mw": 250.0,
         "tilt_deg": 14.0,
         "orientation_deg_from_south": 0.0,
+        "performance_ratio": 0.80,
+        "transfer_ratio": 0.26904,
         "ppa_rate_inr_per_kwh": 3.2515,
         "penalty_regulation": "Madhya Pradesh",
         "tolerance_band_mw": 12.5,
@@ -405,8 +407,8 @@ _PLANT_FALLBACKS = {
         "max_feed_in_mw": 250.0,
         "tilt_deg": 4.0,
         "orientation_deg_from_south": 0.0,
-        "performance_ratio": 0.96,
-        "transfer_ratio": 0.3264,
+        "performance_ratio": 0.92,
+        "transfer_ratio": 0.3128,
         "ppa_rate_inr_per_kwh": 3.2515,
         "penalty_regulation": "Madhya Pradesh",
         "tolerance_band_mw": 12.5,
@@ -558,6 +560,26 @@ _PLANT_FALLBACKS = {
         "eeg_id": "Wind 325",
         "plant_key": "AWLMP1PL_PTNGR_IDR_W",
     },
+    "SECI5": {
+        "plant_type": "WIND",
+        "latitude": 23.08315869,
+        "longitude": 69.20961708,
+        "capacity_mw": 300.00,
+        "dc_capacity_mw": 302.40,
+        "rated_power_mw": 302.40,
+        "max_feed_in_mw": 300.00,
+        "hub_height_m": 140.0,
+        "rotor_diameter_m": 120.0,
+        "num_turbines": 144,
+        "individual_turbine_capacity_kw": 2100.0,
+        "ppa_rate_inr_per_kwh": 2.86,
+        "penalty_regulation": "Gujarat",
+        "tolerance_band_mw": 30.00,
+        "band_percentage": 0.10,
+        "freeze_lag_minutes": 90,
+        "eeg_id": "SECI5",
+        "plant_key": "SECI5_GUJARAT_WIND",
+    },
 }
 SITES = _PLANT_FALLBACKS
 _fallback = _PLANT_FALLBACKS.get(_DEFAULT_PLANT_NAME.upper(), _PLANT_FALLBACKS["SIRMOUR"])
@@ -625,7 +647,7 @@ PLANT_TYPE = _read_profile_setting("PLANT_TYPE", "plant_type", _fallback.get("pl
 
 def is_wind_plant(plant_name: str | None = None) -> bool:
     name = (plant_name or PLANT_NAME or "").strip().upper()
-    if name in ("CHANDAWASA", "CHANDWASA", "JEWLI", "JGBPL", "WIND325"):
+    if name in ("CHANDAWASA", "CHANDWASA", "JEWLI", "JGBPL", "WIND325", "SECI5"):
         return True
     p_type = ""
     if isinstance(PLANT_PROFILE, dict):
@@ -702,6 +724,8 @@ def get_plant_tolerance_band_pct(penalty_regulation: str | None = None, plant_na
 
     if "madhya pradesh" in reg or "mperc" in reg:
         return 10.0
+    if "gujarat" in reg or "gerc" in reg:
+        return 10.0
     if "maharashtra" in reg or "merc" in reg:
         return 10.0
     if "telangana" in reg or "tserc" in reg:
@@ -716,6 +740,10 @@ def get_plant_tolerance_band_pct(penalty_regulation: str | None = None, plant_na
         "CHANDAWASA", "CHANDWASA", "WIND325"
     }
     if name in mp_plants:
+        return 10.0
+
+    gj_plants = {"SECI5"}
+    if name in gj_plants:
         return 10.0
 
     mh_plants = {"CME", "OSEPL", "ZTRIC", "CLIMATEDETOX", "EMIL", "UPL", "LOKGREENB2", "PRANAV", "SIDDEHESH"}
